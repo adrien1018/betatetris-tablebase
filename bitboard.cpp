@@ -145,11 +145,11 @@ class alignas(32) Board {
         b1 >> 22, b2 >> 22, b3 >> 22, 0,
         b1 >> 44, b2 >> 44, b3 >> 44};
 #pragma GCC diagnostic pop
-    uint32_t linemask = ~(cols[0] & cols[1] & cols[2] & cols[3] & cols[4] &
-                          cols[5] & cols[6] & cols[8] & cols[9] & cols[10]) & kColumnMask;
+    uint32_t linemask = (cols[0] | cols[1] | cols[2] | cols[3] | cols[4] |
+                         cols[5] | cols[6] | cols[8] | cols[9] | cols[10]) & kColumnMask;
     if (linemask == kColumnMask) return {0, *this};
     int lines = 20 - __builtin_popcount(linemask);
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 11; i++) {
       cols[i] = _pext_u32(cols[i], linemask) << lines | ((1 << lines) - 1);
     }
     return {lines, {
@@ -611,18 +611,47 @@ PositionList<R> SearchMoves(const std::array<Board, R>& mp) {
 
 #include <cstdio>
 #include <chrono>
-#include <unordered_map>
+#include <tsl/sparse_map.h>
 
 struct Edge {
   Position pos;
   std::vector<uint8_t> nxt;
 };
 struct NodeEdge {
+  uint8_t count;
   std::vector<std::pair<int, int>> nexts;
   std::vector<Edge> edges;
+
+  std::vector<uint8_t> GetBytes() const {
+    int sz = nexts.size() * 5 + edges.size() * 4;
+    for (auto& i : edges) sz += i.nxt.size();
+    if (sz >= 65536 || nexts.size() >= 256 || edges.size() >= 256) throw bool(1);
+    std::vector<uint8_t> ret(sz + 5);
+    *(uint16_t*)ret.data() = sz + 3;
+    ret[2] = count;
+    ret[3] = nexts.size();
+    int ind = 4;
+    for (size_t i = 0; i < nexts.size(); i++) {
+      if (nexts[i].second > 4) throw char(1);
+      *(uint32_t*)(ret.data() + ind) = nexts[i].first;
+      ret[ind + 4] = nexts[i].second;
+      ind += 5;
+    }
+    ret[ind++] = edges.size();
+    for (size_t i = 0; i < edges.size(); i++) {
+      ret[ind+0] = edges[i].pos.r;
+      ret[ind+1] = edges[i].pos.x;
+      ret[ind+2] = edges[i].pos.y;
+      ret[ind+3] = edges[i].nxt.size();
+      ind += 4;
+      for (auto& j : edges[i].nxt) ret[ind++] = j;
+    }
+    if (ind != (int)ret.size()) throw int(1);
+    return ret;
+  }
 };
 using EdgeList = std::array<NodeEdge, 7>;
-using BoardMap = std::unordered_map<Board, size_t, BoardHash>;
+using BoardMap = tsl::sparse_map<Board, int, BoardHash>;
 
 void Print(const Board& b, bool invert = true) {
   for (int i = 0; i < 20; i++) {
@@ -635,21 +664,22 @@ template <int R>
 NodeEdge GetEdgeList(const Board& b, int piece, const PositionList<R>& pos_list, const BoardMap& boards) {
   std::bitset<R * 200> tot_bs;
   for (auto& x : pos_list) tot_bs |= x.second;
-  if (tot_bs.count() >= 256) throw;
+  if (tot_bs.count() >= 256) throw long(1);
   uint8_t mp[R * 200] = {};
   memset(mp, 0xff, sizeof(mp));
   NodeEdge ret;
   ret.nexts.reserve(tot_bs.count());
   ret.edges.reserve(pos_list.size());
+  ret.count = b.Count();
   for (int i = tot_bs._Find_first(); i < tot_bs.size(); i = tot_bs._Find_next(i)) {
-    int s = b.Count();
     auto result = b.Place(piece, i / 200, i % 200 / 10, i % 10).ClearLines();
-    //result.second.Normalize();
     int t = result.second.Count();
-    if ((s+4)%10 != t%10) {
-      printf("%d %d (%d,%d,%d)\n", s, t, i/200, i%200/10, i%10);
+    if ((ret.count+4)%10 != t%10) {
+      printf("%d %d(%d %d %d)\n", ret.count, t, i/200,i%200/10,i%20);
       Print(b);
+      Print(b.Place(piece, i / 200, i % 200 / 10, i % 10));
       Print(result.second);
+      throw short(1);
     }
     auto it = boards.find(result.second);
     if (it != boards.end()) {
@@ -673,10 +703,18 @@ NodeEdge GetEdgeList(const Board& b, int piece, const PositionList<R>& pos_list,
   return std::move(ret);
 }
 
-int main() {
+int main(int argc, char** argv) {
+  if (argc < 2) return 1;
+  FILE* fp = fopen(argv[1], "w");
+  if (!fp) return 1;
+
   BoardMap boards_mp[5];
   std::vector<Board> boards[5];
-  std::vector<EdgeList> edges[5];
+  //std::vector<EdgeList> edges[5];
+  for (int i = 0; i < 5; i++) {
+    boards_mp[i].reserve(56000000);
+    boards[i].reserve(56000000);
+  }
   {
     uint8_t buf[25];
     while (fread(buf, 1, 25, stdin) == 25) {
@@ -692,7 +730,7 @@ int main() {
               cols[6] | cols[7] << 22 | cols[8] << 44,
               cols[9]};
       int cnt = r.Count();
-      if (cnt & 1) continue;
+      if (cnt & 1 || r.ClearLines().first != 0) continue;
       int group = cnt % 10 / 2;
       boards_mp[group][r] = boards[group].size();
       boards[group].push_back(r);
@@ -707,15 +745,16 @@ int main() {
       auto& nxt_map = boards_mp[nxt_group];
       // T, J, Z, O, S, L, I
       for (auto& board : boards[group]) {
-        edges[group].emplace_back();
-        auto& eds = edges[group].back();
-        eds[0] = GetEdgeList<4>(board, 0, SearchMoves<4, 2, 5, 21>(board.TMap()), nxt_map);
-        eds[1] = GetEdgeList<4>(board, 1, SearchMoves<4, 2, 5, 21>(board.JMap()), nxt_map);
-        eds[2] = GetEdgeList<2>(board, 2, SearchMoves<2, 2, 5, 21>(board.ZMap()), nxt_map);
-        eds[3] = GetEdgeList<1>(board, 3, SearchMoves<1, 2, 5, 21>(board.OMap()), nxt_map);
-        eds[4] = GetEdgeList<2>(board, 4, SearchMoves<2, 2, 5, 21>(board.SMap()), nxt_map);
-        eds[5] = GetEdgeList<4>(board, 5, SearchMoves<4, 2, 5, 21>(board.LMap()), nxt_map);
-        eds[6] = GetEdgeList<2>(board, 6, SearchMoves<2, 2, 5, 21>(board.IMap()), nxt_map);
+        //edges[group].emplace_back();
+        //auto& eds = edges[group].back();
+        EdgeList eds;
+        eds[0] = GetEdgeList<4>(board, 0, SearchMoves<4, 1, 5, 21>(board.TMap()), nxt_map);
+        eds[1] = GetEdgeList<4>(board, 1, SearchMoves<4, 1, 5, 21>(board.JMap()), nxt_map);
+        eds[2] = GetEdgeList<2>(board, 2, SearchMoves<2, 1, 5, 21>(board.ZMap()), nxt_map);
+        eds[3] = GetEdgeList<1>(board, 3, SearchMoves<1, 1, 5, 21>(board.OMap()), nxt_map);
+        eds[4] = GetEdgeList<2>(board, 4, SearchMoves<2, 1, 5, 21>(board.SMap()), nxt_map);
+        eds[5] = GetEdgeList<4>(board, 5, SearchMoves<4, 1, 5, 21>(board.LMap()), nxt_map);
+        eds[6] = GetEdgeList<2>(board, 6, SearchMoves<2, 1, 5, 21>(board.IMap()), nxt_map);
         bool flag = false;
         for (auto& i : eds) {
           edc += i.edges.size();
@@ -723,6 +762,9 @@ int main() {
           for (auto& j : i.edges) adjc += j.nxt.size();
           c++;
           if (i.nexts.size()) cc++, flag = true;
+
+          auto buf = i.GetBytes();
+          fwrite(buf.data(), 1, buf.size(), fp);
         }
         p++;
         if (flag) pp++;
@@ -736,5 +778,6 @@ int main() {
       }
     }
   }
+  fclose(fp);
   printf("%d %d %d %d %d %d %d\n", p, pp, c, cc, edc, nxtc, adjc);
 }
