@@ -445,17 +445,17 @@ std::pair<std::vector<Position>, std::vector<std::pair<Position, StateTuple>>> S
         if (val.first == 0) {
           StateTuple nxt_state = Decrement({frames_per_tap, val.second});
           StateTuple both_state = {frames_per_tap - 1, frames_per_tap - 1};
-          for (int ny : {y - 1, y + 1}) {
+          for (int ny : {y - 1, y + 1}) { // LR
             if (Check({r, now_x, ny})) {
               Insert(r, ny, nxt_state);
-              if (R > 1 && val.second == 0) {
+              if (R > 1 && val.second == 0) { // same-frame LR+AB
                 if (Check({ra, now_x, ny})) Insert(ra, ny, both_state);
                 if (Check({rb, now_x, ny})) Insert(rb, ny, both_state);
               }
             }
           }
         }
-        if (R > 1 && val.second == 0) {
+        if (R > 1 && val.second == 0) { // AB
           StateTuple nxt_state = Decrement({val.first, frames_per_tap});
           if (Check({ra, now_x, y})) Insert(ra, y, nxt_state);
           if (Check({rb, now_x, y})) Insert(rb, y, nxt_state);
@@ -463,6 +463,7 @@ std::pair<std::vector<Position>, std::vector<std::pair<Position, StateTuple>>> S
       }
     }
     if (!flag) break;
+    // number of frames that no lock or input is possible
     int can_ignore = std::min(std::min(to_drop - 1, current_min), num_frames - i - 2);
     if (can_ignore > 0) {
       for (int r = 0; r < R; r++) {
@@ -505,6 +506,7 @@ std::vector<std::bitset<R * 200>> SearchOneBatch(
   const size_t N = start.size();
   if (N > 64) throw;
   std::vector<std::bitset<R * 200>> rx(N);
+  // Each state is a bitset
   uint64_t mem[2][R][10][frames_per_tap][frames_per_tap] = {};
   auto current = mem[0];
   auto next = mem[1];
@@ -526,27 +528,29 @@ std::vector<std::bitset<R * 200>> SearchOneBatch(
         for (int s1 = 0; s1 < frames_per_tap; s1++) {
           for (int s2 = 0; s2 < frames_per_tap; s2++) {
             auto& bs = current[r][y][s1][s2];
+            // update in (s1, s2) order so only the minimum is used to update
             bs &= ~cur_bs;
             if (bs == 0) continue;
             cur_bs |= bs;
             flag = true;
 
+            // do not check board here
             int ds1 = Decrement(s1), ds2 = Decrement(s2), df = frames_per_tap - 1;
             InsertCurrent(r, y, ds1, ds2, bs);
             int ra = r == R - 1 ? 0 : r + 1;
             int rb = r == 0 ? R - 1 : r - 1;
             if (s1 == 0) {
-              for (int ny : {y - 1, y + 1}) {
-                if (Check({r, now_x, ny})) {
-                  InsertCurrent(r, ny, df, ds2, bs);
-                  if (R > 1 && s2 == 0) {
-                    InsertCurrent(ra, ny, df, df, bs);
-                    InsertCurrent(rb, ny, df, df, bs);
-                  }
+              for (int ny : {y - 1, y + 1}) { // LR
+                if (ny < 0 || ny >= 10) continue;
+                InsertCurrent(r, ny, df, ds2, bs);
+                // board check is necessary here
+                if (R > 1 && s2 == 0 && Check({r, now_x, ny})) { // same-frame LR+AB
+                  InsertCurrent(ra, ny, df, df, bs);
+                  InsertCurrent(rb, ny, df, df, bs);
                 }
               }
             }
-            if (R > 1 && s2 == 0) {
+            if (R > 1 && s2 == 0) { // AB
               InsertCurrent(ra, y, ds1, df, bs);
               InsertCurrent(rb, y, ds1, df, bs);
             }
@@ -555,11 +559,11 @@ std::vector<std::bitset<R * 200>> SearchOneBatch(
       }
     }
     if (!flag) break;
-    for (int r = 0; r < R; r++) {
+    for (int r = 0; r < R; r++) { // check board altogether
       for (int y = 0; y < 10; y++) {
         if (!Check({r, now_x, y})) {
           memset(next[r][y], 0, sizeof(next[r][y]));
-        } else if (to_drop == frames_per_drop && !Check({r, now_x + 1, y})) {
+        } else if (to_drop == frames_per_drop && !Check({r, now_x + 1, y})) { // lock
           uint64_t bs = 0;
           for (int s1 = 0; s1 < frames_per_tap; s1++) {
             for (int s2 = 0; s2 < frames_per_tap; s2++) bs |= next[r][y][s1][s2];
@@ -674,13 +678,7 @@ NodeEdge GetEdgeList(const Board& b, int piece, const PositionList<R>& pos_list,
   for (int i = tot_bs._Find_first(); i < tot_bs.size(); i = tot_bs._Find_next(i)) {
     auto result = b.Place(piece, i / 200, i % 200 / 10, i % 10).ClearLines();
     int t = result.second.Count();
-    if ((ret.count+4)%10 != t%10) {
-      printf("%d %d(%d %d %d)\n", ret.count, t, i/200,i%200/10,i%20);
-      Print(b);
-      Print(b.Place(piece, i / 200, i % 200 / 10, i % 10));
-      Print(result.second);
-      throw short(1);
-    }
+    if ((ret.count+4)%10 != t%10) throw short(1);
     auto it = boards.find(result.second);
     if (it != boards.end()) {
       mp[i] = ret.nexts.size();
@@ -703,18 +701,85 @@ NodeEdge GetEdgeList(const Board& b, int piece, const PositionList<R>& pos_list,
   return std::move(ret);
 }
 
-int main(int argc, char** argv) {
-  if (argc < 2) return 1;
-  FILE* fp = fopen(argv[1], "w");
-  if (!fp) return 1;
+#include <string>
+#include <unistd.h>
 
-  BoardMap boards_mp[5];
-  std::vector<Board> boards[5];
-  //std::vector<EdgeList> edges[5];
-  for (int i = 0; i < 5; i++) {
+template <int R> NodeEdge Test(const BoardMap& boards) {
+  return NodeEdge{};
+}
+
+template <int C>
+void Run(const std::string& name, const BoardMap boards_mp[], const std::vector<Board> boards[]) {
+  FILE *fp = fopen(name.c_str(), "w"), *logp = fopen((name + ".log").c_str(), "w");
+  if (!fp || !logp) return;
+
+  int edc = 0, nxtc = 0, adjc = 0, c = 0, cc = 0, p = 0, pp = 0;
+  auto start = std::chrono::steady_clock::now();
+  auto prev = start;
+  {
+    for (int group = 0; group < 5; group++) {
+      int nxt_group = (group + 2) % 5;
+      const auto& nxt_map = boards_mp[nxt_group];
+      // T, J, Z, O, S, L, I
+      for (auto& board : boards[group]) {
+        EdgeList eds;
+        eds[0] = GetEdgeList<4>(board, 0, SearchMoves<4, C, 5, 21>(board.TMap()), nxt_map);
+        eds[1] = GetEdgeList<4>(board, 1, SearchMoves<4, C, 5, 21>(board.JMap()), nxt_map);
+        eds[2] = GetEdgeList<2>(board, 2, SearchMoves<2, C, 5, 21>(board.ZMap()), nxt_map);
+        eds[3] = GetEdgeList<1>(board, 3, SearchMoves<1, C, 5, 21>(board.OMap()), nxt_map);
+        eds[4] = GetEdgeList<2>(board, 4, SearchMoves<2, C, 5, 21>(board.SMap()), nxt_map);
+        eds[5] = GetEdgeList<4>(board, 5, SearchMoves<4, C, 5, 21>(board.LMap()), nxt_map);
+        eds[6] = GetEdgeList<2>(board, 6, SearchMoves<2, C, 5, 21>(board.IMap()), nxt_map);
+        bool flag = false;
+        for (auto& i : eds) {
+          edc += i.edges.size();
+          nxtc += i.nexts.size();
+          for (auto& j : i.edges) adjc += j.nxt.size();
+          c++;
+          if (i.nexts.size()) cc++, flag = true;
+
+          auto buf = i.GetBytes();
+          fwrite(buf.data(), 1, buf.size(), fp);
+        }
+        p++;
+        if (flag) pp++;
+        if (p % 16384 == 0) {
+          auto end = std::chrono::steady_clock::now();
+          std::chrono::duration<double> dur = end - start;
+          std::chrono::duration<double> dur2 = end - prev;
+          fprintf(logp, "%d %d %d %d %d %d %d, %lf / %lf item/s\n", p, pp, c, cc, edc, nxtc, adjc, p / dur.count(), 16384 / dur2.count());
+          fflush(logp);
+          prev = end;
+        }
+      }
+    }
+  }
+  auto end = std::chrono::steady_clock::now();
+  std::chrono::duration<double> dur = end - start;
+  fprintf(logp, "%d %d %d %d %d %d %d, %.3lf secs\n", p, pp, c, cc, edc, nxtc, adjc, dur.count());
+  fclose(logp);
+  fclose(fp);
+}
+
+#include <sys/resource.h>
+
+int GetCurrentMem() {
+  FILE* fp = fopen("/proc/self/statm", "r");
+  int x = 0;
+  fscanf(fp, "%*d%d", &x);
+  fclose(fp);
+  return x;
+}
+
+int main(int argc, char** argv) {
+  if (argc < 4) return 1;
+
+  std::vector<BoardMap> boards_mp(5);
+  std::vector<std::vector<Board>> boards(5);
+  /*for (int i = 0; i < 5; i++) {
     boards_mp[i].reserve(56000000);
     boards[i].reserve(56000000);
-  }
+  }*/
   {
     uint8_t buf[25];
     while (fread(buf, 1, 25, stdin) == 25) {
@@ -736,48 +801,25 @@ int main(int argc, char** argv) {
       boards[group].push_back(r);
     }
   }
-  int edc = 0, nxtc = 0, adjc = 0, c = 0, cc = 0, p = 0, pp = 0;
-  auto start = std::chrono::steady_clock::now();
-  auto prev = start;
-  {
-    for (int group = 0; group < 5; group++) {
-      int nxt_group = (group + 2) % 5;
-      auto& nxt_map = boards_mp[nxt_group];
-      // T, J, Z, O, S, L, I
-      for (auto& board : boards[group]) {
-        //edges[group].emplace_back();
-        //auto& eds = edges[group].back();
-        EdgeList eds;
-        eds[0] = GetEdgeList<4>(board, 0, SearchMoves<4, 1, 5, 21>(board.TMap()), nxt_map);
-        eds[1] = GetEdgeList<4>(board, 1, SearchMoves<4, 1, 5, 21>(board.JMap()), nxt_map);
-        eds[2] = GetEdgeList<2>(board, 2, SearchMoves<2, 1, 5, 21>(board.ZMap()), nxt_map);
-        eds[3] = GetEdgeList<1>(board, 3, SearchMoves<1, 1, 5, 21>(board.OMap()), nxt_map);
-        eds[4] = GetEdgeList<2>(board, 4, SearchMoves<2, 1, 5, 21>(board.SMap()), nxt_map);
-        eds[5] = GetEdgeList<4>(board, 5, SearchMoves<4, 1, 5, 21>(board.LMap()), nxt_map);
-        eds[6] = GetEdgeList<2>(board, 6, SearchMoves<2, 1, 5, 21>(board.IMap()), nxt_map);
-        bool flag = false;
-        for (auto& i : eds) {
-          edc += i.edges.size();
-          nxtc += i.nexts.size();
-          for (auto& j : i.edges) adjc += j.nxt.size();
-          c++;
-          if (i.nexts.size()) cc++, flag = true;
-
-          auto buf = i.GetBytes();
-          fwrite(buf.data(), 1, buf.size(), fp);
-        }
-        p++;
-        if (flag) pp++;
-        if (p % 16384 == 0) {
-          auto end = std::chrono::steady_clock::now();
-          std::chrono::duration<double> dur = end - start;
-          std::chrono::duration<double> dur2 = end - prev;
-          printf("%d %d %d %d %d %d %d, %lf / %lf item/s\n", p, pp, c, cc, edc, nxtc, adjc, p / dur.count(), 16384 / dur2.count());
-          prev = end;
-        }
-      }
-    }
+  // Allocate small memory sections to prevent CoW on dict pages
+  // Ensure RSS grows at least 128 MiB
+  int start_mem = GetCurrentMem();
+  while (true) {
+    for (int j = 0; j < 131072; j++) *(new uint8_t) = 1;
+    if (GetCurrentMem() - start_mem > 128 * 1024 / 4) break;
   }
-  fclose(fp);
-  printf("%d %d %d %d %d %d %d\n", p, pp, c, cc, edc, nxtc, adjc);
+  // exit(0) to prevent destructor accessing memory
+  if (!fork()) {
+    Run<1>(argv[1], boards_mp.data(), boards.data());
+    exit(0);
+  }
+  if (!fork()) {
+    Run<2>(argv[2], boards_mp.data(), boards.data());
+    exit(0);
+  }
+  if (!fork()) {
+    Run<3>(argv[3], boards_mp.data(), boards.data());
+    exit(0);
+  }
+  exit(0);
 }
