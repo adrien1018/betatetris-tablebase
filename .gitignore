@@ -1,3 +1,4 @@
 *
 !.gitignore
-!bitboard.cpp
+!*.cpp
+!*.h
