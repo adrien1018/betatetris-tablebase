@@ -41,6 +41,26 @@ struct NodeEdge {
     if (ind != (int)ret.size()) throw int(1);
     return ret;
   }
+
+  void ReadBytes(const uint8_t data[], bool with_header = false) {
+    if (with_header) data += 2;
+    count = *data++;
+    nexts.resize(*data++);
+    for (auto& i : nexts) {
+      i.first = *(uint32_t*)data;
+      i.second = data[4];
+      data += 5;
+    }
+    edges.resize(*data++);
+    for (auto& ed : edges) {
+      ed.pos.r = data[0];
+      ed.pos.x = data[1];
+      ed.pos.y = data[2];
+      ed.nxt.resize(data[3]);
+      data += 4;
+      for (auto& i : ed.nxt) i = *data++;
+    }
+  }
 };
 using EdgeList = std::array<NodeEdge, 7>;
 

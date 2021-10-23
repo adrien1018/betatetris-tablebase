@@ -27,7 +27,7 @@ NodeEdge GetEdgeList(const Board& b, int piece, const PositionList<R>& pos_list,
   ret.nexts.reserve(tot_bs.count());
   ret.edges.reserve(pos_list.size());
   ret.count = b.Count();
-  for (int i = tot_bs._Find_first(); i < tot_bs.size(); i = tot_bs._Find_next(i)) {
+  for (int i = tot_bs._Find_first(); i < (int)tot_bs.size(); i = tot_bs._Find_next(i)) {
     auto result = b.Place(piece, i / 200, i % 200 / 10, i % 10).ClearLines();
     int t = result.second.Count();
     if ((ret.count+4)%10 != t%10) throw short(1);
@@ -40,7 +40,7 @@ NodeEdge GetEdgeList(const Board& b, int piece, const PositionList<R>& pos_list,
   for (auto &[pos, bs] : pos_list) {
     Edge ed = {pos, {}};
     ed.nxt.reserve(bs.count());
-    for (int i = bs._Find_first(); i < bs.size(); i = bs._Find_next(i)) {
+    for (int i = bs._Find_first(); i < (int)bs.size(); i = bs._Find_next(i)) {
       if (mp[i] != 0xff) ed.nxt.push_back(mp[i]);
     }
     if (ed.nxt.size()) {
@@ -50,7 +50,7 @@ NodeEdge GetEdgeList(const Board& b, int piece, const PositionList<R>& pos_list,
   }
   ret.nexts.shrink_to_fit();
   ret.edges.shrink_to_fit();
-  return std::move(ret);
+  return ret;
 }
 
 template <int R> NodeEdge Test(const BoardMap& boards) {
@@ -59,13 +59,17 @@ template <int R> NodeEdge Test(const BoardMap& boards) {
 
 template <int C>
 void Run(const std::string& name, const BoardMap boards_mp[], const std::vector<Board> boards[]) {
-  FILE *fp = fopen(name.c_str(), "w"), *logp = fopen((name + ".log").c_str(), "w");
+  FILE *fp = fopen(name.c_str(), "wb"), *logp = fopen((name + ".log").c_str(), "w");
   if (!fp || !logp) return;
 
   int edc = 0, nxtc = 0, adjc = 0, c = 0, cc = 0, p = 0, pp = 0;
   auto start = std::chrono::steady_clock::now();
   auto prev = start;
   {
+    for (int group = 0; group < 5; group++) {
+      uint32_t boards_count = boards[group].size();
+      fwrite(&boards_count, 4, 1, fp);
+    }
     for (int group = 0; group < 5; group++) {
       int nxt_group = (group + 2) % 5;
       const auto& nxt_map = boards_mp[nxt_group];
