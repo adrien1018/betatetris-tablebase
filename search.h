@@ -4,7 +4,6 @@
 #include "board.h"
 #include "position.h"
 
-#include <cstring>
 #include <bitset>
 #include <vector>
 

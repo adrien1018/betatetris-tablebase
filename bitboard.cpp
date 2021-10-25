@@ -2,6 +2,9 @@
 #include <unistd.h>
 #include <chrono>
 #include <string>
+#include <fstream>
+#include <algorithm>
+#include <filesystem>
 #include <tsl/sparse_map.h>
 
 #include "search.h"
@@ -53,65 +56,107 @@ NodeEdge GetEdgeList(const Board& b, int piece, const PositionList<R>& pos_list,
   return ret;
 }
 
-template <int R> NodeEdge Test(const BoardMap& boards) {
-  return NodeEdge{};
+std::filesystem::path BoardPath(const std::filesystem::path& pdir, int group) {
+  return pdir / (std::to_string(group) + ".board");
+}
+std::filesystem::path EdgePath(const std::filesystem::path& pdir, int C, int group, const std::string& type) {
+  return pdir / (std::to_string(C) + "." + std::to_string(group) + "." + type);
 }
 
 template <int C>
-void Run(const std::string& name, const BoardMap boards_mp[], const std::vector<Board> boards[]) {
-  FILE *fp = fopen(name.c_str(), "wb"), *logp = fopen((name + ".log").c_str(), "w");
-  if (!fp || !logp) return;
+void Run(const std::filesystem::path pdir, const int group) {
+  BoardMap nxt_map;
+  {
+    const int nxt_group = (group + 2) % 5;
+    uint8_t buf[25];
+    auto filename = BoardPath(pdir, nxt_group);
+    int size = std::filesystem::file_size(filename) / 25;
+    nxt_map.reserve(size);
+    std::ifstream fin(filename);
+    for (int i = 0; i < size; i++) {
+      fin.read((char*)buf, sizeof(buf));
+      nxt_map[Board::FromBytes(buf)] = i;
+    }
+  }
+  int N = std::filesystem::file_size(BoardPath(pdir, group));
+  std::ifstream fin(BoardPath(pdir, group));
+  std::ofstream fout(EdgePath(pdir, C, group, "edges"));
+  std::ofstream foffset(EdgePath(pdir, C, group, "offset"));
+  std::ofstream flog(EdgePath(pdir, C, group, "edgelog"));
 
-  int edc = 0, nxtc = 0, adjc = 0, c = 0, cc = 0, p = 0, pp = 0;
+  uint8_t buf[25];
+  char obuf[256];
+  long long edc = 0, nxtc = 0, adjc = 0, c = 0, cc = 0, p = 0, pp = 0;
   auto start = std::chrono::steady_clock::now();
   auto prev = start;
-  {
-    for (int group = 0; group < 5; group++) {
-      uint32_t boards_count = boards[group].size();
-      fwrite(&boards_count, 4, 1, fp);
-    }
-    for (int group = 0; group < 5; group++) {
-      int nxt_group = (group + 2) % 5;
-      const auto& nxt_map = boards_mp[nxt_group];
-      // T, J, Z, O, S, L, I
-      for (auto& board : boards[group]) {
-        EdgeList eds;
-        eds[0] = GetEdgeList<4>(board, 0, SearchMoves<4, C, 5, 21>(board.TMap()), nxt_map);
-        eds[1] = GetEdgeList<4>(board, 1, SearchMoves<4, C, 5, 21>(board.JMap()), nxt_map);
-        eds[2] = GetEdgeList<2>(board, 2, SearchMoves<2, C, 5, 21>(board.ZMap()), nxt_map);
-        eds[3] = GetEdgeList<1>(board, 3, SearchMoves<1, C, 5, 21>(board.OMap()), nxt_map);
-        eds[4] = GetEdgeList<2>(board, 4, SearchMoves<2, C, 5, 21>(board.SMap()), nxt_map);
-        eds[5] = GetEdgeList<4>(board, 5, SearchMoves<4, C, 5, 21>(board.LMap()), nxt_map);
-        eds[6] = GetEdgeList<2>(board, 6, SearchMoves<2, C, 5, 21>(board.IMap()), nxt_map);
-        bool flag = false;
-        for (auto& i : eds) {
-          edc += i.edges.size();
-          nxtc += i.nexts.size();
-          for (auto& j : i.edges) adjc += j.nxt.size();
-          c++;
-          if (i.nexts.size()) cc++, flag = true;
+  const int kLogInterval = 16384;
+  // T, J, Z, O, S, L, I
+  for (int id = 0; id < N; id++) {
+    fin.read((char*)buf, sizeof(buf));
+    Board board = Board::FromBytes(buf);
+    EdgeList eds;
+    eds[0] = GetEdgeList<4>(board, 0, SearchMoves<4, C, 5, 21>(board.TMap()), nxt_map);
+    eds[1] = GetEdgeList<4>(board, 1, SearchMoves<4, C, 5, 21>(board.JMap()), nxt_map);
+    eds[2] = GetEdgeList<2>(board, 2, SearchMoves<2, C, 5, 21>(board.ZMap()), nxt_map);
+    eds[3] = GetEdgeList<1>(board, 3, SearchMoves<1, C, 5, 21>(board.OMap()), nxt_map);
+    eds[4] = GetEdgeList<2>(board, 4, SearchMoves<2, C, 5, 21>(board.SMap()), nxt_map);
+    eds[5] = GetEdgeList<4>(board, 5, SearchMoves<4, C, 5, 21>(board.LMap()), nxt_map);
+    eds[6] = GetEdgeList<2>(board, 6, SearchMoves<2, C, 5, 21>(board.IMap()), nxt_map);
+    uint64_t offset = fout.tellp();
+    foffset.write((char*)&offset, sizeof(offset));
+    bool flag = false;
+    for (auto& i : eds) {
+      edc += i.edges.size();
+      nxtc += i.nexts.size();
+      for (auto& j : i.edges) adjc += j.nxt.size();
+      c++;
+      if (i.nexts.size()) cc++, flag = true;
 
-          auto buf = i.GetBytes();
-          fwrite(buf.data(), 1, buf.size(), fp);
-        }
-        p++;
-        if (flag) pp++;
-        if (p % 16384 == 0) {
-          auto end = std::chrono::steady_clock::now();
-          std::chrono::duration<double> dur = end - start;
-          std::chrono::duration<double> dur2 = end - prev;
-          fprintf(logp, "%d %d %d %d %d %d %d, %lf / %lf item/s\n", p, pp, c, cc, edc, nxtc, adjc, p / dur.count(), 16384 / dur2.count());
-          fflush(logp);
-          prev = end;
-        }
-      }
+      auto buf = i.GetBytes();
+      fout.write((char*)buf.data(), buf.size());
+    }
+    p++;
+    if (flag) pp++;
+    if (p % kLogInterval == 0) {
+      auto end = std::chrono::steady_clock::now();
+      std::chrono::duration<double> dur = end - start;
+      std::chrono::duration<double> dur2 = end - prev;
+      snprintf(obuf, sizeof(obuf), "%lld %lld %lld %lld %lld %lld %lld, %lf / %lf item/s\n",
+          p, pp, c, cc, edc, nxtc, adjc, p / dur.count(), kLogInterval / dur2.count());
+      flog << obuf << std::flush;
+      prev = end;
     }
   }
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<double> dur = end - start;
-  fprintf(logp, "%d %d %d %d %d %d %d, %.3lf secs\n", p, pp, c, cc, edc, nxtc, adjc, dur.count());
-  fclose(logp);
-  fclose(fp);
+  uint64_t offset = fout.tellp();
+  foffset.write((char*)&offset, sizeof(offset));
+  snprintf(obuf, sizeof(obuf), "%lld %lld %lld %lld %lld %lld %lld, %.3lf secs\n",
+      p, pp, c, cc, edc, nxtc, adjc, dur.count());
+  flog << obuf;
+}
+
+std::vector<std::vector<Board>> ReadGroups(const std::filesystem::path& pdir) {
+  std::vector<std::vector<Board>> boards(5);
+  uint8_t buf[25];
+  while (fread(buf, 1, 25, stdin) == 25) {
+    Board r = Board::FromBytes(buf);
+    int cnt = r.Count();
+    if (cnt & 1 || r.ClearLines().first != 0) continue;
+    int group = cnt % 10 / 2;
+    boards[group].push_back(r);
+  }
+  for (int i = 0; i < 5; i++) {
+    auto& group = boards[i];
+    std::sort(group.begin(), group.end(), [](const Board& x, const Board& y) {
+        return x.Count() > y.Count(); });
+    std::ofstream fout(BoardPath(pdir, i));
+    for (auto& board : group) {
+      board.ToBytes(buf);
+      fout.write((char*)buf, sizeof(buf));
+    }
+  }
+  return boards;
 }
 
 #include <sys/resource.h>
@@ -125,35 +170,14 @@ int GetCurrentMem() {
 }
 
 int main(int argc, char** argv) {
-  if (argc < 4) return 1;
+  if (argc < 2) return 1;
+  std::filesystem::path pdir = argv[1];
+  if (!std::filesystem::is_directory(pdir)) return 1;
 
-  std::vector<BoardMap> boards_mp(5);
-  std::vector<std::vector<Board>> boards(5);
-  /*for (int i = 0; i < 5; i++) {
-    boards_mp[i].reserve(56000000);
-    boards[i].reserve(56000000);
-  }*/
-  {
-    uint8_t buf[25];
-    while (fread(buf, 1, 25, stdin) == 25) {
-      uint64_t cols[10] = {};
-      for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 20; j++) {
-          int x = j * 10 + i;
-          cols[i] |= (uint64_t)(buf[x / 8] >> (x % 8) & 1) << j;
-        }
-      }
-      Board r{cols[0] | cols[1] << 22 | cols[2] << 44,
-              cols[3] | cols[4] << 22 | cols[5] << 44,
-              cols[6] | cols[7] << 22 | cols[8] << 44,
-              cols[9]};
-      int cnt = r.Count();
-      if (cnt & 1 || r.ClearLines().first != 0) continue;
-      int group = cnt % 10 / 2;
-      boards_mp[group][r] = boards[group].size();
-      boards[group].push_back(r);
-    }
-  }
+  ReadGroups(pdir);
+  Run<2>(pdir, 0);
+
+  /*
   // Allocate small memory sections to prevent CoW on dict pages
   // Ensure RSS grows at least 128 MiB
   int start_mem = GetCurrentMem();
@@ -163,16 +187,17 @@ int main(int argc, char** argv) {
   }
   // exit(0) to prevent destructor accessing memory
   if (!fork()) {
-    Run<1>(argv[1], boards_mp.data(), boards.data());
+    Run<1>(argv[1], boards.data());
     exit(0);
   }
   if (!fork()) {
-    Run<2>(argv[2], boards_mp.data(), boards.data());
+    Run<2>(argv[2], boards.data());
     exit(0);
   }
   if (!fork()) {
-    Run<3>(argv[3], boards_mp.data(), boards.data());
+    Run<3>(argv[3], boards.data());
     exit(0);
   }
   exit(0);
+  */
 }

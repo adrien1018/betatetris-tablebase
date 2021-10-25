@@ -2,6 +2,7 @@
 #define BOARD_H_
 
 #include <cstdint>
+#include <cstring>
 #include <array>
 
 #include <immintrin.h>
@@ -110,6 +111,20 @@ class alignas(32) Board {
 
   uint64_t b1, b2, b3, b4;
 
+  static constexpr Board FromBytes(const uint8_t buf[25]) {
+    uint64_t cols[10] = {};
+    for (int i = 0; i < 10; i++) {
+      for (int j = 0; j < 20; j++) {
+        int x = j * 10 + i;
+        cols[i] |= (uint64_t)(buf[x / 8] >> (x % 8) & 1) << j;
+      }
+    }
+    return {cols[0] | cols[1] << 22 | cols[2] << 44,
+            cols[3] | cols[4] << 22 | cols[5] << 44,
+            cols[6] | cols[7] << 22 | cols[8] << 44,
+            cols[9]};
+  }
+
   constexpr int Count() const {
     return 200 - (__builtin_popcountll(b1) + __builtin_popcountll(b2) +
                   __builtin_popcountll(b3) + __builtin_popcountll(b4));
@@ -130,6 +145,17 @@ class alignas(32) Board {
       case 9: return b4;
     }
     __builtin_unreachable();
+  }
+
+  constexpr void ToBytes(uint8_t ret[25]) const {
+    memset(ret, 0, 25);
+    for (int i = 0; i < 10; i++) {
+      uint32_t col = Column(i);
+      for (int j = 0; j < 20; j++) {
+        int x = j * 10 + i;
+        ret[x / 8] |= (col >> j & 1) << (x % 8);
+      }
+    }
   }
 
   constexpr std::pair<int, Board> ClearLines() const {
