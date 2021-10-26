@@ -11,6 +11,8 @@ class alignas(32) Board;
 constexpr Board operator|(const Board& x, const Board& y);
 constexpr Board operator&(const Board& x, const Board& y);
 
+constexpr int kBoardBytes = 25;
+
 // A 20x10 board is represented by 4 64-bit integers.
 // Each integer represents 3 columns except b4. b1 is the leftmost 3 columns.
 //   column 0 (leftmost): bit 0(topmost)-19(bottommost)
@@ -111,7 +113,7 @@ class alignas(32) Board {
 
   uint64_t b1, b2, b3, b4;
 
-  static constexpr Board FromBytes(const uint8_t buf[25]) {
+  static constexpr Board FromBytes(const uint8_t buf[kBoardBytes]) {
     uint64_t cols[10] = {};
     for (int i = 0; i < 10; i++) {
       for (int j = 0; j < 20; j++) {
@@ -147,8 +149,8 @@ class alignas(32) Board {
     __builtin_unreachable();
   }
 
-  constexpr void ToBytes(uint8_t ret[25]) const {
-    memset(ret, 0, 25);
+  constexpr void ToBytes(uint8_t ret[kBoardBytes]) const {
+    memset(ret, 0, kBoardBytes);
     for (int i = 0; i < 10; i++) {
       uint32_t col = Column(i);
       for (int j = 0; j < 20; j++) {

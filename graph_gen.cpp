@@ -4,11 +4,11 @@
 #include <string>
 #include <fstream>
 #include <algorithm>
-#include <filesystem>
 #include <tsl/sparse_map.h>
 
 #include "search.h"
 #include "edge.h"
+#include "path.h"
 
 using BoardMap = tsl::sparse_map<Board, int, BoardHash>;
 
@@ -56,16 +56,6 @@ NodeEdge GetEdgeList(const Board& b, int piece, const PositionList<R>& pos_list,
   return ret;
 }
 
-std::filesystem::path BoardPath(const std::filesystem::path& pdir, int group) {
-  return pdir / (std::to_string(group) + ".board");
-}
-std::filesystem::path CountPath(const std::filesystem::path& pdir, int group) {
-  return pdir / (std::to_string(group) + ".count");
-}
-std::filesystem::path EdgePath(const std::filesystem::path& pdir, int C, int group, const std::string& type) {
-  return pdir / (std::to_string(group) + "." + std::to_string(C) + "." + type);
-}
-
 #include "thread_pool.hpp"
 #include <deque>
 #include <execution>
@@ -73,9 +63,9 @@ std::filesystem::path EdgePath(const std::filesystem::path& pdir, int C, int gro
 BoardMap LoadNextMap(const std::filesystem::path pdir, const int group) {
   BoardMap nxt_map;
   const int nxt_group = (group + 2) % 5;
-  uint8_t buf[25];
+  uint8_t buf[kBoardBytes];
   auto filename = BoardPath(pdir, nxt_group);
-  int size = std::filesystem::file_size(filename) / 25;
+  int size = BoardCount(filename);
   nxt_map.reserve(size);
   std::ifstream fin(filename);
   for (int i = 0; i < size; i++) {
@@ -87,7 +77,7 @@ BoardMap LoadNextMap(const std::filesystem::path pdir, const int group) {
 
 template <int C>
 void Run(const std::filesystem::path pdir, const int group, const BoardMap& nxt_map) {
-  int N = std::filesystem::file_size(BoardPath(pdir, group)) / 25;
+  int N = BoardCount(BoardPath(pdir, group));
   std::ifstream fin(BoardPath(pdir, group));
   std::ofstream fout(EdgePath(pdir, C, group, "edges"));
   std::ofstream foffset(EdgePath(pdir, C, group, "offset"));
@@ -125,7 +115,7 @@ void Run(const std::filesystem::path pdir, const int group, const BoardMap& nxt_
     return ret;
   };
 
-  uint8_t buf[25];
+  uint8_t buf[kBoardBytes];
   char obuf[256];
   long long edc = 0, nxtc = 0, adjc = 0, c = 0, cc = 0, p = 0, pp = 0;
   auto start = std::chrono::steady_clock::now();
@@ -183,8 +173,8 @@ void Run(const std::filesystem::path pdir, const int group, const BoardMap& nxt_
 
 std::vector<std::vector<Board>> ReadGroups(const std::filesystem::path& pdir) {
   std::vector<std::vector<Board>> boards(5);
-  uint8_t buf[25];
-  while (fread(buf, 1, 25, stdin) == 25) {
+  uint8_t buf[kBoardBytes];
+  while (fread(buf, 1, kBoardBytes, stdin) == kBoardBytes) {
     Board r = Board::FromBytes(buf);
     int cnt = r.Count();
     if (cnt & 1 || r.ClearLines().first != 0) continue;
