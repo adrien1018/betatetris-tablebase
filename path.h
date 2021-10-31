@@ -2,6 +2,8 @@
 
 #include <filesystem>
 
+#include "board.h"
+
 std::filesystem::path BoardPath(const std::filesystem::path& pdir, int group) {
   return pdir / (std::to_string(group) + ".board");
 }

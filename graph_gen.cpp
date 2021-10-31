@@ -134,9 +134,11 @@ void Run(const std::filesystem::path pdir, const int group, const BoardMap& nxt_
     job_queue.pop_front();
     result_queue.pop_front();
     p += res.p, pp += res.pp, c += res.c, cc += res.cc, edc += res.edc, nxtc += res.nxtc, adjc += res.adjc;
+    int cnt = 0;
     for (auto& i : res.vec) {
       uint64_t offset = fout.tellp();
-      foffset.write((char*)&offset, sizeof(offset));
+      if (cnt++ == 0) foffset.write((char*)&offset, sizeof(offset));
+      if (cnt == 7) cnt = 0;
       fout.write((char*)i.data(), i.size());
     }
     if (p % kLogInterval == 0) {

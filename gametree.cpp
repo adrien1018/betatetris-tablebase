@@ -1,11 +1,13 @@
 #pragma GCC target("avx")
 #pragma GCC optimize("fast-math")
 
-#include <cstdio>
+#include <cstring>
 #include <string>
+#include <fstream>
 #include <algorithm>
 
 #include "edge.h"
+#include "path.h"
 
 struct alignas(32) TransitionProb {
   float val[8];
@@ -33,80 +35,127 @@ constexpr TransitionProb kTransitionProb[] = {
   {5./32, 5./32, 5./32, 5./32, 6./32, 5./32, 1./32}, // I
 };
 
-class GraphReader {
- private:
-  FILE* fp_;
-  int pos_;
-  std::vector<long> fpos_list_;
-
-  bool ReadOne_(NodeEdge* nd = nullptr) const {
-    uint16_t sz;
-    if (!fread(&sz, 2, 1, fp_)) return false;
-    std::vector<uint8_t> buf(sz);
-    fread(buf.data(), 1, sz, fp_);
-    if (nd) nd->ReadBytes(buf.data());
-    return true;
-  }
- public:
-  GraphReader(const std::string& filename) : pos_(0) {
-    fp_ = fopen(filename.c_str(), "rb");
-    if (!fp_) throw 0;
-
-    fpos_list_.push_back(0);
-    while (ReadOne_()) {
-      for (int i = 0; i < 6; i++) ReadOne_();
-      fpos_list_.push_back(ftell(fp_));
-    }
-  }
-  ~GraphReader() { fclose(fp_); }
-
-  void Rewind() { rewind(fp_); pos_ = 0; }
-  int Position() const { return pos_; }
-  int Count() const { return fpos_list_.size(); }
-  void Seek(int pos) {
-    fseek(fp_, fpos_list_[pos], SEEK_SET);
-    pos_ = pos;
-  }
-
-  std::pair<bool, EdgeList> Read() {
-    EdgeList ret;
-    for (int i = 0; i < 7; i++) {
-      if (!ReadOne_(&ret[i])) return {false, ret};
-    }
-    pos_++;
-    return {true, ret};
-  }
-};
-
-#include "board.h"
-std::array<int, 5> GetSizes() {
-  std::array<int, 5> ret{};
-  uint8_t buf[25];
-  while (fread(buf, 1, 25, stdin) == 25) {
-    uint64_t cols[10] = {};
-    for (int i = 0; i < 10; i++) {
-      for (int j = 0; j < 20; j++) {
-        int x = j * 10 + i;
-        cols[i] |= (uint64_t)(buf[x / 8] >> (x % 8) & 1) << j;
-      }
-    }
-    Board r{cols[0] | cols[1] << 22 | cols[2] << 44,
-            cols[3] | cols[4] << 22 | cols[5] << 44,
-            cols[6] | cols[7] << 22 | cols[8] << 44,
-            cols[9]};
-    int cnt = r.Count();
-    if (cnt & 1 || r.ClearLines().first != 0) continue;
-    int group = cnt % 10 / 2;
-    ret[group]++;
-  }
-  return ret;
-}
-
+// 0-based
 constexpr int DropLevel(int lines) {
   if (lines < 130) return 2;
   if (lines < 230) return 1;
   return 0;
 }
+
+class GraphReader {
+ private:
+  std::filesystem::path pdir_;
+  // always constant
+  long total_[5];
+  long count_[5][21];
+  // constant wrt pieces
+  // descending; sort by pieces asc (lines asc) so begin at lower speed (higher level pos)
+  // index is 0-based (note: drop_level_ is also 0-based)
+  long level_pos_[3];
+  int pieces_, group_;
+  // current state
+  int drop_level_;
+  long pos_;
+  std::ifstream fin_, foffset_;
+
+  void OpenGroup_(bool set_offset = true) {
+    if (fin_.is_open()) fin_.close();
+    if (foffset_.is_open()) foffset_.close();
+    // filename is 1-based
+    fin_.open(EdgePath(pdir_, drop_level_ + 1, group_, "edges"));
+    foffset_.open(EdgePath(pdir_, drop_level_ + 1, group_, "offset"));
+    if (set_offset) fin_.seekg(GetOffset_(pos_));
+  }
+
+  void SetPieces_(int pieces) {
+    pos_ = 0;
+    pieces_ = pieces;
+    group_ = pieces * 4 % 10 / 2;
+    for (int i = 20, sum = 0, prev_level = 2;; i--) {
+      int lines = (pieces_ * 4 - (i * 10 + group_ * 2)) / 10;
+      int cur_level = DropLevel(lines);
+      if (i < 0) cur_level = 0; // fill remaining cells when i == -1
+      for (; prev_level >= cur_level; prev_level--) level_pos_[prev_level] = sum;
+      if (cur_level == 0) break; // also break when i == -1
+      sum += count_[group_][i];
+    }
+    for (drop_level_ = 2; drop_level_ > 0 && !level_pos_[drop_level_ - 1]; drop_level_--);
+    OpenGroup_(false);
+  }
+
+  uint64_t GetOffset_(long pos) {
+    uint64_t ret;
+    foffset_.seekg(pos * sizeof(ret));
+    foffset_.read((char*)&ret, sizeof(ret));
+    return ret;
+  }
+ public:
+  GraphReader(const std::filesystem::path& pdir, int pieces = 0) : pdir_(pdir), total_{}, count_{} {
+    foffset_.rdbuf()->pubsetbuf(nullptr, 0); // disable buffering on offset reading
+    for (int group = 0; group < 5; group++) {
+      std::ifstream fcount(CountPath(pdir_, group));
+      long x, y;
+      while (fcount >> x >> y) {
+        count_[group][x / 10] = y;
+        total_[group] += y;
+      }
+    }
+    SetPieces_(pieces);
+  }
+
+  // also rewinds the stream
+  void SetPieces(int pieces) {
+    SetPieces_(pieces);
+  }
+
+  void Seek(long pos) {
+    int drop_level = 2;
+    while (drop_level > 0 && level_pos_[drop_level - 1] >= pos) drop_level--;
+    pos_ = pos;
+    if (drop_level_ != drop_level) {
+      drop_level = drop_level_;
+      OpenGroup_();
+    } else {
+      fin_.seekg(GetOffset_(pos_));
+    }
+  }
+
+  long GetGroup() const { return group_; }
+  long GetMaxSize() const { return *std::max_element(total_, total_ + 5); }
+  long GetTotal() const { return total_[group_]; }
+  long GetPos(int count) const {
+    if (count < 0) return GetTotal();
+    long ret = 0;
+    for (int i = 20; i * 10 + group_ * 2 > count && i >= 0; i--) ret += count_[group_][i];
+    return ret;
+  }
+
+  std::vector<uint8_t> ReadBatch(long maxsize) {
+    long n = std::min(maxsize, total_[group_] - pos_);
+    if (n <= 0) return {};
+    std::vector<uint8_t> ret;
+    while (true) {
+      long rn = n;
+      if (drop_level_ > 0) rn = std::min(rn, level_pos_[drop_level_ - 1] - pos_);
+      size_t sz = GetOffset_(pos_ + rn) - fin_.tellg();
+      size_t offset = ret.size();
+      ret.resize(offset + sz);
+      fin_.read((char*)(ret.data() + offset), sz);
+      if (rn == n) break;
+      n -= rn;
+      pos_ += rn;
+      drop_level_--;
+      OpenGroup_();
+    }
+    pos_ += n;
+    while (pos_ != total_[group_] && drop_level_ > 0 && level_pos_[drop_level_ - 1] == pos_) {
+      drop_level_--;
+      OpenGroup_();
+    }
+    return ret;
+  }
+};
+
 constexpr int Level(int lines) {
   if (lines < 130) return 18;
   //if (lines >= 230) return 29;
@@ -117,78 +166,73 @@ constexpr int Score(int lines, int level) {
   return kTable[lines] * (level + 1);
 }
 
-const int kMaxLines = 330;
-
-#include <set>
-void CalculatePiece(
-    int piece, std::vector<NodeValue>& current, const std::vector<NodeValue>& prev,
-    const std::array<int, 5>& sizes, GraphReader g[], std::set<int> to_print = {}) {
-  static EdgeList eds[3];
-  int group = piece * 4 % 10 / 2;
-  int offset = 0;
-  for (int i = 0; i < group; i++) offset += sizes[i];
-  const int min_drop_level = DropLevel(piece * 4 / 10);
-  const int max_drop_level = DropLevel(std::max(0, (piece * 4 - 200) / 10));
-  printf("%d %d %d %d\n", group, piece*4/10, min_drop_level, max_drop_level);
-  for (int l = min_drop_level; l <= max_drop_level; l++) g[l].Seek(offset);
-
-  for (int i = 0; i < sizes[group]; i++) {
-    for (int l = min_drop_level; l <= max_drop_level; l++) eds[l] = g[l].Read().second;
-    int count = eds[min_drop_level][0].count;
-    int lines = (piece * 4 - count) / 10;
-    if (lines >= kMaxLines) {
-      for (int t = 0; t < 8; t++) current[i].val[t] = 0;
-      continue;
+std::vector<NodeValue> CalculateBatch(
+    const std::vector<NodeValue>& prev, int pieces,
+    const std::vector<uint8_t>& bytes, int n = 0) {
+  EdgeList eds;
+  std::vector<NodeValue> ret;
+  ret.reserve(n);
+  for (size_t offset = 0; offset < bytes.size();) {
+    ret.emplace_back();
+    for (int i = 0; i < 7; i++) {
+      uint16_t sz = *(uint16_t*)(bytes.data() + offset);
+      eds[i].ReadBytes(bytes.data() + offset + 2);
+      offset += sz + sizeof(sz);
     }
-    int drop_level = DropLevel(lines);
+    int count = eds[0].count;
+    int lines = (pieces * 4 - count) / 10;
     int level = Level(lines);
-    //bool cur_print = to_print.count(i);
     for (int t = 0; t < 7; t++) {
-      auto& ed = eds[drop_level][t];
-      //if (cur_print) printf("%d %d %d\n", t, (int)ed.edges.size(), (int)g[drop_level].Position());
+      auto& ed = eds[t];
       float cur = 0;
       for (auto& nxt : ed.edges) {
         NodeValue cur_arr{};
-        //if (cur_print) printf("%d\n", (int)nxt.nxt.size());
         for (auto& id : nxt.nxt) {
           cur_arr.MaxTo(prev[ed.nexts[id].first], Score(ed.nexts[id].second, level));
-          /*if (cur_print) {
-            printf("%d %d ", ed.nexts[id].first, Score(ed.nexts[id].second, level));
-            for (int z = 0; z < 7; z++) printf("%.3f%c", prev[ed.nexts[id].first].val[z], ", "[z == 6]);
-            for (int z = 0; z < 7; z++) printf("%.3f%c", cur_arr.val[z], ",\n"[z == 6]);
-          }*/
         }
         cur = std::max(cur, cur_arr.Dot(kTransitionProb[t]));
-        //if (cur_print) printf("%.3lf %.3lf\n", cur, cur_arr.Dot(kTransitionProb[t]));
       }
-      current[i].val[t] = cur;
-    }
-    if (count == 0) {
-      printf("%d ", level);
-      for (int t = 0; t < 7; t++) printf("%.3f%c", current[i].val[t], " \n"[t == 6]);
+      ret.back().val[t] = cur;
     }
   }
-  if ((piece <= 30 && piece >= 20) || (piece && piece % 60 == 0)) {
-    printf("1234567 %d %d\n", piece, sizes[group]);
-    for (int i = 0; i < sizes[group]; i++) {
-      for (int t = 0; t < 7; t++) printf("%.3f%c", current[i].val[t], " \n"[t == 6]);
-    }
+  return ret;
+}
+
+const int kMaxLines = 330;
+
+void CalculatePiece(
+    int piece, std::vector<NodeValue>& current,
+    const std::vector<NodeValue>& prev, GraphReader& g) {
+  g.SetPieces(piece);
+  int total = g.GetTotal();
+  int n = g.GetPos(piece * 4 - kMaxLines * 10);
+  const int kBlockSize = 1024;
+  for (int i = 0; i < n; i += kBlockSize) {
+    int num = std::min(kBlockSize, n - i);
+    auto arr = g.ReadBatch(num);
+    auto ret = CalculateBatch(prev, piece, arr, num);
+    memcpy(current.data() + i, ret.data(), num * sizeof(NodeValue));
   }
-  fflush(stdout);
+  if (n == total) {
+    if (g.GetGroup() == 0) {
+      for (int i = 0; i < 7; i++) printf("%.3f%c", current[total-1].val[i], " \n"[i==6]);
+    }
+  } else {
+    memset(current.data() + n, 0, (total - n) * sizeof(NodeValue));
+  }
 }
 
 #include <chrono>
 int main(int argc, char** argv) {
-  if (argc < 4) return 1;
-  auto sizes = GetSizes(); //
-  GraphReader g[] = {std::string(argv[1]), std::string(argv[2]), std::string(argv[3])};
-  int max_size = *std::max_element(sizes.begin(), sizes.end());
+  if (argc < 2) return 1;
+  GraphReader g(argv[1]);
+  int max_size = g.GetMaxSize();
   int max_pieces = (kMaxLines * 10 + 200) / 4;
 
   std::vector<NodeValue> current(max_size), prev(max_size, NodeValue{});
   auto start = std::chrono::steady_clock::now();
   for (int piece = max_pieces; piece >= 0; piece--) {
-    CalculatePiece(piece, current, prev, sizes, g);
+    CalculatePiece(piece, current, prev, g);
 
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> dur = end - start;
