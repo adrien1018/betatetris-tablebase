@@ -122,7 +122,7 @@ class GraphReader {
 
   long GetGroup() const { return group_; }
   long GetMaxSize() const { return *std::max_element(total_, total_ + 5); }
-  long GetTotal() const { return total_[group_]; }
+  long GetTotal(int g = -1) const { return total_[g == -1 ? group_ : g]; }
   long GetPos(int count) const {
     if (count < 0) return GetTotal();
     long ret = 0;
@@ -198,41 +198,78 @@ std::vector<NodeValue> CalculateBatch(
   return ret;
 }
 
+#include "thread_pool.hpp"
+#include <deque>
+
 const int kMaxLines = 330;
 
 void CalculatePiece(
-    int piece, std::vector<NodeValue>& current,
+    std::filesystem::path pdir, int piece, std::vector<NodeValue>& current,
     const std::vector<NodeValue>& prev, GraphReader& g) {
   g.SetPieces(piece);
   int total = g.GetTotal();
   int n = g.GetPos(piece * 4 - kMaxLines * 10);
+
   const int kBlockSize = 1024;
+  std::deque<std::vector<uint8_t>> job_queue;
+  std::deque<std::future<std::vector<NodeValue>>> result_queue;
+  long cur_output = 0;
+  thread_pool pool(8);
+  auto Finish = [&](bool wait) {
+    if (result_queue.empty()) return false;
+    if (!wait) {
+      if (result_queue.front().wait_for(std::chrono::seconds(0)) != std::future_status::ready) return false;
+    }
+    auto res = result_queue.front().get();
+    job_queue.pop_front();
+    result_queue.pop_front();
+    memcpy(current.data() + cur_output, res.data(), res.size() * sizeof(NodeValue));
+    cur_output += res.size();
+    return true;
+  };
   for (int i = 0; i < n; i += kBlockSize) {
+    while (result_queue.size() >= 256) Finish(true);
+    while (Finish(false));
     int num = std::min(kBlockSize, n - i);
-    auto arr = g.ReadBatch(num);
-    auto ret = CalculateBatch(prev, piece, arr, num);
-    memcpy(current.data() + i, ret.data(), num * sizeof(NodeValue));
+    job_queue.push_back(g.ReadBatch(num));
+    result_queue.push_back(pool.submit(CalculateBatch, std::cref(prev), piece, std::cref(job_queue.back()), num));
   }
+  while (Finish(true));
   if (n == total) {
     if (g.GetGroup() == 0) {
       for (int i = 0; i < 7; i++) printf("%.3f%c", current[total-1].val[i], " \n"[i==6]);
     }
+    fflush(stdout);
   } else {
     memset(current.data() + n, 0, (total - n) * sizeof(NodeValue));
+  }
+  if (piece < 800 && piece % 30 == 0) {
+    std::ofstream fout(ValuePath(pdir, piece));
+    fout.write((char*)current.data(), total * sizeof(NodeValue));
   }
 }
 
 #include <chrono>
 int main(int argc, char** argv) {
   if (argc < 2) return 1;
-  GraphReader g(argv[1]);
+  std::filesystem::path pdir = argv[1];
+  GraphReader g(pdir);
   int max_size = g.GetMaxSize();
   int max_pieces = (kMaxLines * 10 + 200) / 4;
 
   std::vector<NodeValue> current(max_size), prev(max_size, NodeValue{});
+  if (argc > 2) {
+    std::string name = argv[2];
+    max_pieces = std::stoi(name.substr(name.size() - 3));
+    size_t fs = std::filesystem::file_size(name);
+    if (fs != g.GetTotal(max_pieces * 4 % 10 / 2) * sizeof(NodeValue)) return 1;
+    std::ifstream fin(name);
+    fin.read((char*)prev.data(), fs);
+    max_pieces--;
+  }
   auto start = std::chrono::steady_clock::now();
   for (int piece = max_pieces; piece >= 0; piece--) {
-    CalculatePiece(piece, current, prev, g);
+    CalculatePiece(pdir, piece, current, prev, g);
 
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> dur = end - start;

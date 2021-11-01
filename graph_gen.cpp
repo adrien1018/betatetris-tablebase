@@ -161,7 +161,7 @@ void Run(const std::filesystem::path pdir, const int group, const BoardMap& nxt_
       boards.push_back(Board::FromBytes(buf));
     }
     job_queue.push_back(std::move(boards));
-    result_queue.push_back(pool.submit(Job, job_queue.back()));
+    result_queue.push_back(pool.submit(Job, std::cref(job_queue.back())));
   }
   while (Output(true));
   auto end = std::chrono::steady_clock::now();
