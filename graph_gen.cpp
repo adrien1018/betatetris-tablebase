@@ -10,7 +10,10 @@
 #include "edge.h"
 #include "path.h"
 
-using BoardMap = tsl::sparse_map<Board, int, BoardHash>;
+using BoardMapKey = std::pair<Board, int>;
+using BoardMap = tsl::sparse_map<Board, int, BoardHash, std::equal_to<Board>,
+      std::allocator<BoardMapKey>, tsl::sh::power_of_two_growth_policy<2>,
+      tsl::sh::exception_safety::basic, tsl::sh::sparsity::high>;
 
 void Print(const Board& b, bool invert = true) {
   for (int i = 0; i < 20; i++) {
@@ -92,13 +95,13 @@ void Run(const std::filesystem::path pdir, const int group, const BoardMap& nxt_
     EdgeList eds;
     for (auto& board : boards) {
       // T, J, Z, O, S, L, I
-      eds[0] = GetEdgeList<4>(board, 0, SearchMoves<4, C, 5, 21>(board.TMap()), nxt_map);
-      eds[1] = GetEdgeList<4>(board, 1, SearchMoves<4, C, 5, 21>(board.JMap()), nxt_map);
-      eds[2] = GetEdgeList<2>(board, 2, SearchMoves<2, C, 5, 21>(board.ZMap()), nxt_map);
-      eds[3] = GetEdgeList<1>(board, 3, SearchMoves<1, C, 5, 21>(board.OMap()), nxt_map);
-      eds[4] = GetEdgeList<2>(board, 4, SearchMoves<2, C, 5, 21>(board.SMap()), nxt_map);
-      eds[5] = GetEdgeList<4>(board, 5, SearchMoves<4, C, 5, 21>(board.LMap()), nxt_map);
-      eds[6] = GetEdgeList<2>(board, 6, SearchMoves<2, C, 5, 21>(board.IMap()), nxt_map);
+      eds[0] = GetEdgeList<4>(board, 0, SearchMoves<4, C, 3, 21>(board.TMap()), nxt_map);
+      eds[1] = GetEdgeList<4>(board, 1, SearchMoves<4, C, 3, 21>(board.JMap()), nxt_map);
+      eds[2] = GetEdgeList<2>(board, 2, SearchMoves<2, C, 3, 21>(board.ZMap()), nxt_map);
+      eds[3] = GetEdgeList<1>(board, 3, SearchMoves<1, C, 3, 21>(board.OMap()), nxt_map);
+      eds[4] = GetEdgeList<2>(board, 4, SearchMoves<2, C, 3, 21>(board.SMap()), nxt_map);
+      eds[5] = GetEdgeList<4>(board, 5, SearchMoves<4, C, 3, 21>(board.LMap()), nxt_map);
+      eds[6] = GetEdgeList<2>(board, 6, SearchMoves<2, C, 3, 21>(board.IMap()), nxt_map);
 
       bool flag = false;
       for (auto& i : eds) {
@@ -173,18 +176,28 @@ void Run(const std::filesystem::path pdir, const int group, const BoardMap& nxt_
   flog << obuf;
 }
 
-std::vector<std::vector<Board>> ReadGroups(const std::filesystem::path& pdir) {
-  std::vector<std::vector<Board>> boards(5);
+void ReadGroups(const std::filesystem::path& pdir) {
+  setvbuf(stdin, nullptr, _IOFBF, 65536);
   uint8_t buf[kBoardBytes];
-  while (fread(buf, 1, kBoardBytes, stdin) == kBoardBytes) {
-    Board r = Board::FromBytes(buf);
-    int cnt = r.Count();
-    if (cnt & 1 || r.ClearLines().first != 0) continue;
-    int group = cnt % 10 / 2;
-    boards[group].push_back(r);
+  {
+    std::vector<std::ofstream> fout;
+    for (int i = 0; i < 5; i++) fout.emplace_back(BoardPath(pdir, i));
+    while (fread(buf, 1, kBoardBytes, stdin) == kBoardBytes) {
+      Board r = Board::FromBytes(buf);
+      int cnt = r.Count();
+      if (cnt & 1 || r.ClearLines().first != 0) continue;
+      r.ToBytes(buf);
+      int group = cnt % 10 / 2;
+      fout[group].write((char*)buf, sizeof(buf));
+    }
   }
   for (int i = 0; i < 5; i++) {
-    auto& group = boards[i];
+    std::vector<Board> group;
+    group.reserve(BoardCount(BoardPath(pdir, i)));
+    {
+      std::ifstream fin(BoardPath(pdir, i));
+      while (fin.read((char*)buf, sizeof(buf))) group.push_back(Board::FromBytes(buf));
+    }
     std::vector<std::array<uint8_t, 26>> sort_key(group.size());
     std::vector<int> pos(group.size());
     for (size_t j = 0; j < group.size(); j++) {
@@ -207,7 +220,6 @@ std::vector<std::vector<Board>> ReadGroups(const std::filesystem::path& pdir) {
       if (count[i]) fcount << i << ' ' << count[i] << '\n';
     }
   }
-  return boards;
 }
 
 int main(int argc, char** argv) {

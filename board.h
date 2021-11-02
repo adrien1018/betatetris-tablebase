@@ -113,18 +113,34 @@ class alignas(32) Board {
 
   uint64_t b1, b2, b3, b4;
 
-  static constexpr Board FromBytes(const uint8_t buf[kBoardBytes]) {
-    uint64_t cols[10] = {};
-    for (int i = 0; i < 10; i++) {
-      for (int j = 0; j < 20; j++) {
-        int x = j * 10 + i;
-        cols[i] |= (uint64_t)(buf[x / 8] >> (x % 8) & 1) << j;
-      }
-    }
-    return {cols[0] | cols[1] << 22 | cols[2] << 44,
-            cols[3] | cols[4] << 22 | cols[5] << 44,
-            cols[6] | cols[7] << 22 | cols[8] << 44,
-            cols[9]};
+  static Board FromBytes(const uint8_t buf[kBoardBytes]) {
+    constexpr uint64_t kMask3 = 0x701C0701C0701C07L;
+    constexpr uint64_t kMask2 = 0x300C0300C0300C03L;
+    constexpr uint64_t kColMask3 = 0x249249249249249L;
+    constexpr uint64_t kColMask2 = 0x5555555555L;
+    uint64_t cur = *(uint64_t*)buf;
+    uint64_t r1 = _pext_u64(cur, kMask3); // 7,7,7
+    uint64_t r2 = _pext_u64(cur, kMask3 << 3); // 7,6,6
+    uint64_t r3 = _pext_u64(cur, kMask2 << 6); // 6
+    uint64_t r4 = _pext_u64(cur, kMask2 << 8); // 6
+    cur = *(uint64_t*)(buf + 8);
+    r1 |= _pext_u64(cur, kMask3 << 6) << 21; // 6,6,6
+    r2 |= _pext_u64(cur, kMask3 >> 1) << 19; // 6,7,7
+    r3 |= _pext_u64(cur, kMask2 << 2) << 12; // 7
+    r4 |= _pext_u64(cur, kMask2 << 4) << 12; // 6
+    cur = *(uint64_t*)(buf + 16);
+    r1 |= _pext_u64(cur, kMask3 << 2) << 39; // 7,7,6
+    r2 |= _pext_u64(cur, kMask3 << 5) << 39; // 6,6,6
+    r3 |= _pext_u64(cur, kMask2 << 8) << 26; // 6
+    r4 |= _pext_u64(cur, kMask2) << 24; // 7
+    r1 |= (uint64_t)(buf[24] & 0x1) << 59;
+    r2 |= (uint64_t)(buf[24] & 0xe) << (57 - 1);
+    r3 |= (uint64_t)(buf[24] & 0x30) << (38 - 4);
+    r4 |= (uint64_t)(buf[24] & 0xc0) << (38 - 6);
+    return {_pext_u64(r1, kColMask3) | _pext_u64(r1, kColMask3 << 1) << 22 | _pext_u64(r1, kColMask3 << 2) << 44,
+            _pext_u64(r2, kColMask3) | _pext_u64(r2, kColMask3 << 1) << 22 | _pext_u64(r2, kColMask3 << 2) << 44,
+            _pext_u64(r3, kColMask2) | _pext_u64(r3, kColMask2 << 1) << 22 | _pext_u64(r4, kColMask2) << 44,
+            _pext_u64(r4, kColMask2 << 1)};
   }
 
   constexpr int Count() const {
@@ -149,15 +165,32 @@ class alignas(32) Board {
     __builtin_unreachable();
   }
 
-  constexpr void ToBytes(uint8_t ret[kBoardBytes]) const {
-    memset(ret, 0, kBoardBytes);
-    for (int i = 0; i < 10; i++) {
-      uint32_t col = Column(i);
-      for (int j = 0; j < 20; j++) {
-        int x = j * 10 + i;
-        ret[x / 8] |= (col >> j & 1) << (x % 8);
-      }
-    }
+  void ToBytes(uint8_t buf[kBoardBytes]) const {
+    constexpr uint64_t kMask3 = 0x701C0701C0701C07L;
+    constexpr uint64_t kMask2 = 0x300C0300C0300C03L;
+    constexpr uint64_t kColMask3 = 0x249249249249249L;
+    constexpr uint64_t kColMask2 = 0x5555555555L;
+    uint64_t r1 = _pdep_u64(b1, kColMask3) | _pdep_u64(b1 >> 22, kColMask3 << 1) | _pdep_u64(b1 >> 44, kColMask3 << 2);
+    uint64_t r2 = _pdep_u64(b2, kColMask3) | _pdep_u64(b2 >> 22, kColMask3 << 1) | _pdep_u64(b2 >> 44, kColMask3 << 2);
+    uint64_t r3 = _pdep_u64(b3, kColMask2) | _pdep_u64(b3 >> 22, kColMask2 << 1);
+    uint64_t r4 = _pdep_u64(b3 >> 44, kColMask2) | _pdep_u64(b4, kColMask2 << 1);
+    buf[24] = (r1 >> 59 & 0x1) | (r2 >> (57 - 1) & 0xe) |
+              (r3 >> (38 - 4) & 0x30) | (r4 >> (38 - 6) & 0xc0);
+    uint64_t* cur = (uint64_t*)(buf + 16);
+    *cur  = _pdep_u64(r1 >> 39, kMask3 << 2);
+    *cur |= _pdep_u64(r2 >> 39, kMask3 << 5);
+    *cur |= _pdep_u64(r3 >> 26, kMask2 << 8);
+    *cur |= _pdep_u64(r4 >> 24, kMask2);
+    cur = (uint64_t*)(buf + 8);
+    *cur  = _pdep_u64(r1 >> 21, kMask3 << 6);
+    *cur |= _pdep_u64(r2 >> 19, kMask3 >> 1);
+    *cur |= _pdep_u64(r3 >> 12, kMask2 << 2);
+    *cur |= _pdep_u64(r4 >> 12, kMask2 << 4);
+    cur = (uint64_t*)buf;
+    *cur  = _pdep_u64(r1, kMask3);
+    *cur |= _pdep_u64(r2, kMask3 << 3);
+    *cur |= _pdep_u64(r3, kMask2 << 6);
+    *cur |= _pdep_u64(r4, kMask2 << 8);
   }
 
   constexpr std::pair<int, Board> ClearLines() const {

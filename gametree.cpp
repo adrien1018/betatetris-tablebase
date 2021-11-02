@@ -1,4 +1,3 @@
-#pragma GCC target("avx")
 #pragma GCC optimize("fast-math")
 
 #include <cstring>
