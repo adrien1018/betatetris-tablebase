@@ -4,6 +4,8 @@
 #include <string>
 #include <fstream>
 #include <algorithm>
+#include <stdexcept>
+
 #include <tsl/sparse_map.h>
 
 #include "search.h"
@@ -26,7 +28,7 @@ template <int R>
 NodeEdge GetEdgeList(const Board& b, int piece, const PositionList<R>& pos_list, const BoardMap& boards) {
   std::bitset<R * 200> tot_bs;
   for (auto& x : pos_list) tot_bs |= x.second;
-  if (tot_bs.count() >= 256) throw long(1);
+  if (tot_bs.count() >= 256) throw std::out_of_range("too many edges");
   uint8_t mp[R * 200] = {};
   memset(mp, 0xff, sizeof(mp));
   NodeEdge ret;
@@ -36,7 +38,7 @@ NodeEdge GetEdgeList(const Board& b, int piece, const PositionList<R>& pos_list,
   for (int i = tot_bs._Find_first(); i < (int)tot_bs.size(); i = tot_bs._Find_next(i)) {
     auto result = b.Place(piece, i / 200, i % 200 / 10, i % 10).ClearLines();
     int t = result.second.Count();
-    if ((ret.count+4)%10 != t%10) throw short(1);
+    if ((ret.count+4)%10 != t%10) throw std::runtime_error("unexpected: mod not correct");
     auto it = boards.find(result.second);
     if (it != boards.end()) {
       mp[i] = ret.nexts.size();
@@ -73,7 +75,7 @@ BoardMap LoadNextMap(const std::filesystem::path pdir, const int group) {
   std::ifstream fin(filename);
   for (int i = 0; i < size; i++) {
     fin.read((char*)buf, sizeof(buf));
-    nxt_map[Board::FromBytes(buf)] = i;
+    nxt_map[Board(buf)] = i;
   }
   return nxt_map;
 }
@@ -161,7 +163,7 @@ void Run(const std::filesystem::path pdir, const int group, const BoardMap& nxt_
     std::vector<Board> boards;
     for (int i = id; i < std::min(N, id + kBlockSize); i++) {
       fin.read((char*)buf, sizeof(buf));
-      boards.push_back(Board::FromBytes(buf));
+      boards.push_back(Board(buf));
     }
     job_queue.push_back(std::move(boards));
     result_queue.push_back(pool.submit(Job, std::cref(job_queue.back())));
@@ -183,7 +185,7 @@ void ReadGroups(const std::filesystem::path& pdir) {
     std::vector<std::ofstream> fout;
     for (int i = 0; i < 5; i++) fout.emplace_back(BoardPath(pdir, i));
     while (fread(buf, 1, kBoardBytes, stdin) == kBoardBytes) {
-      Board r = Board::FromBytes(buf);
+      Board r = Board(buf);
       int cnt = r.Count();
       if (cnt & 1 || r.ClearLines().first != 0) continue;
       r.ToBytes(buf);
@@ -196,7 +198,7 @@ void ReadGroups(const std::filesystem::path& pdir) {
     group.reserve(BoardCount(BoardPath(pdir, i)));
     {
       std::ifstream fin(BoardPath(pdir, i));
-      while (fin.read((char*)buf, sizeof(buf))) group.push_back(Board::FromBytes(buf));
+      while (fin.read((char*)buf, sizeof(buf))) group.push_back(Board(buf));
     }
     std::vector<std::array<uint8_t, 26>> sort_key(group.size());
     std::vector<int> pos(group.size());

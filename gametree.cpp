@@ -208,11 +208,17 @@ void CalculatePiece(
   g.SetPieces(piece);
   int total = g.GetTotal();
   int n = g.GetPos(piece * 4 - kMaxLines * 10);
+  int start = g.GetPos(piece * 4);
+  if (start) {
+    memset(current.data(), 0, start * sizeof(NodeValue));
+    g.Seek(start);
+  }
+  printf("%d %d %d %d\n", piece, start, n, total);
 
   const int kBlockSize = 1024;
   std::deque<std::vector<uint8_t>> job_queue;
   std::deque<std::future<std::vector<NodeValue>>> result_queue;
-  long cur_output = 0;
+  long cur_output = start;
   thread_pool pool(8);
   auto Finish = [&](bool wait) {
     if (result_queue.empty()) return false;
@@ -226,7 +232,7 @@ void CalculatePiece(
     cur_output += res.size();
     return true;
   };
-  for (int i = 0; i < n; i += kBlockSize) {
+  for (int i = start; i < n; i += kBlockSize) {
     while (result_queue.size() >= 256) Finish(true);
     while (Finish(false));
     int num = std::min(kBlockSize, n - i);
@@ -238,11 +244,10 @@ void CalculatePiece(
     if (g.GetGroup() == 0) {
       for (int i = 0; i < 7; i++) printf("%.3f%c", current[total-1].val[i], " \n"[i==6]);
     }
-    fflush(stdout);
   } else {
     memset(current.data() + n, 0, (total - n) * sizeof(NodeValue));
   }
-  if (piece < 800 && piece % 30 == 0) {
+  if ((piece < 800 && piece % 50 == 0) || piece == 25 || piece < 5) {
     std::ofstream fout(ValuePath(pdir, piece));
     fout.write((char*)current.data(), total * sizeof(NodeValue));
   }
@@ -274,5 +279,6 @@ int main(int argc, char** argv) {
     std::chrono::duration<double> dur = end - start;
     printf("%d %.3lfs\n", piece, dur.count());
     current.swap(prev);
+    fflush(stdout);
   }
 }

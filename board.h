@@ -1,17 +1,18 @@
-#ifndef BOARD_H_
-#define BOARD_H_
+#pragma once
 
 #include <cstdint>
 #include <cstring>
 #include <array>
 
-#include <immintrin.h>
+#include "constexpr_helpers.h"
 
 class alignas(32) Board;
 constexpr Board operator|(const Board& x, const Board& y);
 constexpr Board operator&(const Board& x, const Board& y);
 
 constexpr int kBoardBytes = 25;
+using CompactBoard = std::array<uint8_t, kBoardBytes>;
+using ByteBoard = std::array<std::array<uint8_t, 10>, 20>;
 
 // A 20x10 board is represented by 4 64-bit integers.
 // Each integer represents 3 columns except b4. b1 is the leftmost 3 columns.
@@ -113,34 +114,43 @@ class alignas(32) Board {
 
   uint64_t b1, b2, b3, b4;
 
-  static Board FromBytes(const uint8_t buf[kBoardBytes]) {
+  Board() = default;
+  constexpr Board(uint64_t b1, uint64_t b2, uint64_t b3, uint64_t b4) :
+      b1(b1), b2(b2), b3(b3), b4(b4) {}
+
+  constexpr Board(std::initializer_list<std::pair<int, int>> positions) :
+      b1(kBoardMask), b2(kBoardMask), b3(kBoardMask), b4(kColumnMask) {
+    for (auto& i : positions) SetCellFilled(i.first, i.second);
+  }
+
+  constexpr Board(const uint8_t buf[kBoardBytes]) : b1(), b2(), b3(), b4() {
     constexpr uint64_t kMask3 = 0x701C0701C0701C07L;
     constexpr uint64_t kMask2 = 0x300C0300C0300C03L;
     constexpr uint64_t kColMask3 = 0x249249249249249L;
     constexpr uint64_t kColMask2 = 0x5555555555L;
-    uint64_t cur = *(uint64_t*)buf;
-    uint64_t r1 = _pext_u64(cur, kMask3); // 7,7,7
-    uint64_t r2 = _pext_u64(cur, kMask3 << 3); // 7,6,6
-    uint64_t r3 = _pext_u64(cur, kMask2 << 6); // 6
-    uint64_t r4 = _pext_u64(cur, kMask2 << 8); // 6
-    cur = *(uint64_t*)(buf + 8);
-    r1 |= _pext_u64(cur, kMask3 << 6) << 21; // 6,6,6
-    r2 |= _pext_u64(cur, kMask3 >> 1) << 19; // 6,7,7
-    r3 |= _pext_u64(cur, kMask2 << 2) << 12; // 7
-    r4 |= _pext_u64(cur, kMask2 << 4) << 12; // 6
-    cur = *(uint64_t*)(buf + 16);
-    r1 |= _pext_u64(cur, kMask3 << 2) << 39; // 7,7,6
-    r2 |= _pext_u64(cur, kMask3 << 5) << 39; // 6,6,6
-    r3 |= _pext_u64(cur, kMask2 << 8) << 26; // 6
-    r4 |= _pext_u64(cur, kMask2) << 24; // 7
+    uint64_t cur = BytesToInt<uint64_t>(buf);
+    uint64_t r1 = pext(cur, kMask3); // 7,7,7
+    uint64_t r2 = pext(cur, kMask3 << 3); // 7,6,6
+    uint64_t r3 = pext(cur, kMask2 << 6); // 6
+    uint64_t r4 = pext(cur, kMask2 << 8); // 6
+    cur = BytesToInt<uint64_t>(buf + 8);
+    r1 |= pext(cur, kMask3 << 6) << 21; // 6,6,6
+    r2 |= pext(cur, kMask3 >> 1) << 19; // 6,7,7
+    r3 |= pext(cur, kMask2 << 2) << 12; // 7
+    r4 |= pext(cur, kMask2 << 4) << 12; // 6
+    cur = BytesToInt<uint64_t>(buf + 16);
+    r1 |= pext(cur, kMask3 << 2) << 39; // 7,7,6
+    r2 |= pext(cur, kMask3 << 5) << 39; // 6,6,6
+    r3 |= pext(cur, kMask2 << 8) << 26; // 6
+    r4 |= pext(cur, kMask2) << 24; // 7
     r1 |= (uint64_t)(buf[24] & 0x1) << 59;
     r2 |= (uint64_t)(buf[24] & 0xe) << (57 - 1);
     r3 |= (uint64_t)(buf[24] & 0x30) << (38 - 4);
     r4 |= (uint64_t)(buf[24] & 0xc0) << (38 - 6);
-    return {_pext_u64(r1, kColMask3) | _pext_u64(r1, kColMask3 << 1) << 22 | _pext_u64(r1, kColMask3 << 2) << 44,
-            _pext_u64(r2, kColMask3) | _pext_u64(r2, kColMask3 << 1) << 22 | _pext_u64(r2, kColMask3 << 2) << 44,
-            _pext_u64(r3, kColMask2) | _pext_u64(r3, kColMask2 << 1) << 22 | _pext_u64(r4, kColMask2) << 44,
-            _pext_u64(r4, kColMask2 << 1)};
+    b1 = pext(r1, kColMask3) | pext(r1, kColMask3 << 1) << 22 | pext(r1, kColMask3 << 2) << 44;
+    b2 = pext(r2, kColMask3) | pext(r2, kColMask3 << 1) << 22 | pext(r2, kColMask3 << 2) << 44;
+    b3 = pext(r3, kColMask2) | pext(r3, kColMask2 << 1) << 22 | pext(r4, kColMask2) << 44;
+    b4 = pext(r4, kColMask2 << 1);
   }
 
   constexpr int Count() const {
@@ -165,33 +175,72 @@ class alignas(32) Board {
     __builtin_unreachable();
   }
 
-  void ToBytes(uint8_t buf[kBoardBytes]) const {
+  constexpr void ToBytes(uint8_t buf[kBoardBytes]) const {
     constexpr uint64_t kMask3 = 0x701C0701C0701C07L;
     constexpr uint64_t kMask2 = 0x300C0300C0300C03L;
     constexpr uint64_t kColMask3 = 0x249249249249249L;
     constexpr uint64_t kColMask2 = 0x5555555555L;
-    uint64_t r1 = _pdep_u64(b1, kColMask3) | _pdep_u64(b1 >> 22, kColMask3 << 1) | _pdep_u64(b1 >> 44, kColMask3 << 2);
-    uint64_t r2 = _pdep_u64(b2, kColMask3) | _pdep_u64(b2 >> 22, kColMask3 << 1) | _pdep_u64(b2 >> 44, kColMask3 << 2);
-    uint64_t r3 = _pdep_u64(b3, kColMask2) | _pdep_u64(b3 >> 22, kColMask2 << 1);
-    uint64_t r4 = _pdep_u64(b3 >> 44, kColMask2) | _pdep_u64(b4, kColMask2 << 1);
+    uint64_t r1 = pdep_u64(b1, kColMask3) | pdep_u64(b1 >> 22, kColMask3 << 1) | pdep_u64(b1 >> 44, kColMask3 << 2);
+    uint64_t r2 = pdep_u64(b2, kColMask3) | pdep_u64(b2 >> 22, kColMask3 << 1) | pdep_u64(b2 >> 44, kColMask3 << 2);
+    uint64_t r3 = pdep_u64(b3, kColMask2) | pdep_u64(b3 >> 22, kColMask2 << 1);
+    uint64_t r4 = pdep_u64(b3 >> 44, kColMask2) | pdep_u64(b4, kColMask2 << 1);
     buf[24] = (r1 >> 59 & 0x1) | (r2 >> (57 - 1) & 0xe) |
               (r3 >> (38 - 4) & 0x30) | (r4 >> (38 - 6) & 0xc0);
-    uint64_t* cur = (uint64_t*)(buf + 16);
-    *cur  = _pdep_u64(r1 >> 39, kMask3 << 2);
-    *cur |= _pdep_u64(r2 >> 39, kMask3 << 5);
-    *cur |= _pdep_u64(r3 >> 26, kMask2 << 8);
-    *cur |= _pdep_u64(r4 >> 24, kMask2);
-    cur = (uint64_t*)(buf + 8);
-    *cur  = _pdep_u64(r1 >> 21, kMask3 << 6);
-    *cur |= _pdep_u64(r2 >> 19, kMask3 >> 1);
-    *cur |= _pdep_u64(r3 >> 12, kMask2 << 2);
-    *cur |= _pdep_u64(r4 >> 12, kMask2 << 4);
-    cur = (uint64_t*)buf;
-    *cur  = _pdep_u64(r1, kMask3);
-    *cur |= _pdep_u64(r2, kMask3 << 3);
-    *cur |= _pdep_u64(r3, kMask2 << 6);
-    *cur |= _pdep_u64(r4, kMask2 << 8);
+    uint64_t cur = 0;
+    cur  = pdep_u64(r1 >> 39, kMask3 << 2);
+    cur |= pdep_u64(r2 >> 39, kMask3 << 5);
+    cur |= pdep_u64(r3 >> 26, kMask2 << 8);
+    cur |= pdep_u64(r4 >> 24, kMask2);
+    IntToBytes<uint64_t>(cur, buf + 16);
+    cur  = pdep_u64(r1 >> 21, kMask3 << 6);
+    cur |= pdep_u64(r2 >> 19, kMask3 >> 1);
+    cur |= pdep_u64(r3 >> 12, kMask2 << 2);
+    cur |= pdep_u64(r4 >> 12, kMask2 << 4);
+    IntToBytes<uint64_t>(cur, buf + 8);
+    cur  = pdep_u64(r1, kMask3);
+    cur |= pdep_u64(r2, kMask3 << 3);
+    cur |= pdep_u64(r3, kMask2 << 6);
+    cur |= pdep_u64(r4, kMask2 << 8);
+    IntToBytes<uint64_t>(cur, buf);
   }
+
+  constexpr CompactBoard ToBytes() const {
+    CompactBoard b{};
+    ToBytes(b.data());
+    return b;
+  }
+
+  constexpr ByteBoard ToByteBoard() const {
+    ByteBoard b{};
+    for (int i = 0; i < 10; i++) {
+      uint32_t col = Column(i);
+      for (int j = 0; j < 20; j++) b[j][i] = col >> j & 1;
+    }
+    return b;
+  }
+
+  constexpr void SetCellFilled(int row, int col) {
+    switch (col) {
+      case 0: case 1: case 2: b1 &= ~(1ll << (col * 22 + row)); break;
+      case 3: case 4: case 5: b2 &= ~(1ll << ((col - 3) * 22 + row)); break;
+      case 6: case 7: case 8: b3 &= ~(1ll << ((col - 6) * 22 + row)); break;
+      case 9: b4 &= ~(1ll << row); break;
+      default: __builtin_unreachable();
+    }
+  }
+
+  constexpr void SetCellEmpty(int row, int col) {
+    switch (col) {
+      case 0: case 1: case 2: b1 |= 1ll << (col * 22 + row); break;
+      case 3: case 4: case 5: b2 |= 1ll << ((col - 3) * 22 + row); break;
+      case 6: case 7: case 8: b3 |= 1ll << ((col - 6) * 22 + row); break;
+      case 9: b4 |= 1ll << row; break;
+      default: __builtin_unreachable();
+    }
+  }
+
+  constexpr void Set(int row, int col) { SetCellEmpty(row, col); }
+  constexpr void Unset(int row, int col) { SetCellFilled(row, col); }
 
   constexpr std::pair<int, Board> ClearLines() const {
 #pragma GCC diagnostic push
@@ -208,7 +257,7 @@ class alignas(32) Board {
     if (linemask == kColumnMask) return {0, *this};
     int lines = 20 - __builtin_popcount(linemask);
     for (int i = 0; i < 11; i++) {
-      cols[i] = _pext_u32(cols[i], linemask) << lines | ((1 << lines) - 1);
+      cols[i] = pext(cols[i], linemask) << lines | ((1 << lines) - 1);
     }
     return {lines, {
         cols[0] | (uint64_t)cols[4] << 22 | (uint64_t)cols[8] << 44,
@@ -217,14 +266,13 @@ class alignas(32) Board {
         cols[3]}};
   }
 
-  // x = 1 or 2
+  // x = 1 or 2 for these 4 methods
   constexpr Board ShiftLeft(int x) const {
     return {b1 >> (x * 22) | b2 << (66 - x * 22),
             b2 >> (x * 22) | b3 << (66 - x * 22),
             b3 >> (x * 22) | b4 << (66 - x * 22),
             0};
   }
-  // x = 1 or 2
   constexpr Board ShiftRight(int x) const {
     return {b1 << (x * 22),
             b2 << (x * 22) | b1 >> (66 - x * 22),
@@ -235,7 +283,10 @@ class alignas(32) Board {
     return {b1 >> x, b2 >> x, b3 >> x, b4 >> x};
   }
   constexpr Board ShiftDownNoFilter(int x) const {
-    return {b1 << x, b2 << x, b3 << x, b4 << x};
+    constexpr uint64_t kDownPadding = 0x100000400001;
+    uint64_t padding = kDownPadding;
+    if (x == 2) padding |= padding << 1;
+    return {b1 << x | padding, b2 << x | padding, b3 << x | padding, b4 << x | padding};
   }
 
   constexpr std::array<Board, 4> TMap() const {
@@ -406,28 +457,26 @@ constexpr Board operator~(const Board& x) {
   return r;
 }
 
-uint64_t Hash(uint64_t a, uint64_t b) {
-  static const uint64_t table[3] = {0x9e3779b185ebca87, 0xc2b2ae3d27d4eb4f, 0x165667b19e3779f9};
-  auto Mix = [](uint64_t a, uint64_t b) {
-    a += b * table[1];
+constexpr uint64_t Hash(uint64_t a, uint64_t b) {
+  constexpr uint64_t kTable[3] = {0x9e3779b185ebca87, 0xc2b2ae3d27d4eb4f, 0x165667b19e3779f9};
+  auto Mix = [&](uint64_t a, uint64_t b) {
+    a += b * kTable[1];
     a = (a << 31) | (a >> 33);
-    return a * table[0];
+    return a * kTable[0];
   };
-  uint64_t v1 = Mix(-table[0], a);
-  uint64_t v2 = Mix(table[1], b);
+  uint64_t v1 = Mix(-kTable[0], a);
+  uint64_t v2 = Mix(kTable[1], b);
   uint64_t ret = ((v1 << 18) | (v1 >> 46)) + ((v2 << 7) | (v2 >> 57));
   ret ^= ret >> 33;
-  ret *= table[1];
+  ret *= kTable[1];
   ret ^= ret >> 29;
-  ret *= table[2];
-  ret ^= ret >> 32;
+  // ret *= kTable[2];
+  // ret ^= ret >> 32;
   return ret;
 }
 
 struct BoardHash {
-  size_t operator()(const Board& b) const {
+  constexpr size_t operator()(const Board& b) const {
     return Hash(Hash(b.b1, b.b3), Hash(b.b2, b.b4));
   }
 };
-
-#endif // BOARD_H_

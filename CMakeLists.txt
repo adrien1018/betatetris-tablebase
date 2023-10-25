@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 
 project(db-tetris)
 
-set(CMAKE_CXX_FLAGS "-O3 -march=native -Wall -Wextra -Wno-unused-parameter")
+set(CMAKE_CXX_FLAGS "-Og -g -mavx2 -mbmi2 -Wall -Wextra -Wno-unused-parameter")
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
@@ -31,6 +31,7 @@ endif()
 
 add_executable(graph_gen graph_gen.cpp)
 add_executable(gametree gametree.cpp)
+add_executable(test test.cpp)
 
 target_link_libraries(graph_gen PRIVATE Threads::Threads "${TBB_LIB}")
 target_link_libraries(gametree PRIVATE Threads::Threads)
