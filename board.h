@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <array>
+#include <vector>
 
 #include "constexpr_helpers.h"
 
@@ -54,6 +55,10 @@ class alignas(32) Board {
   constexpr Board Place1Wide_(uint64_t piece, int x, int y, int ox) const {
     Board r = *this;
     x -= ox;
+    if (x < 0) {
+      piece >>= -x;
+      x = 0;
+    }
     switch (y) {
       case 0: case 1: case 2: r.b1 &= ~(piece << (x + y * 22)); break;
       case 3: case 4: case 5: r.b2 &= ~(piece << (x + (y - 3) * 22)); break;
@@ -67,6 +72,10 @@ class alignas(32) Board {
     Board r = *this;
     x -= ox;
     y -= oy;
+    if (x < 0) {
+      piece >>= -x;
+      x = 0;
+    }
     switch (y) {
       case 2: r.b2 &= ~(piece >> (22 - x)); // fallthrough
       case 0: case 1: r.b1 &= ~(piece << (x + y * 22)); break;
@@ -82,6 +91,10 @@ class alignas(32) Board {
     Board r = *this;
     x -= ox;
     y -= oy;
+    if (x < 0) {
+      piece >>= -x;
+      x = 0;
+    }
     switch (y) {
       case 1: case 2: r.b2 &= ~(piece >> (66 - x - y * 22)); // fallthrough
       case 0: r.b1 &= ~(piece << (x + y * 22)); break;
@@ -153,6 +166,15 @@ class alignas(32) Board {
     b4 = pext(r4, kColMask2 << 1);
   }
 
+  constexpr Board(const ByteBoard& board) : b1(), b2(), b3(), b4() {
+    for (int i = 0; i < 20; i++) {
+      for (int j = 0; j < 3; j++) b1 |= (uint64_t)board[i][j] << (j * 22 + i);
+      for (int j = 3; j < 6; j++) b2 |= (uint64_t)board[i][j] << ((j-3) * 22 + i);
+      for (int j = 6; j < 9; j++) b3 |= (uint64_t)board[i][j] << ((j-6) * 22 + i);
+      b4 |= (uint64_t)board[i][9] << i;
+    }
+  }
+
   constexpr int Count() const {
     return 200 - (__builtin_popcountll(b1) + __builtin_popcountll(b2) +
                   __builtin_popcountll(b3) + __builtin_popcountll(b4));
@@ -175,32 +197,36 @@ class alignas(32) Board {
     __builtin_unreachable();
   }
 
+  constexpr bool Cell(int x, int y) const {
+    return Column(y) >> x & 1;
+  }
+
   constexpr void ToBytes(uint8_t buf[kBoardBytes]) const {
     constexpr uint64_t kMask3 = 0x701C0701C0701C07L;
     constexpr uint64_t kMask2 = 0x300C0300C0300C03L;
     constexpr uint64_t kColMask3 = 0x249249249249249L;
     constexpr uint64_t kColMask2 = 0x5555555555L;
-    uint64_t r1 = pdep_u64(b1, kColMask3) | pdep_u64(b1 >> 22, kColMask3 << 1) | pdep_u64(b1 >> 44, kColMask3 << 2);
-    uint64_t r2 = pdep_u64(b2, kColMask3) | pdep_u64(b2 >> 22, kColMask3 << 1) | pdep_u64(b2 >> 44, kColMask3 << 2);
-    uint64_t r3 = pdep_u64(b3, kColMask2) | pdep_u64(b3 >> 22, kColMask2 << 1);
-    uint64_t r4 = pdep_u64(b3 >> 44, kColMask2) | pdep_u64(b4, kColMask2 << 1);
+    uint64_t r1 = pdep(b1, kColMask3) | pdep(b1 >> 22, kColMask3 << 1) | pdep(b1 >> 44, kColMask3 << 2);
+    uint64_t r2 = pdep(b2, kColMask3) | pdep(b2 >> 22, kColMask3 << 1) | pdep(b2 >> 44, kColMask3 << 2);
+    uint64_t r3 = pdep(b3, kColMask2) | pdep(b3 >> 22, kColMask2 << 1);
+    uint64_t r4 = pdep(b3 >> 44, kColMask2) | pdep(b4, kColMask2 << 1);
     buf[24] = (r1 >> 59 & 0x1) | (r2 >> (57 - 1) & 0xe) |
               (r3 >> (38 - 4) & 0x30) | (r4 >> (38 - 6) & 0xc0);
     uint64_t cur = 0;
-    cur  = pdep_u64(r1 >> 39, kMask3 << 2);
-    cur |= pdep_u64(r2 >> 39, kMask3 << 5);
-    cur |= pdep_u64(r3 >> 26, kMask2 << 8);
-    cur |= pdep_u64(r4 >> 24, kMask2);
+    cur  = pdep(r1 >> 39, kMask3 << 2);
+    cur |= pdep(r2 >> 39, kMask3 << 5);
+    cur |= pdep(r3 >> 26, kMask2 << 8);
+    cur |= pdep(r4 >> 24, kMask2);
     IntToBytes<uint64_t>(cur, buf + 16);
-    cur  = pdep_u64(r1 >> 21, kMask3 << 6);
-    cur |= pdep_u64(r2 >> 19, kMask3 >> 1);
-    cur |= pdep_u64(r3 >> 12, kMask2 << 2);
-    cur |= pdep_u64(r4 >> 12, kMask2 << 4);
+    cur  = pdep(r1 >> 21, kMask3 << 6);
+    cur |= pdep(r2 >> 19, kMask3 >> 1);
+    cur |= pdep(r3 >> 12, kMask2 << 2);
+    cur |= pdep(r4 >> 12, kMask2 << 4);
     IntToBytes<uint64_t>(cur, buf + 8);
-    cur  = pdep_u64(r1, kMask3);
-    cur |= pdep_u64(r2, kMask3 << 3);
-    cur |= pdep_u64(r3, kMask2 << 6);
-    cur |= pdep_u64(r4, kMask2 << 8);
+    cur  = pdep(r1, kMask3);
+    cur |= pdep(r2, kMask3 << 3);
+    cur |= pdep(r3, kMask2 << 6);
+    cur |= pdep(r4, kMask2 << 8);
     IntToBytes<uint64_t>(cur, buf);
   }
 
@@ -373,6 +399,46 @@ class alignas(32) Board {
       l & r & r2 & *this,
       u & d & d2 & *this,
     }};
+  }
+
+  // T J Z O S L I
+  static constexpr int NumRotations(int piece) {
+    switch (piece) {
+      case 0: return 4;
+      case 1: return 4;
+      case 2: return 2;
+      case 3: return 1;
+      case 4: return 2;
+      case 5: return 4;
+      case 6: return 2;
+    }
+    __builtin_unreachable();
+  }
+
+  template <int piece> constexpr std::array<Board, NumRotations(piece)> PieceMap() const {
+    if constexpr (piece == 0) return TMap();
+    if constexpr (piece == 1) return JMap();
+    if constexpr (piece == 2) return ZMap();
+    if constexpr (piece == 3) return OMap();
+    if constexpr (piece == 4) return SMap();
+    if constexpr (piece == 5) return LMap();
+    if constexpr (piece == 6) return IMap();
+    __builtin_unreachable();
+  }
+
+  std::vector<Board> PieceMap(int piece) const {
+    switch (piece) {
+#define ONECASE(x) case x: { auto b = PieceMap<x>(); return std::vector<Board>(b.begin(), b.end()); }
+      ONECASE(0)
+      ONECASE(1)
+      ONECASE(2)
+      ONECASE(3)
+      ONECASE(4)
+      ONECASE(5)
+      ONECASE(6)
+#undef ONECASE
+    }
+    __builtin_unreachable();
   }
 
   constexpr Board PlaceT(int r, int x, int y) const {

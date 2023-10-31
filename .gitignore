@@ -1,6 +1,3 @@
-*
-!.gitignore
-!*.cpp
-!*.hpp
-!*.h
-!CMakeLists.txt
+build/
+test.cpp
+test.py

@@ -1,5 +1,4 @@
-#ifndef POSITION_H_
-#define POSITION_H_
+#pragma once
 
 #include <tuple>
 
@@ -13,5 +12,3 @@ struct Position {
   bool operator<(const Position& p) const { return std::tie(r, x, y) < std::tie(p.r, p.x, p.y); }
   bool operator==(const Position& p) const { return std::tie(r, x, y) == std::tie(p.r, p.x, p.y); }
 };
-
-#endif // POSITION_H_

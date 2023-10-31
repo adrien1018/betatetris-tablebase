@@ -1,6 +1,10 @@
 #pragma once
 
+#include <vector>
+#include <stdexcept>
+
 #include "board.h"
+#include "position.h"
 
 enum Level {
   kLevel18,
@@ -8,6 +12,13 @@ enum Level {
   kLevel29,
   kLevel39
 };
+
+struct PossibleMoves {
+  std::vector<Position> non_adj;
+  std::vector<std::pair<Position, std::vector<Position>>> adj;
+};
+
+namespace move_search {
 
 constexpr int GetRow(int frame, Level level) {
   switch (level) {
@@ -51,6 +62,7 @@ class TapTable {
     for (int i = 1; i < 10; i++) t[i] += t[i - 1];
   }
   constexpr int operator[](int x) const { return t[x]; }
+  constexpr const int* data() const { return t; }
 };
 
 constexpr int abs(int x) { return x < 0 ? -x : x; }
@@ -91,8 +103,8 @@ constexpr int Phase1TableGen(int initial_frame, int initial_rot, int initial_col
   constexpr uint8_t kL = 0x4;
   constexpr uint8_t kR = 0x8;
   TapTable<tap_args...> taps;
-  Board masks[R][10][R] = {};
-  Board masks_nodrop[R][10][R] = {};
+  std::array<Board, R> masks[R][10] = {};
+  std::array<Board, R> masks_nodrop[R][10] = {};
   uint8_t last_tap[R][10] = {};
   bool cannot_reach[R][10] = {};
   bool cannot_finish[R][10] = {};
@@ -243,7 +255,7 @@ constexpr Frames ColumnToDropFrameMask(Column col) {
     case kLevel18: [[fallthrough]];
     case kLevel19: [[fallthrough]];
     case kLevel29: {
-      uint64_t mask = ColumnToNormalFrames(col);
+      uint64_t mask = ColumnToNormalFrameMask<level>(col);
       return mask & mask >> 1;
     }
     case kLevel39: {
@@ -256,7 +268,7 @@ constexpr Frames ColumnToDropFrameMask(Column col) {
 
 template <Level level>
 constexpr FrameMasks ColumnToFrameMasks(Column col) {
-  return {ColumnToNormalFrameMask(col), ColumnToDropFrameMask(col)};
+  return {ColumnToNormalFrameMask<level>(col), ColumnToDropFrameMask<level>(col)};
 }
 
 template <Level level>
@@ -285,15 +297,20 @@ constexpr int FindLockRow(uint32_t col, int start_row) {
   // col+(1<<row)      = 00111100100101
   // col^(col+(1<<row))= 00000000111000
   //              highbit=31-clz ^
-  return 31 - __builtin_clz(col ^ (col + (1 << row))) - 1;
+  return 31 - __builtin_clz(col ^ (col + (1 << start_row))) - 1;
 }
 
 // note: "tuck" here means tucks, spins or spintucks
+template <int R>
 struct TuckMask {
   int delta_rot, delta_col, delta_frame;
   Frames masks[R][10];
 };
 
+//template <int N> constexpr int kTuckTypes = 12;
+//template <> constexpr int kTuckTypes<1> = 1
+//template <> constexpr int kTuckTypes<1> = 1
+//
 constexpr int TuckTypes(int R) {
   return R == 1 ? 2 : R == 2 ? 7 : 12;
   // R = 1: L R
@@ -303,9 +320,9 @@ constexpr int TuckTypes(int R) {
   // but we just keep it simple here
 }
 
-template <class R>
-constexpr std::array<TuckMask, TuckTypes(R)> GetTuckMasks(FrameMasks m[R][10]) {
-  std::array<TuckMask, TuckTypes(R)> ret{};
+template <int R>
+constexpr std::array<TuckMask<R>, TuckTypes(R)> GetTuckMasks(FrameMasks m[R][10]) {
+  std::array<TuckMask<R>, TuckTypes(R)> ret{};
   ret[0] = {0, -1, 0, {}}; // L
   ret[1] = {0, 1, 0, {}}; // R
   for (int rot = 0; rot < R; rot++) {
@@ -349,62 +366,35 @@ constexpr std::array<TuckMask, TuckTypes(R)> GetTuckMasks(FrameMasks m[R][10]) {
   return ret;
 }
 
-
-/** drop sequence:
- *
- * initial phase 1         adj phase 1
- * vvvvvvvvvvv               vvvvvvv
- * L - L - L - - - - - - - - R - R - - - - - - -<lock>
- *               \           ^ adj_frame   \
- *                \A R - - -<lock>          \B R - - -<lock>
- *                 ^^^^                      ^^^^
- *                initial phase 2 (tuck)    adj phase 2
- */
 template <Level level, int R, int adj_frame, int... tap_args>
-constexpr void MoveSearch(const std::array<Board, R>& board) {
-  TapTable<tap_args...> taps;
-  Phase1Table<level, R, adj_frame, tap_args...> table;
-  constexpr int initial_N = decltype(table)::initial_N;
-  Column cols[R][10] = {};
-  FrameMasks frame_masks[R][10] = {};
-  for (int rot = 0; rot < R; rot++) {
-    for (int col = 0; col < 10; col++) {
-      cols[rot][col] = board[rot].Column(col);
-      frame_masks[rot][col] = ColumnToFrameMasks<level>(cols[rot][col]);
-    }
+class Search {
+  static constexpr TapTable<tap_args...> taps{};
+  static constexpr Phase1Table<level, R, adj_frame, tap_args...> table{};
+
+  // template for loop
+  template<size_t N>
+  struct Num { static const constexpr auto value = N; };
+
+  template <class F, std::size_t... Is>
+  void For(F func, std::index_sequence<Is...>) {
+    using expander = int[];
+    (void)expander{0, ((void)func(Num<Is>{}), 0)...};
   }
-  auto tuck_masks = GetTuckMasks(frame_masks);
-  Column reachable_without_tuck[R][10] = {}; // positions reachable without tucking
-  bool can_adj[initial_N] = {}; // whether adjustment starting from this (rot, col) is possible
-  int adj_row = GetRow(adj_frame, level);
-  { // initial, phase 1
-    bool can_continue[initial_N] = {}; // whether the next tap can continue
-    Frames can_tuck_frame_masks[R][10] = {}; // frames that can start a tuck
-    for (int i = 0; i < initial_N; i++) {
-      auto& entry = table.initial[i];
-      if (!can_continue[entry.prev]) continue;
-      if (!entry.cannot_finish && Contains(board, entry.masks)) {
-        can_continue[i] = true;
-      } else if (!Contains(board, entry.masks_nodrop)) {
-        continue;
-      }
-      int start_row = GetRow(entry.num_taps == 0 ? 0 : taps[entry.num_taps - 1], level);
-      int end_frame = std::max(adj_frame, taps[entry.num_taps]);
-      int end_row = GetRow(end_frame); // end_row might >= 20
-      // Since we verified masks_nodrop, start_row should be in col
-      if ((col[entry.row][entry.col] & 1 << start_row) == 0) throw std::runtime_error("unexpected");
-      int lock_row = FindLockRow(col[entry.row][entry.col], start_row);
-      if (lock_row >= end_row) {
-        can_adj[i] = true;
-      } else {
-        // TODO: add to list
-      }
-      int last_tuck_frame = std::min(GetLastFrameOnRow(lock_row) + 1, end_frame);
-      can_tuck_frame_masks[entry.row][entry.col] =
-          (1ll << last_tuck_frame) - (1ll << taps[entry.num_taps]);
-      reachable_without_tuck[entry.row][entry.col] = (2 << lock_row) - (1 << start_row);
-    }
-    // initial, phase 2
+
+  template <std::size_t N, class Func>
+  void For(Func&& func) {
+    For(func, std::make_index_sequence<N>());
+  }
+
+  template <bool is_adj> __attribute__((noinline)) constexpr void RunPhase2(
+      const Column cols[R][10],
+      const std::array<TuckMask<R>, TuckTypes(R)> tuck_masks,
+      const Column reachable_without_tuck[R][10],
+      const Frames can_tuck_frame_masks[R][10],
+      int& sz, Position* positions) {
+    auto Insert = [&](const Position& pos) {
+      positions[sz++] = pos;
+    };
     Frames tuck_result[R][10] = {};
     for (auto& tuck : tuck_masks) {
       int start_col = tuck.delta_col == -1 ? 1 : 0;
@@ -419,17 +409,122 @@ constexpr void MoveSearch(const std::array<Board, R>& board) {
     }
     for (int rot = 0; rot < R; rot++) {
       for (int col = 0; col < 10; col++) {
-        Column after_tuck_positions = FramesToColumn(
+        Column after_tuck_positions = FramesToColumn<level>(
             tuck_result[rot][col] & ~reachable_without_tuck[rot][col]);
-        Column cur = cols[row][col];
+        Column cur = cols[rot][col];
         Column tuck_lock_positions = (after_tuck_positions + cur) >> 1 & (cur & ~cur >> 1);
-        // TODO: parse and add to list
+        while (tuck_lock_positions) {
+          int row = __builtin_ctz(tuck_lock_positions);
+          Insert({rot, row, col});
+          tuck_lock_positions ^= 1 << row;
+        }
       }
     }
   }
-  for (int initial_id = 0; initial_id < initial_N; initial_id++) {
-    // adj, phase 1
-    int N = table.adj_N[initial_id];
-    // TODO: do the same thing
+
+  // N = is_adj ? table.adj_N[X] : initial_N
+  // table = is_adj ? table.adj[X] : table.initial
+  // initial_frame = is_adj ? <the last> : 0
+  template <bool is_adj, int initial_id = 0> constexpr int DoOneSearch(
+      const std::array<Board, R>& board, const Column cols[R][10],
+      const std::array<TuckMask<R>, TuckTypes(R)> tuck_masks,
+      bool can_adj[], Column reachable_without_tuck[R][10],
+      Position* positions) {
+    constexpr int total_frames = GetLastFrameOnRow(19, level) + 1;
+    constexpr int N = is_adj ? table.adj_N[initial_id] : table.initial_N;
+    constexpr int initial_frame = is_adj ? std::max(adj_frame, taps[table.initial[initial_id].num_taps]) : 0;
+    if (initial_frame >= total_frames) return 0;
+    if (is_adj && !can_adj[initial_id]) return 0;
+
+    int sz = 0;
+    auto Insert = [&](const Position& pos) {
+      positions[sz++] = pos;
+    };
+    // phase 1
+    bool can_continue[R * 10] = {}; // whether the next tap can continue
+    Frames can_tuck_frame_masks[R][10] = {}; // frames that can start a tuck
+
+    bool phase_2_possible = false;
+    For<N>([&](auto i_obj) {
+      constexpr int i = i_obj.value;
+      constexpr auto& entry = is_adj ? table.adj[initial_id][i] : table.initial[i];
+      if (i && !can_continue[entry.prev]) return;
+      if (!entry.cannot_finish && Contains<R>(board, entry.masks)) {
+        can_continue[i] = true;
+      } else if (!Contains<R>(board, entry.masks_nodrop)) {
+        return;
+      }
+      int start_frame = (entry.num_taps == 0 ? 0 : taps[entry.num_taps - 1]) + initial_frame;
+      int start_row = GetRow(start_frame, level);
+      int end_frame = is_adj ? total_frames : std::max(adj_frame, taps[entry.num_taps]);
+      // Since we verified masks_nodrop, start_row should be in col
+      if ((cols[entry.rot][entry.col] & 1 << start_row) == 0) throw std::runtime_error("unexpected");
+      int lock_row = FindLockRow(cols[entry.rot][entry.col], start_row);
+      int lock_frame = GetLastFrameOnRow(lock_row, level) + 1;
+      if (!is_adj && lock_frame > end_frame) {
+        can_adj[i] = true;
+      } else {
+        Insert({entry.rot, lock_row, entry.col});
+      }
+      int last_tuck_frame = std::min(lock_frame, end_frame);
+      if constexpr (!is_adj) {
+        reachable_without_tuck[entry.rot][entry.col] = (2 << lock_row) - (1 << start_row);
+      }
+      if (last_tuck_frame > taps[entry.num_taps]) {
+        can_tuck_frame_masks[entry.rot][entry.col] =
+            (1ll << last_tuck_frame) - (1ll << taps[entry.num_taps]);
+        phase_2_possible = true;
+      }
+    });
+    if (phase_2_possible) {
+      RunPhase2<is_adj>(cols, tuck_masks, reachable_without_tuck, can_tuck_frame_masks, sz, positions);
+    }
+    return sz;
   }
-}
+
+ public:
+  /** drop sequence:
+  *
+  * initial phase 1         adj phase 1
+  * vvvvvvvvvvv               vvvvvvv
+  * L - L - L - - - - - - - - R - R - - - - - - -<lock>
+  *               \           ^ adj_frame   \
+  *                \A R - - -<lock>          \B R - - -<lock>
+  *                 ^^^^                      ^^^^
+  *                initial phase 2 (tuck)    adj phase 2
+  */
+  PossibleMoves MoveSearch(const std::array<Board, R>& board) {
+    constexpr int initial_N = decltype(table)::initial_N;
+    Column cols[R][10] = {};
+    FrameMasks frame_masks[R][10] = {};
+    for (int rot = 0; rot < R; rot++) {
+      for (int col = 0; col < 10; col++) {
+        cols[rot][col] = board[rot].Column(col);
+        frame_masks[rot][col] = ColumnToFrameMasks<level>(cols[rot][col]);
+      }
+    }
+    auto tuck_masks = GetTuckMasks<R>(frame_masks);
+    Column reachable_without_tuck[R][10] = {}; // positions reachable without tucking
+    bool can_adj[initial_N] = {}; // whether adjustment starting from this (rot, col) is possible
+
+    PossibleMoves ret;
+    Position buf[256];
+    ret.non_adj.assign(buf, buf + DoOneSearch<false>(
+        board, cols, tuck_masks, can_adj, reachable_without_tuck, buf));
+
+    For<initial_N>([&](auto i_obj) {
+      constexpr int initial_id = i_obj.value;
+      auto& entry = table.initial[initial_id];
+      int x = DoOneSearch<true, initial_id>(board, cols, tuck_masks, nullptr, nullptr, buf);
+      if (x) {
+        int row = GetRow(std::max(adj_frame, taps[entry.num_taps]), level);
+        ret.adj.emplace_back(Position{entry.col, row, entry.col}, std::vector<Position>(buf, buf + x));
+      }
+    });
+    return ret;
+  }
+};
+
+} // namespace move_search
+
+using move_search::Search;
