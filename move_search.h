@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <stdexcept>
+#include <algorithm>
 
 #include "board.h"
 #include "position.h"
@@ -13,9 +14,19 @@ enum Level {
   kLevel39
 };
 
-struct PossibleMoves {
+class PossibleMoves {
+  static void UniqueVector_(std::vector<Position>& p) {
+    std::sort(p.begin(), p.end());
+    p.resize(std::unique(p.begin(), p.end()) - p.begin());
+  }
+ public:
   std::vector<Position> non_adj;
   std::vector<std::pair<Position, std::vector<Position>>> adj;
+  void Normalize() {
+    UniqueVector_(non_adj);
+    for (auto& i : adj) UniqueVector_(i.second);
+    std::sort(adj.begin(), adj.end());
+  }
 };
 
 namespace move_search {
@@ -376,13 +387,13 @@ class Search {
   struct Num { static const constexpr auto value = N; };
 
   template <class F, std::size_t... Is>
-  void For(F func, std::index_sequence<Is...>) {
+  void For(F func, std::index_sequence<Is...>) const {
     using expander = int[];
     (void)expander{0, ((void)func(Num<Is>{}), 0)...};
   }
 
   template <std::size_t N, class Func>
-  void For(Func&& func) {
+  void For(Func&& func) const {
     For(func, std::make_index_sequence<N>());
   }
 
@@ -391,7 +402,7 @@ class Search {
       const std::array<TuckMask<R>, TuckTypes(R)> tuck_masks,
       const Column reachable_without_tuck[R][10],
       const Frames can_tuck_frame_masks[R][10],
-      int& sz, Position* positions) {
+      int& sz, Position* positions) const {
     auto Insert = [&](const Position& pos) {
       positions[sz++] = pos;
     };
@@ -409,8 +420,7 @@ class Search {
     }
     for (int rot = 0; rot < R; rot++) {
       for (int col = 0; col < 10; col++) {
-        Column after_tuck_positions = FramesToColumn<level>(
-            tuck_result[rot][col] & ~reachable_without_tuck[rot][col]);
+        Column after_tuck_positions = FramesToColumn<level>(tuck_result[rot][col]) & ~reachable_without_tuck[rot][col];
         Column cur = cols[rot][col];
         Column tuck_lock_positions = (after_tuck_positions + cur) >> 1 & (cur & ~cur >> 1);
         while (tuck_lock_positions) {
@@ -429,7 +439,7 @@ class Search {
       const std::array<Board, R>& board, const Column cols[R][10],
       const std::array<TuckMask<R>, TuckTypes(R)> tuck_masks,
       bool can_adj[], Column reachable_without_tuck[R][10],
-      Position* positions) {
+      Position* positions) const {
     constexpr int total_frames = GetLastFrameOnRow(19, level) + 1;
     constexpr int N = is_adj ? table.adj_N[initial_id] : table.initial_N;
     constexpr int initial_frame = is_adj ? std::max(adj_frame, taps[table.initial[initial_id].num_taps]) : 0;
@@ -466,13 +476,13 @@ class Search {
       } else {
         Insert({entry.rot, lock_row, entry.col});
       }
+      int first_tuck_frame = initial_frame + taps[entry.num_taps];
       int last_tuck_frame = std::min(lock_frame, end_frame);
       if constexpr (!is_adj) {
         reachable_without_tuck[entry.rot][entry.col] = (2 << lock_row) - (1 << start_row);
       }
-      if (last_tuck_frame > taps[entry.num_taps]) {
-        can_tuck_frame_masks[entry.rot][entry.col] =
-            (1ll << last_tuck_frame) - (1ll << taps[entry.num_taps]);
+      if (last_tuck_frame > first_tuck_frame) {
+        can_tuck_frame_masks[entry.rot][entry.col] = (1ll << last_tuck_frame) - (1ll << first_tuck_frame);
         phase_2_possible = true;
       }
     });
@@ -493,7 +503,7 @@ class Search {
   *                 ^^^^                      ^^^^
   *                initial phase 2 (tuck)    adj phase 2
   */
-  PossibleMoves MoveSearch(const std::array<Board, R>& board) {
+  PossibleMoves MoveSearch(const std::array<Board, R>& board) const {
     constexpr int initial_N = decltype(table)::initial_N;
     Column cols[R][10] = {};
     FrameMasks frame_masks[R][10] = {};
@@ -515,10 +525,10 @@ class Search {
     For<initial_N>([&](auto i_obj) {
       constexpr int initial_id = i_obj.value;
       auto& entry = table.initial[initial_id];
-      int x = DoOneSearch<true, initial_id>(board, cols, tuck_masks, nullptr, nullptr, buf);
+      int x = DoOneSearch<true, initial_id>(board, cols, tuck_masks, can_adj, reachable_without_tuck, buf);
       if (x) {
         int row = GetRow(std::max(adj_frame, taps[entry.num_taps]), level);
-        ret.adj.emplace_back(Position{entry.col, row, entry.col}, std::vector<Position>(buf, buf + x));
+        ret.adj.emplace_back(Position{entry.rot, row, entry.col}, std::vector<Position>(buf, buf + x));
       }
     });
     return ret;

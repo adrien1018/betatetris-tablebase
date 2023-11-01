@@ -65,6 +65,18 @@ TEST_F(BoardTest, BoardColumnAndCell) {
   }
 }
 
+TEST_F(BoardTest, LineClear) {
+  for (int seed = 0; seed < kSeedMax; seed++) {
+    SetUp(0.3, 1, seed);
+    Board board(byteboard);
+    auto [lines_1, board_1] = board.ClearLines();
+    auto board_2 = byteboard;
+    int lines_2 = ClearLines(board_2);
+    ASSERT_EQ(lines_1, lines_2);
+    ASSERT_EQ(board_1, Board(board_2));
+  }
+}
+
 class BoardTestParam : public BoardTest, public testing::WithParamInterface<int> {};
 TEST_P(BoardTestParam, TestBoardMap) {
   int piece = GetParam();
@@ -95,7 +107,9 @@ TEST_P(BoardTestParam, TestPiecePlace) {
           if (!map_board[r].Cell(i, j)) continue;
           auto place_board = board.Place(piece, r, i, j);
           auto place_byteboard = PlacePiece(byteboard, piece, r, i, j);
-          ASSERT_EQ(place_board.ToByteBoard(), place_byteboard) << seed << ' ' << r << ' ' << i << ' ' << j;
+          // speed test
+          //auto place_byteboard = Board(board.ToBytes().data()).Place(piece, r, i, j);
+          ASSERT_EQ(place_board.ToByteBoard(), place_byteboard);
           ASSERT_EQ(place_board, Board(place_byteboard)); // check for normalization
         }
       }

@@ -166,6 +166,8 @@ class alignas(32) Board {
     b4 = pext(r4, kColMask2 << 1);
   }
 
+  constexpr Board(const CompactBoard& board) : Board(board.data()) {}
+
   constexpr Board(const ByteBoard& board) : b1(), b2(), b3(), b4() {
     for (int i = 0; i < 20; i++) {
       for (int j = 0; j < 3; j++) b1 |= (uint64_t)board[i][j] << (j * 22 + i);
