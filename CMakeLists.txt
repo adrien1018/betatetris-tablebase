@@ -5,7 +5,7 @@ project(db-tetris)
 # options
 option(BUILD_TESTS "Build test programs" ON)
 
-set(CMAKE_CXX_FLAGS "-Og -g -mavx2 -mbmi2 -Wall -Wextra -Wno-unused-parameter")
+set(CMAKE_CXX_FLAGS "-O3 -g -mavx2 -mbmi2 -Wall -Wextra -Wno-unused-parameter")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -36,6 +36,7 @@ endif()
 add_executable(graph_gen graph_gen.cpp)
 add_executable(gametree gametree.cpp)
 add_executable(mytest test.cpp)
+add_executable(random_boards scripts/random_boards.cpp)
 
 target_link_libraries(graph_gen PRIVATE Threads::Threads "${TBB_LIB}")
 target_link_libraries(gametree PRIVATE Threads::Threads)

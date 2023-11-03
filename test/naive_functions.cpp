@@ -107,7 +107,7 @@ void SimulateMove(
     auto pos = FreeDrop(b, rot, GetRow(frame, level), col, level, end_frame);
     if (pos.first) {
       continue_placements->push_back({pos.second, std::max(end_frame, frame)});
-    } else if (end_frame == kFinish) {
+    } else {
       locked_placements.push_back(pos.second);
     }
   }
@@ -118,7 +118,7 @@ void SimulateMove(
   };
   for (; frame < end_frame; frame++) {
     int row = GetRow(frame, level);
-    if (row >= 20 || !b[rot][row][col]) return;
+    if (row >= 20 || !b[rot][row][col]) break;
 
     int nrow = GetRow(frame+1, level);
     int mrow = nrow - row == 2 ? nrow-1 : nrow;
@@ -128,11 +128,15 @@ void SimulateMove(
       Insert(FreeDrop(b, rot, row, col+1));
       if (b.size() >= 2 && b[arot][row][col+1]) Insert(FreeDrop(b, arot, row, col+1));
       if (b.size() >= 4 && b[brot][row][col+1]) Insert(FreeDrop(b, brot, row, col+1));
+      if (b.size() >= 2 && nrow<20 && b[rot][mrow][col+1] && b[rot][nrow][col+1] && b[arot][nrow][col+1]) Insert(FreeDrop(b, arot, nrow, col+1));
+      if (b.size() >= 4 && nrow<20 && b[rot][mrow][col+1] && b[rot][nrow][col+1] && b[brot][nrow][col+1]) Insert(FreeDrop(b, brot, nrow, col+1));
     }
     if (col > 0 && b[rot][row][col-1]) {
       Insert(FreeDrop(b, rot, row, col-1));
       if (b.size() >= 2 && b[arot][row][col-1]) Insert(FreeDrop(b, arot, row, col-1));
       if (b.size() >= 4 && b[brot][row][col-1]) Insert(FreeDrop(b, brot, row, col-1));
+      if (b.size() >= 2 && nrow<20 && b[rot][mrow][col-1] && b[rot][nrow][col-1] && b[arot][nrow][col-1]) Insert(FreeDrop(b, arot, nrow, col-1));
+      if (b.size() >= 4 && nrow<20 && b[rot][mrow][col-1] && b[rot][nrow][col-1] && b[brot][nrow][col-1]) Insert(FreeDrop(b, brot, nrow, col-1));
     }
     if (b.size() >= 2 && b[arot][row][col]) {
       Insert(FreeDrop(b, arot, row, col));
@@ -141,14 +145,14 @@ void SimulateMove(
     }
     if (b.size() >= 4 && b[brot][row][col]) {
       Insert(FreeDrop(b, brot, row, col));
-      if (nrow < 20 && col < 9 && b[arot][mrow][col] && b[brot][nrow][col] && b[brot][nrow][col+1]) Insert(FreeDrop(b, brot, nrow, col+1));
-      if (nrow < 20 && col > 0 && b[arot][mrow][col] && b[brot][nrow][col] && b[brot][nrow][col-1]) Insert(FreeDrop(b, brot, nrow, col-1));
+      if (nrow < 20 && col < 9 && b[brot][mrow][col] && b[brot][nrow][col] && b[brot][nrow][col+1]) Insert(FreeDrop(b, brot, nrow, col+1));
+      if (nrow < 20 && col > 0 && b[brot][mrow][col] && b[brot][nrow][col] && b[brot][nrow][col-1]) Insert(FreeDrop(b, brot, nrow, col-1));
     }
 
     if (IsDropFrame(frame, level)) {
-      if (++row >= 20 || !b[rot][row][col]) return;
+      if (++row >= 20 || !b[rot][row][col]) break;
       if (level == kLevel39) {
-        if (++row >= 20 || !b[rot][row][col]) return;
+        if (++row >= 20 || !b[rot][row][col]) break;
       }
     }
   }
@@ -226,13 +230,18 @@ PossibleMoves NaiveGetPossibleMoves(const std::vector<ByteBoard>& b, Level level
 
   std::vector<Position> non_tuck;
   std::set<Position> non_tuck_set;
+  std::vector<std::pair<Position, int>> adj_starts;
+
   MoveSearch(b, level, taps, 0, 5, 0, kFinish, false, non_tuck_set, non_tuck, nullptr);
   non_tuck_set = std::set<Position>(non_tuck.begin(), non_tuck.end());
-
-  std::vector<std::pair<Position, int>> adj_starts;
   MoveSearch(b, level, taps, 0, 5, 0, adj_frame, true, non_tuck_set, ret.non_adj, &adj_starts);
+
   for (auto& i : adj_starts) {
+    non_tuck.clear();
+    non_tuck_set.clear();
     ret.adj.push_back({i.first, {}});
+    MoveSearch(b, level, taps, i.first.r, i.first.y, i.second, kFinish, false, non_tuck_set, non_tuck, nullptr);
+    non_tuck_set = std::set<Position>(non_tuck.begin(), non_tuck.end());
     MoveSearch(b, level, taps, i.first.r, i.first.y, i.second, kFinish, true, non_tuck_set, ret.adj.back().second, nullptr);
   }
   return ret;

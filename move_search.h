@@ -234,8 +234,9 @@ struct Phase1Table {
 using Column = uint32_t;
 using Frames = uint64_t;
 
+template <int R>
 struct FrameMasks {
-  Frames frame, drop;
+  Frames frame[R][10], drop[R][10];
 };
 
 template <Level level>
@@ -278,11 +279,6 @@ constexpr Frames ColumnToDropFrameMask(Column col) {
 }
 
 template <Level level>
-constexpr FrameMasks ColumnToFrameMasks(Column col) {
-  return {ColumnToNormalFrameMask<level>(col), ColumnToDropFrameMask<level>(col)};
-}
-
-template <Level level>
 constexpr Column FramesToColumn(Frames frames) {
   switch (level) {
     case kLevel18: {
@@ -313,15 +309,8 @@ constexpr int FindLockRow(uint32_t col, int start_row) {
 
 // note: "tuck" here means tucks, spins or spintucks
 template <int R>
-struct TuckMask {
-  int delta_rot, delta_col, delta_frame;
-  Frames masks[R][10];
-};
+using TuckMask = std::array<std::array<Frames, 10>, R>;
 
-//template <int N> constexpr int kTuckTypes = 12;
-//template <> constexpr int kTuckTypes<1> = 1
-//template <> constexpr int kTuckTypes<1> = 1
-//
 constexpr int TuckTypes(int R) {
   return R == 1 ? 2 : R == 2 ? 7 : 12;
   // R = 1: L R
@@ -332,46 +321,65 @@ constexpr int TuckTypes(int R) {
 }
 
 template <int R>
-constexpr std::array<TuckMask<R>, TuckTypes(R)> GetTuckMasks(FrameMasks m[R][10]) {
-  std::array<TuckMask<R>, TuckTypes(R)> ret{};
-  ret[0] = {0, -1, 0, {}}; // L
-  ret[1] = {0, 1, 0, {}}; // R
+using TuckMasks = std::array<TuckMask<R>, TuckTypes(R)>;
+
+struct TuckType {
+  int delta_rot, delta_col, delta_frame;
+};
+
+template <int R>
+struct TuckTypeTable {
+  TuckType table[TuckTypes(R)];
+  constexpr TuckTypeTable() : table() {
+    table[0] = {0, -1, 0}; // L
+    table[1] = {0, 1, 0}; // R
+    if constexpr (R == 1) return;
+    table[2] = {1, 0, 0}; // A
+    table[3] = {1, -1, 0}; // LA
+    table[4] = {1, 1, 0}; // RA
+    table[5] = {1, -1, 1}; // A-L L-A
+    table[6] = {1, 1, 1}; // A-R R-A
+    if constexpr (R == 2) return;
+    table[7] = {3, 0, 0}; // B
+    table[8] = {3, -1, 0}; // LB
+    table[9] = {3, 1, 0}; // RB
+    table[10] = {3, -1, 1}; // B-L L-B
+    table[11] = {3, 1, 1}; // B-R R-B
+  }
+};
+
+template <int R>
+constexpr TuckMasks<R> GetTuckMasks(const FrameMasks<R> m) {
+  TuckMasks<R> ret{};
+#pragma GCC unroll 4
   for (int rot = 0; rot < R; rot++) {
     for (int col = 0; col < 10; col++) {
-      if (col > 0) ret[0].masks[rot][col] = m[rot][col].frame & m[rot][col-1].frame;
-      if (col < 9) ret[1].masks[rot][col] = m[rot][col].frame & m[rot][col+1].frame;
+      if (col > 0) ret[0][rot][col] = m.frame[rot][col] & m.frame[rot][col-1];
+      if (col < 9) ret[1][rot][col] = m.frame[rot][col] & m.frame[rot][col+1];
     }
   }
   if (R == 1) return ret;
-  ret[2] = {1, 0, 0, {}}; // A
-  ret[3] = {1, -1, 0, {}}; // LA
-  ret[4] = {1, 1, 0, {}}; // RA
-  ret[5] = {1, -1, 1, {}}; // AL
-  ret[6] = {1, 1, 1, {}}; // AR
+#pragma GCC unroll 4
   for (int rot = 0; rot < R; rot++) {
     int nrot = (rot + 1) % R;
     for (int col = 0; col < 10; col++) {
-      ret[2].masks[rot][col] = m[rot][col].frame & m[nrot][col].frame;
-      if (col > 0) ret[3].masks[rot][col] = ret[0].masks[rot][col] & m[nrot][col-1].frame;
-      if (col < 9) ret[4].masks[rot][col] = ret[1].masks[rot][col] & m[nrot][col+1].frame;
-      if (col > 0) ret[5].masks[rot][col] = m[rot][col].frame & m[nrot][col].drop & m[nrot][col-1].frame >> 1;
-      if (col > 9) ret[6].masks[rot][col] = m[rot][col].frame & m[nrot][col].drop & m[nrot][col+1].frame >> 1;
+      ret[2][rot][col] = m.frame[rot][col] & m.frame[nrot][col];
+      if (col > 0) ret[3][rot][col] = ret[0][rot][col] & m.frame[nrot][col-1];
+      if (col < 9) ret[4][rot][col] = ret[1][rot][col] & m.frame[nrot][col+1];
+      if (col > 0) ret[5][rot][col] = m.frame[rot][col] & (m.drop[nrot][col] | m.drop[rot][col-1]) & m.frame[nrot][col-1] >> 1;
+      if (col < 9) ret[6][rot][col] = m.frame[rot][col] & (m.drop[nrot][col] | m.drop[rot][col+1]) & m.frame[nrot][col+1] >> 1;
     }
   }
   if (R == 2) return ret;
-  ret[7] = {3, 0, 0, {}}; // B
-  ret[8] = {3, -1, 0, {}}; // LB
-  ret[9] = {3, 1, 0, {}}; // RB
-  ret[10] = {3, -1, 1, {}}; // BL
-  ret[11] = {3, 1, 1, {}}; // BR
+#pragma GCC unroll 4
   for (int rot = 0; rot < R; rot++) {
     int nrot = (rot + 3) % R;
     for (int col = 0; col < 10; col++) {
-      ret[7].masks[rot][col] = m[rot][col].frame & m[nrot][col].frame;
-      if (col > 0) ret[8].masks[rot][col] = ret[0].masks[rot][col] & m[nrot][col-1].frame;
-      if (col < 9) ret[9].masks[rot][col] = ret[1].masks[rot][col] & m[nrot][col+1].frame;
-      if (col > 0) ret[10].masks[rot][col] = m[rot][col].frame & m[nrot][col].drop & m[nrot][col-1].frame >> 1;
-      if (col > 9) ret[11].masks[rot][col] = m[rot][col].frame & m[nrot][col].drop & m[nrot][col+1].frame >> 1;
+      ret[7][rot][col] = m.frame[rot][col] & m.frame[nrot][col];
+      if (col > 0) ret[8][rot][col] = ret[0][rot][col] & m.frame[nrot][col-1];
+      if (col < 9) ret[9][rot][col] = ret[1][rot][col] & m.frame[nrot][col+1];
+      if (col > 0) ret[10][rot][col] = m.frame[rot][col] & (m.drop[nrot][col] | m.drop[rot][col-1]) & m.frame[nrot][col-1] >> 1;
+      if (col < 9) ret[11][rot][col] = m.frame[rot][col] & (m.drop[nrot][col] | m.drop[rot][col+1]) & m.frame[nrot][col+1] >> 1;
     }
   }
   return ret;
@@ -385,13 +393,14 @@ class Search {
   // template for loop
   template<size_t N>
   struct Num { static const constexpr auto value = N; };
-
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-but-set-parameter"
   template <class F, std::size_t... Is>
   void For(F func, std::index_sequence<Is...>) const {
     using expander = int[];
     (void)expander{0, ((void)func(Num<Is>{}), 0)...};
   }
-
+#pragma GCC diagnostic pop
   template <std::size_t N, class Func>
   void For(Func&& func) const {
     For(func, std::make_index_sequence<N>());
@@ -399,30 +408,32 @@ class Search {
 
   template <bool is_adj> __attribute__((noinline)) constexpr void RunPhase2(
       const Column cols[R][10],
-      const std::array<TuckMask<R>, TuckTypes(R)> tuck_masks,
-      const Column reachable_without_tuck[R][10],
+      const TuckMasks<R> tuck_masks,
+      const Column lock_positions_without_tuck[R][10],
       const Frames can_tuck_frame_masks[R][10],
       int& sz, Position* positions) const {
     auto Insert = [&](const Position& pos) {
       positions[sz++] = pos;
     };
+    constexpr TuckTypeTable<R> tucks;
     Frames tuck_result[R][10] = {};
-    for (auto& tuck : tuck_masks) {
+    for (int i = 0; i < TuckTypes(R); i++) {
+      const auto& tuck = tucks.table[i];
       int start_col = tuck.delta_col == -1 ? 1 : 0;
       int end_col = tuck.delta_col == 1 ? 9 : 10;
       for (int rot = 0; rot < R; rot++) {
         int nrot = (rot + tuck.delta_rot) % R;
         for (int col = start_col; col < end_col; col++) {
           tuck_result[nrot][col + tuck.delta_col] |=
-              (tuck.masks[rot][col] & can_tuck_frame_masks[rot][col]) << tuck.delta_frame;
+              (tuck_masks[i][rot][col] & can_tuck_frame_masks[rot][col]) << tuck.delta_frame;
         }
       }
     }
     for (int rot = 0; rot < R; rot++) {
       for (int col = 0; col < 10; col++) {
-        Column after_tuck_positions = FramesToColumn<level>(tuck_result[rot][col]) & ~reachable_without_tuck[rot][col];
+        Column after_tuck_positions = FramesToColumn<level>(tuck_result[rot][col]);
         Column cur = cols[rot][col];
-        Column tuck_lock_positions = (after_tuck_positions + cur) >> 1 & (cur & ~cur >> 1);
+        Column tuck_lock_positions = (after_tuck_positions + cur) >> 1 & (cur & ~cur >> 1) & ~lock_positions_without_tuck[rot][col];
         while (tuck_lock_positions) {
           int row = __builtin_ctz(tuck_lock_positions);
           Insert({rot, row, col});
@@ -437,8 +448,8 @@ class Search {
   // initial_frame = is_adj ? <the last> : 0
   template <bool is_adj, int initial_id = 0> constexpr int DoOneSearch(
       const std::array<Board, R>& board, const Column cols[R][10],
-      const std::array<TuckMask<R>, TuckTypes(R)> tuck_masks,
-      bool can_adj[], Column reachable_without_tuck[R][10],
+      const TuckMasks<R> tuck_masks,
+      bool can_adj[],
       Position* positions) const {
     constexpr int total_frames = GetLastFrameOnRow(19, level) + 1;
     constexpr int N = is_adj ? table.adj_N[initial_id] : table.initial_N;
@@ -453,8 +464,10 @@ class Search {
     // phase 1
     bool can_continue[R * 10] = {}; // whether the next tap can continue
     Frames can_tuck_frame_masks[R][10] = {}; // frames that can start a tuck
+    Column lock_positions_without_tuck[R][10] = {};
 
     bool phase_2_possible = false;
+    bool can_reach[N] = {};
     For<N>([&](auto i_obj) {
       constexpr int i = i_obj.value;
       constexpr auto& entry = is_adj ? table.adj[initial_id][i] : table.initial[i];
@@ -464,11 +477,17 @@ class Search {
       } else if (!Contains<R>(board, entry.masks_nodrop)) {
         return;
       }
+      can_reach[i] = true;
+    });
+#pragma GCC unroll 0
+    for (int i = 0; i < N; i++) {
+      if (!can_reach[i]) continue;
+      auto& entry = is_adj ? table.adj[initial_id][i] : table.initial[i];
       int start_frame = (entry.num_taps == 0 ? 0 : taps[entry.num_taps - 1]) + initial_frame;
       int start_row = GetRow(start_frame, level);
       int end_frame = is_adj ? total_frames : std::max(adj_frame, taps[entry.num_taps]);
       // Since we verified masks_nodrop, start_row should be in col
-      if ((cols[entry.rot][entry.col] & 1 << start_row) == 0) throw std::runtime_error("unexpected");
+      //if ((cols[entry.rot][entry.col] & 1 << start_row) == 0) throw std::runtime_error("unexpected");
       int lock_row = FindLockRow(cols[entry.rot][entry.col], start_row);
       int lock_frame = GetLastFrameOnRow(lock_row, level) + 1;
       if (!is_adj && lock_frame > end_frame) {
@@ -478,16 +497,14 @@ class Search {
       }
       int first_tuck_frame = initial_frame + taps[entry.num_taps];
       int last_tuck_frame = std::min(lock_frame, end_frame);
-      if constexpr (!is_adj) {
-        reachable_without_tuck[entry.rot][entry.col] = (2 << lock_row) - (1 << start_row);
-      }
+      lock_positions_without_tuck[entry.rot][entry.col] |= 1 << lock_row;
       if (last_tuck_frame > first_tuck_frame) {
         can_tuck_frame_masks[entry.rot][entry.col] = (1ll << last_tuck_frame) - (1ll << first_tuck_frame);
         phase_2_possible = true;
       }
-    });
+    }
     if (phase_2_possible) {
-      RunPhase2<is_adj>(cols, tuck_masks, reachable_without_tuck, can_tuck_frame_masks, sz, positions);
+      RunPhase2<is_adj>(cols, tuck_masks, lock_positions_without_tuck, can_tuck_frame_masks, sz, positions);
     }
     return sz;
   }
@@ -506,26 +523,27 @@ class Search {
   PossibleMoves MoveSearch(const std::array<Board, R>& board) const {
     constexpr int initial_N = decltype(table)::initial_N;
     Column cols[R][10] = {};
-    FrameMasks frame_masks[R][10] = {};
+    FrameMasks<R> frame_masks = {};
     for (int rot = 0; rot < R; rot++) {
       for (int col = 0; col < 10; col++) {
         cols[rot][col] = board[rot].Column(col);
-        frame_masks[rot][col] = ColumnToFrameMasks<level>(cols[rot][col]);
+        // ColumnToNormalFrameMask<level>(col), ColumnToDropFrameMask<level>(col)
+        frame_masks.frame[rot][col] = ColumnToNormalFrameMask<level>(cols[rot][col]);
+        frame_masks.drop[rot][col] = ColumnToDropFrameMask<level>(cols[rot][col]);
       }
     }
     auto tuck_masks = GetTuckMasks<R>(frame_masks);
-    Column reachable_without_tuck[R][10] = {}; // positions reachable without tucking
     bool can_adj[initial_N] = {}; // whether adjustment starting from this (rot, col) is possible
 
     PossibleMoves ret;
     Position buf[256];
     ret.non_adj.assign(buf, buf + DoOneSearch<false>(
-        board, cols, tuck_masks, can_adj, reachable_without_tuck, buf));
+        board, cols, tuck_masks, can_adj, buf));
 
     For<initial_N>([&](auto i_obj) {
       constexpr int initial_id = i_obj.value;
       auto& entry = table.initial[initial_id];
-      int x = DoOneSearch<true, initial_id>(board, cols, tuck_masks, can_adj, reachable_without_tuck, buf);
+      int x = DoOneSearch<true, initial_id>(board, cols, tuck_masks, can_adj, buf);
       if (x) {
         int row = GetRow(std::max(adj_frame, taps[entry.num_taps]), level);
         ret.adj.emplace_back(Position{entry.rot, row, entry.col}, std::vector<Position>(buf, buf + x));
