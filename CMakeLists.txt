@@ -33,13 +33,13 @@ if(NOT HAVE_BMI2)
   message(FATAL_ERROR "Must have bmi2 support.")
 endif()
 
-add_executable(graph_gen graph_gen.cpp)
-add_executable(gametree gametree.cpp)
+#add_executable(graph_gen graph_gen.cpp)
+#add_executable(gametree gametree.cpp)
 add_executable(mytest test.cpp)
 add_executable(random_boards scripts/random_boards.cpp)
 
-target_link_libraries(graph_gen PRIVATE Threads::Threads "${TBB_LIB}")
-target_link_libraries(gametree PRIVATE Threads::Threads)
+#target_link_libraries(graph_gen PRIVATE Threads::Threads "${TBB_LIB}")
+#target_link_libraries(gametree PRIVATE Threads::Threads)
 
 if(BUILD_TESTS)
   enable_testing()

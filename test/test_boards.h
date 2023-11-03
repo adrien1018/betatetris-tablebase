@@ -1,5 +1,5 @@
 #pragma once
 
-#include "../board.h"
+#include "../src/board.h"
 
 extern const std::array<Board, 169> kTestBoards;

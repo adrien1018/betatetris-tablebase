@@ -2,7 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
-#include "../board.h"
+#include "../src/board.h"
 
 std::vector<std::vector<Board>> bs(101);
 

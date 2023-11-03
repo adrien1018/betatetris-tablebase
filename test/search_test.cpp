@@ -1,5 +1,5 @@
-#include "../board.h"
-#include "../move_search.h"
+#include "../src/board.h"
+#include "../src/move_search.h"
 #include "test_boards.h"
 #include "naive_functions.h"
 #include "printing.h"
