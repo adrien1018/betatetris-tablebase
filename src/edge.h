@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <vector>
 #include <stdexcept>
 
@@ -76,6 +77,31 @@ class EvaluateNodeEdges {
       ref_cnt.swap(tmp_ref_cnt);
     }
 
+    void Reorder() {
+      std::vector<std::vector<std::pair<uint8_t, int>>> ed(subset_idx_prev.size() + 1);
+      for (size_t i = 0; i < subset_idx_prev.size(); i++) {
+        auto& item = subset_idx_prev[i];
+        ed[item.second + 1].push_back({item.first, i});
+      }
+      std::vector<int> reverse_order(subset_idx_prev.size());
+      std::deque<int> queue = {-1};
+      size_t o1 = subset_idx_prev.size();
+      subset_idx_prev.clear();
+      while (queue.size()) {
+        int cur = queue.front();
+        queue.pop_front();
+        for (auto [val, nxt] : ed[cur + 1]) {
+          reverse_order[nxt] = subset_idx_prev.size();
+          subset_idx_prev.push_back({val, cur == -1 ? cur : reverse_order[cur]});
+          queue.push_back(nxt);
+        }
+      }
+      if (o1 != subset_idx_prev.size()) throw;
+      std::vector<uint8_t> new_subset;
+      for (auto& i : adj_subset) new_subset.push_back(reverse_order[i]);
+      adj_subset.swap(new_subset);
+    }
+
     SubsetCalculator(size_t next_sz,
                      const std::vector<std::vector<uint8_t>>& adj,
                      std::vector<uint8_t>& adj_subset,
@@ -91,6 +117,7 @@ class EvaluateNodeEdges {
         for (auto& x : adj[i]) ref_cnt[x]++, contain_next[i][x] = true;
       }
       RecursiveCalculate(0, adj.size(), -1);
+      Reorder();
     }
   };
  public:
