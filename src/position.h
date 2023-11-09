@@ -1,6 +1,7 @@
 #pragma once
 
 #include <tuple>
+#include "hash.h"
 
 struct Position {
   int r, x, y;
@@ -12,3 +13,14 @@ struct Position {
   bool operator<(const Position& p) const { return std::tie(r, x, y) < std::tie(p.r, p.x, p.y); }
   bool operator==(const Position& p) const { return std::tie(r, x, y) == std::tie(p.r, p.x, p.y); }
 };
+
+namespace std {
+
+template<>
+struct hash<Position> {
+  constexpr size_t operator()(const Position& p) const {
+    return Hash(p.r, p.x*16+p.y);
+  }
+};
+
+} // namespace std

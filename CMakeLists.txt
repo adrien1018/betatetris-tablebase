@@ -5,7 +5,15 @@ project(db-tetris)
 # options
 option(BUILD_TESTS "Build test programs" ON)
 
-set(CMAKE_CXX_FLAGS "-O3 -g -mavx2 -mbmi2 -Wall -Wextra -Wno-unused-parameter")
+if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
+  if (NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+  endif()
+endif()
+
+set(CMAKE_CXX_FLAGS "-std=c++20 -march=native -mbmi2 -Wall -Wextra -Wno-unused-parameter")
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)

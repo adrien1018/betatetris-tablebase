@@ -164,6 +164,7 @@ void MoveSearch(
     int start_rot, int start_col, int start_frame, int end_frame,
     bool check_tuck, const std::set<Position>& non_tuck,
     std::vector<Position>& locked_placements, std::vector<std::pair<Position, int>>* continue_placements) {
+  if (!b[start_rot][GetRow(start_frame, level)][start_col]) return;
   for (int lr = 0; lr <= 9; lr++) {
     for (int ab = 0; ab <= 2; ab++) {
       SimulateMove(b, level, taps, start_rot, start_col, start_frame, end_frame, lr, ab, false, false, check_tuck, non_tuck, locked_placements, continue_placements);

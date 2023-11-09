@@ -54,7 +54,7 @@ constexpr int GetLastFrameOnRow(int row, Level level) {
     case kLevel18: return row * 3 + 2;
     case kLevel19: return row * 2 + 1;
     case kLevel29: return row;
-    case kLevel39: return row;
+    case kLevel39: return row / 2;
   }
   __builtin_unreachable();
 }
@@ -555,4 +555,8 @@ class Search {
 
 } // namespace move_search
 
-using move_search::Search;
+template <Level level, int R, int adj_frame, int... taps>
+__attribute__((noinline)) PossibleMoves MoveSearch(const std::array<Board, R>& board) {
+  constexpr move_search::Search<level, R, adj_frame, taps...> search{};
+  return search.MoveSearch(board);
+}

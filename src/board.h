@@ -3,8 +3,10 @@
 #include <cstdint>
 #include <cstring>
 #include <array>
+#include <string>
 #include <vector>
 
+#include "hash.h"
 #include "constexpr_helpers.h"
 
 class alignas(32) Board;
@@ -508,8 +510,35 @@ class alignas(32) Board {
     __builtin_unreachable();
   }
 
-  constexpr bool operator==(const Board& x) const {
-    return b1 == x.b1 && b2 == x.b2 && b3 == x.b3 && b4 == x.b4;
+  constexpr bool operator==(const Board& x) const = default;
+  constexpr bool operator!=(const Board& x) const = default;
+
+  std::string ToString(bool invert = false, bool compact = true, bool row_numbers = true) const {
+    Board obj = invert ? ~*this : *this;
+    uint64_t p = obj.b1 & obj.b2 & obj.b3 & (obj.b4 | ~(uint64_t)kColumnMask);
+    uint32_t rows = ~(p & p >> 22 & p >> 44) & kColumnMask;
+    int first_row = rows == 0 ? 20 : __builtin_ctz(rows);
+    if (first_row > 0) first_row--;
+    if (!compact) first_row = 0;
+
+    std::string ret;
+    auto b = obj.ToByteBoard();
+    for (int row = first_row; row < 20; row++) {
+      if (row_numbers) {
+        std::string str = std::to_string(row);
+        if (str.size() == 1) str = ' ' + str;
+        ret += str + ' ';
+      }
+      for (auto i : b[row]) ret += "X."[i];
+      ret += '\n';
+    }
+    return ret;
+  }
+
+  constexpr Board operator~() const {
+    Board r = {~b1, ~b2, ~b3, ~b4};
+    r.Normalize();
+    return r;
   }
 };
 
@@ -519,32 +548,14 @@ constexpr Board operator|(const Board& x, const Board& y) {
 constexpr Board operator&(const Board& x, const Board& y) {
   return {x.b1 & y.b1, x.b2 & y.b2, x.b3 & y.b3, x.b4 & y.b4};
 }
-constexpr Board operator~(const Board& x) {
-  Board r = {~x.b1, ~x.b2, ~x.b3, ~x.b4};
-  r.Normalize();
-  return r;
-}
 
-constexpr uint64_t Hash(uint64_t a, uint64_t b) {
-  constexpr uint64_t kTable[3] = {0x9e3779b185ebca87, 0xc2b2ae3d27d4eb4f, 0x165667b19e3779f9};
-  auto Mix = [&](uint64_t a, uint64_t b) {
-    a += b * kTable[1];
-    a = (a << 31) | (a >> 33);
-    return a * kTable[0];
-  };
-  uint64_t v1 = Mix(-kTable[0], a);
-  uint64_t v2 = Mix(kTable[1], b);
-  uint64_t ret = ((v1 << 18) | (v1 >> 46)) + ((v2 << 7) | (v2 >> 57));
-  ret ^= ret >> 33;
-  ret *= kTable[1];
-  ret ^= ret >> 29;
-  // ret *= kTable[2];
-  // ret ^= ret >> 32;
-  return ret;
-}
+namespace std {
 
-struct BoardHash {
+template<>
+struct hash<Board> {
   constexpr size_t operator()(const Board& b) const {
     return Hash(Hash(b.b1, b.b3), Hash(b.b2, b.b4));
   }
 };
+
+} // namespace std
