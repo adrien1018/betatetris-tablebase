@@ -31,10 +31,7 @@ class EdgeTest : public ::testing::Test {
       moves.push_back(m);
     }
   }
-  void TearDown() override {
-    std::filesystem::remove(kTestFile);
-    std::filesystem::remove(kTestIndexFile);
-  }
+  void TearDown() override {}
 };
 
 EvaluateNodeEdges GenEvaluateEdges(const PossibleMoves& moves) {
