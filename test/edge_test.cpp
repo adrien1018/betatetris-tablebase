@@ -35,7 +35,7 @@ class EdgeTest : public ::testing::Test {
 };
 
 EvaluateNodeEdges GenEvaluateEdges(const PossibleMoves& moves) {
-  std::mt19937_64 gen;
+  std::mt19937_64 gen(0);
   std::unordered_map<Position, int> mp;
   for (auto& i : moves.non_adj) mp.insert({i, (int)mp.size()});
   for (auto& adj : moves.adj) {
@@ -56,7 +56,24 @@ EvaluateNodeEdges GenEvaluateEdges(const PossibleMoves& moves) {
   return ed;
 }
 
-TEST_F(EdgeTest, Serialize) {
+PositionNodeEdges GenPositionEdges(const PossibleMoves& moves) {
+  std::mt19937_64 gen(0);
+  std::unordered_map<Position, int> mp;
+  for (auto& i : moves.non_adj) mp.insert({i, (int)mp.size()});
+  for (auto& adj : moves.adj) {
+    for (auto& i : adj.second) mp.insert({i, (int)mp.size()});
+  }
+  std::vector<uint32_t> ind;
+  for (size_t i = 0; i < mp.size(); i++) ind.push_back(i);
+  std::shuffle(ind.begin(), ind.end(), gen);
+  PositionNodeEdges ed;
+  ed.nexts.resize(mp.size());
+  for (auto& i : mp) ed.nexts[ind[i.second]] = i.first;
+  for (auto& i : moves.adj) ed.adj.push_back(i.first);
+  return ed;
+}
+
+TEST_F(EdgeTest, EvaluateSerialize) {
   for (auto& m : moves) {
     auto edges = GenEvaluateEdges(m);
     std::vector<uint8_t> buf(edges.NumBytes());
@@ -65,16 +82,16 @@ TEST_F(EdgeTest, Serialize) {
     ASSERT_EQ(edges, edges2);
 
     edges.CalculateSubset();
-    edges.adj.clear();
     edges.use_subset = true;
     buf.resize(edges.NumBytes());
     edges.GetBytes(buf.data());
+    edges.adj.clear();
     edges2 = EvaluateNodeEdges::FromBytes(buf.data(), buf.size());
     ASSERT_EQ(edges, edges2);
   }
 }
 
-TEST_F(EdgeTest, Subset) {
+TEST_F(EdgeTest, EvaluateSubset) {
   for (auto& m : moves) {
     auto edges = GenEvaluateEdges(m);
     edges.CalculateSubset();
@@ -84,6 +101,16 @@ TEST_F(EdgeTest, Subset) {
     std::vector<std::unordered_set<uint8_t>> s2;
     for (auto& i : edges.adj) s2.emplace_back(i.begin(), i.end());
     ASSERT_EQ(s1, s2);
+  }
+}
+
+TEST_F(EdgeTest, PositionSerialize) {
+  for (auto& m : moves) {
+    auto edges = GenPositionEdges(m);
+    std::vector<uint8_t> buf(edges.NumBytes());
+    edges.GetBytes(buf.data());
+    auto edges2 = PositionNodeEdges::FromBytes(buf.data(), buf.size());
+    ASSERT_EQ(edges, edges2);
   }
 }
 

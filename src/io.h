@@ -8,8 +8,10 @@
 
 #include "constexpr_helpers.h"
 
+namespace io_internal {
+
 template <class T>
-class ClassWriter {
+struct ClassIOAttr {
   static constexpr bool kIsConstSize = T::kIsConstSize;
   static constexpr size_t kSizeNumberBytes = [](){
     if constexpr (kIsConstSize) {
@@ -18,7 +20,22 @@ class ClassWriter {
       return T::kSizeNumberBytes;
     }
   }();
-  static constexpr size_t kBufferSize = kIsConstSize ? (1048575 / T().NumBytes() + 1) * T().NumBytes() : 1048576;
+  static constexpr size_t kBufferSize = [](){
+    if constexpr (kIsConstSize) {
+      return (1048575 / T::NumBytes() + 1) * T::NumBytes();
+    } else {
+      return 1048576;
+    }
+  }();
+};
+
+} // namespace io_internal
+
+template <class T>
+class ClassWriter : private io_internal::ClassIOAttr<T> {
+  using io_internal::ClassIOAttr<T>::kIsConstSize;
+  using io_internal::ClassIOAttr<T>::kSizeNumberBytes;
+  using io_internal::ClassIOAttr<T>::kBufferSize;
   static constexpr size_t kIndexBufferSize = 131072;
 
   std::vector<uint8_t> buf;
@@ -108,16 +125,10 @@ class ClassWriter {
 };
 
 template <class T>
-class ClassReader {
-  static constexpr bool kIsConstSize = T::kIsConstSize;
-  static constexpr size_t kSizeNumberBytes = [](){
-    if constexpr (kIsConstSize) {
-      return 0;
-    } else {
-      return T::kSizeNumberBytes;
-    }
-  }();
-  static constexpr size_t kBufferSize = kIsConstSize ? (1048575 / T().NumBytes() + 1) * T().NumBytes() : 1048576;
+class ClassReader : private io_internal::ClassIOAttr<T> {
+  using io_internal::ClassIOAttr<T>::kIsConstSize;
+  using io_internal::ClassIOAttr<T>::kSizeNumberBytes;
+  using io_internal::ClassIOAttr<T>::kBufferSize;
 
   std::vector<uint8_t> buf;
   size_t current, current_offset;
@@ -136,7 +147,7 @@ class ClassReader {
   }
 
   uint64_t GetNextSize(size_t buf_size) {
-    if constexpr (kIsConstSize) return T().NumBytes();
+    if constexpr (kIsConstSize) return T::NumBytes();
 
     ReadUntilSize(current_offset + kSizeNumberBytes, buf_size);
     if (buf.size() < current_offset + kSizeNumberBytes) {
@@ -230,15 +241,15 @@ class ClassReader {
   void Seek(size_t location, size_t buf_size = std::string::npos) {
     ParseBufSize(buf_size);
     if constexpr (kIsConstSize) {
-      size_t buf_start = current - current_offset / T().NumBytes();
-      size_t buf_end = current + (buf.size() - current_offset) / T().NumBytes();
+      size_t buf_start = current - current_offset / T::NumBytes();
+      size_t buf_end = current + (buf.size() - current_offset) / T::NumBytes();
       if (buf_start <= location && location < buf_end) {
-        current_offset += ((int64_t)location - current) * T().NumBytes();
+        current_offset += ((int64_t)location - current) * T::NumBytes();
       } else {
         buf.clear();
         eof = false;
         fin.clear();
-        fin.seekg(T().NumBytes() * location);
+        fin.seekg(T::NumBytes() * location);
         current_offset = 0;
       }
       current = location;

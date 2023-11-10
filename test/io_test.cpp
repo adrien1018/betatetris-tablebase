@@ -13,7 +13,7 @@ struct ConstSizeStruct {
   std::array<uint8_t, 64> arr;
 
   bool operator==(const ConstSizeStruct&) const = default;
-  constexpr size_t NumBytes() const {
+  static constexpr size_t NumBytes() {
     return 64;
   }
   void GetBytes(uint8_t x[]) const {

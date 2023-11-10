@@ -17,13 +17,6 @@ using BoardMap = tsl::sparse_map<Board, int, BoardHash, std::equal_to<Board>,
       std::allocator<BoardMapKey>, tsl::sh::power_of_two_growth_policy<2>,
       tsl::sh::exception_safety::basic, tsl::sh::sparsity::high>;
 
-void Print(const Board& b, bool invert = true) {
-  for (int i = 0; i < 20; i++) {
-    for (int j = 0; j < 10; j++) printf("%c ", ".1"[(b.Column(j) >> i & 1) ^ invert]);
-    puts("");
-  }
-}
-
 template <int R>
 NodeEdge GetEdgeList(const Board& b, int piece, const PositionList<R>& pos_list, const BoardMap& boards) {
   std::bitset<R * 200> tot_bs;

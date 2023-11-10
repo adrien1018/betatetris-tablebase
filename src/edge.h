@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "position.h"
+#include "io_helpers.h"
 #include "constexpr_helpers.h"
 
 class EvaluateNodeEdges {
@@ -19,13 +20,6 @@ class EvaluateNodeEdges {
     std::vector<uint8_t> ref_cnt, selected;
 
     void RecursiveCalculate(size_t l, size_t r, int prev) {
-      {
-        std::vector<uint8_t> n_ref_cnt(ref_cnt.size());
-        for (size_t i = l; i < r; i++) {
-          for (auto& x : adj[adj_idx[i]]) n_ref_cnt[x]++;
-        }
-        for (size_t i = 0; i < ref_cnt.size(); i++) if (ref_cnt[i] != n_ref_cnt[i]) throw;
-      }
       if (r - l == 1) {
         for (auto& x : adj[adj_idx[l]]) {
           if (selected[x]) continue;
@@ -182,37 +176,28 @@ class EvaluateNodeEdges {
     ret[1] = use_subset;
     // next ids
     size_t ind = 2;
-    ret[ind++] = next_ids.size();
-    for (auto& i : next_ids) {
+    ind += VecOutput<1>(next_ids, ret + ind, [&](auto& i, uint8_t data[]) {
       if (i.first >= (1ll << 32)) throw std::out_of_range("too many boards");
-      IntToBytes<uint32_t>(i.first, &ret[ind]);
-      ret[ind+4] = i.second;
-      ind += 5;
-    }
+      IntToBytes<uint32_t>(i.first, data);
+      data[4] = i.second;
+      return 5;
+    });
     // non_adjs
-    ret[ind++] = non_adj.size();
-    memcpy(&ret[ind], non_adj.data(), non_adj.size());
-    ind += non_adj.size();
+    ind += SimpleVecOutput<1>(non_adj, ret + ind);
     // adjs
     if (use_subset) {
-      ret[ind++] = adj_subset.size();
-      memcpy(&ret[ind], adj_subset.data(), adj_subset.size());
-      ind += adj_subset.size();
-      ret[ind++] = subset_idx_prev.size();
-      for (auto& i : subset_idx_prev) {
+      ind += SimpleVecOutput<1>(adj_subset, ret + ind);
+      ind += VecOutput<1>(subset_idx_prev, ret + ind, [&](auto& i, uint8_t data[]) {
         if (i.second >= 255 || i.second < -1) throw std::runtime_error("invalid prev");
-        ret[ind] = i.first;
-        ret[ind+1] = i.second == -1 ? 255 : i.second;
-        //IntToBytes<uint16_t>(i.second == -1 ? 65536 : i.second, &ret[ind+1]);
-        ind += 2;
-      }
+        data[0] = i.first;
+        data[1] = i.second == -1 ? 255 : i.second;
+        //IntToBytes<uint16_t>(i.second == -1 ? 65536 : i.second, data + 1);
+        return 2;
+      });
     } else {
-      ret[ind++] = adj.size();
-      for (auto& adj_item : adj) {
-        ret[ind++] = adj_item.size();
-        memcpy(&ret[ind], adj_item.data(), adj_item.size());
-        ind += adj_item.size();
-      }
+      ind += VecOutput<1>(adj, ret + ind, [&](auto& adj_item, uint8_t data[]) {
+        return SimpleVecOutput<1>(adj_item, data);
+      });
     }
     if (ind != sz) throw std::runtime_error("size not match");
   }
@@ -222,36 +207,74 @@ class EvaluateNodeEdges {
     size_t ind = 0;
     ret.cell_count = data[ind++];
     ret.use_subset = data[ind++];
-    ret.next_ids.resize(data[ind++]);
-    for (auto& i : ret.next_ids) {
-      i.first = BytesToInt<uint32_t>(data + ind);
-      i.second = data[ind+4];
-      ind += 5;
-    }
-    ret.non_adj.resize(data[ind++]);
-    memcpy(ret.non_adj.data(), data + ind, ret.non_adj.size());
-    ind += ret.non_adj.size();
+    ind += VecInput<1>(ret.next_ids, data + ind, [](auto& i, const uint8_t data[]) {
+      i.first = BytesToInt<uint32_t>(data);
+      i.second = data[4];
+      return 5;
+    });
+    // non_adjs
+    ind += SimpleVecInput<1>(ret.non_adj, data + ind);
+    // adjs
     if (ret.use_subset) {
-      ret.adj_subset.resize(data[ind++]);
-      memcpy(ret.adj_subset.data(), data + ind, ret.adj_subset.size());
-      ind += ret.adj_subset.size();
-      ret.subset_idx_prev.resize(data[ind++]);
-      for (auto& i : ret.subset_idx_prev) {
-        i.first = data[ind];
-        i.second = data[ind+1];
+      ind += SimpleVecInput<1>(ret.adj_subset, data + ind);
+      ind += VecInput<1>(ret.subset_idx_prev, data + ind, [](auto& i, const uint8_t data[]) {
+        i.first = data[0];
+        i.second = data[1];
         if (i.second == 255) i.second = -1;
         //i.second = BytesToInt<uint16_t>(data + ind + 1);
         //if (i.second == 65536) i.second = -1;
-        ind += 2;
-      }
+        return 2;
+      });
     } else {
-      ret.adj.resize(data[ind++]);
-      for (auto& adj_item : ret.adj) {
-        adj_item.resize(data[ind++]);
-        memcpy(adj_item.data(), data + ind, adj_item.size());
-        ind += adj_item.size();
-      }
+      ind += VecInput<1>(ret.adj, data + ind, [](auto& adj_item, const uint8_t data[]) {
+        return SimpleVecInput<1>(adj_item, data);
+      });
     }
+    if (ind != sz) throw std::runtime_error("size not match");
+    return ret;
+  }
+};
+
+struct PositionNodeEdges {
+  static constexpr bool kIsConstSize = false;
+  static constexpr size_t kSizeNumberBytes = 2;
+
+  std::vector<Position> nexts;
+  std::vector<Position> adj;
+
+  bool operator==(const PositionNodeEdges&) const = default;
+  bool operator!=(const PositionNodeEdges&) const = default;
+
+  size_t NumBytes() const {
+    if (nexts.size() >= 256 || adj.size() >= 256) throw std::out_of_range("output too large");
+    return 2 + nexts.size() * 2 + adj.size() * 2;
+  }
+
+  void GetBytes(uint8_t ret[]) const {
+    size_t sz = NumBytes();
+    size_t ind = 0;
+    ind += VecOutput<1>(nexts, ret + ind, [&](auto& i, uint8_t data[]) {
+      i.GetBytes(data);
+      return 2;
+    });
+    ind += VecOutput<1>(adj, ret + ind, [&](auto& i, uint8_t data[]) {
+      i.GetBytes(data);
+      return 2;
+    });
+    if (ind != sz) throw std::runtime_error("size not match");
+  }
+
+  static PositionNodeEdges FromBytes(const uint8_t data[], size_t sz) {
+    PositionNodeEdges ret;
+    size_t ind = 0;
+    ind += VecInput<1>(ret.nexts, data + ind, [](auto& i, const uint8_t data[]) {
+      i = Position::FromBytes(data, 2);
+      return 2;
+    });
+    ind += VecInput<1>(ret.adj, data + ind, [](auto& i, const uint8_t data[]) {
+      i = Position::FromBytes(data, 2);
+      return 2;
+    });
     if (ind != sz) throw std::runtime_error("size not match");
     return ret;
   }
