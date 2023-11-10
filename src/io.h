@@ -6,6 +6,7 @@
 #include <fstream>
 #include <stdexcept>
 
+#include "files.h"
 #include "constexpr_helpers.h"
 
 namespace io_internal {
@@ -67,9 +68,10 @@ class ClassWriter : private io_internal::ClassIOAttr<T> {
   }
  public:
   ClassWriter(const std::string& fname, size_t items_per_index = 1024) :
-      current(0), items_per_index(items_per_index), current_written_size(0),
-      fout(fname, std::ios_base::out | std::ios_base::trunc) {
+      current(0), items_per_index(items_per_index), current_written_size(0) {
     static_assert(kIsConstSize || (kSizeNumberBytes >= 1 && kSizeNumberBytes <= 8));
+    MkdirForFile(fname);
+    fout.open(fname, std::ios_base::out | std::ios_base::trunc);
     if (!fout.is_open()) throw std::runtime_error("cannot open file");
     if (items_per_index < 1) items_per_index = 0;
     if (HasIndex()) {
@@ -216,7 +218,7 @@ class ClassReader : private io_internal::ClassIOAttr<T> {
         throw std::runtime_error("invalid file format");
       }
     }
-    T ret = T::FromBytes(buf.data() + (current_offset + kSizeNumberBytes), sz);
+    T ret(buf.data() + (current_offset + kSizeNumberBytes), sz);
     current_offset += kSizeNumberBytes + sz;
     current++;
     if (current_offset + kSizeNumberBytes >= buf.size()) {

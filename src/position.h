@@ -20,9 +20,9 @@ struct Position {
     ret[0] = r << 5 | x;
     ret[1] = y;
   }
-  static Position FromBytes(const uint8_t data[], size_t) {
-    return {data[0] >> 5, data[0] & 31, data[1]};
-  }
+  Position() = default;
+  Position(int r, int x, int y) : r(r), x(x), y(y) {}
+  Position(const uint8_t data[], size_t) : r(data[0] >> 5), x(data[0] & 31), y(data[1]) {}
 };
 
 namespace std {

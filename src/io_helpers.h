@@ -41,3 +41,19 @@ inline size_t SimpleVecInput(std::vector<T>& vec, const uint8_t data[]) {
   memcpy(vec.data(), data + size_bytes, sizeof(T) * vec.size());
   return sizeof(T) * vec.size() + size_bytes;
 }
+
+template <class T, size_t sz>
+struct SimpleIOArray : public std::array<T, sz> {
+  using std::array<T, sz>::array;
+  using std::array<T, sz>::data;
+
+  SimpleIOArray(const uint8_t buf[], size_t) {
+    memcpy(data(), buf, NumBytes());
+  }
+
+  static constexpr bool kIsConstSize = true;
+  static constexpr size_t NumBytes() { return sizeof(T) * sz; }
+  void GetBytes(uint8_t ret[]) const {
+    memcpy(ret, data(), NumBytes());
+  }
+};

@@ -1,23 +1,31 @@
 #include "files.h"
+
 #include <string>
+#include <filesystem>
+#include "board.h"
+#include "config.h"
 
-extern std::filesystem::path kDataDir;
+namespace fs = std::filesystem;
 
-std::filesystem::path BoardPath(int group) {
+fs::path BoardPath(int group) {
   return kDataDir / "boards" / std::to_string(group);
 }
-std::filesystem::path SearchEdgePath(int group) {
+fs::path SearchEdgePath(int group) {
   return kDataDir / "edges" / (std::to_string(group) + ".search");
 }
-std::filesystem::path ValuePath(int pieces) {
-  std::string r = std::to_string(value);
+fs::path ValuePath(int pieces) {
+  std::string r = std::to_string(pieces);
   return kDataDir / "values" / (std::string(4 - r.size(), '0') + r);
 }
-std::filesystem::path ProbPath(int pieces) {
-  std::string r = std::to_string(value);
+fs::path ProbPath(int pieces) {
+  std::string r = std::to_string(pieces);
   return kDataDir / "probs" / (std::string(4 - r.size(), '0') + r);
 }
 
-uint64_t BoardCount(const std::filesystem::path& board_file) {
-  return std::filesystem::file_size(board_file) / kBoardBytes;
+uint64_t BoardCount(const fs::path& board_file) {
+  return fs::file_size(board_file) / kBoardBytes;
+}
+
+bool MkdirForFile(fs::path path) {
+  return fs::create_directories(path.remove_filename());
 }

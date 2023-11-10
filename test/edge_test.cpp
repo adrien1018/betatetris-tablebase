@@ -78,7 +78,7 @@ TEST_F(EdgeTest, EvaluateSerialize) {
     auto edges = GenEvaluateEdges(m);
     std::vector<uint8_t> buf(edges.NumBytes());
     edges.GetBytes(buf.data());
-    auto edges2 = EvaluateNodeEdges::FromBytes(buf.data(), buf.size());
+    auto edges2 = EvaluateNodeEdges(buf.data(), buf.size());
     ASSERT_EQ(edges, edges2);
 
     edges.CalculateSubset();
@@ -86,7 +86,7 @@ TEST_F(EdgeTest, EvaluateSerialize) {
     buf.resize(edges.NumBytes());
     edges.GetBytes(buf.data());
     edges.adj.clear();
-    edges2 = EvaluateNodeEdges::FromBytes(buf.data(), buf.size());
+    edges2 = EvaluateNodeEdges(buf.data(), buf.size());
     ASSERT_EQ(edges, edges2);
   }
 }
@@ -109,7 +109,7 @@ TEST_F(EdgeTest, PositionSerialize) {
     auto edges = GenPositionEdges(m);
     std::vector<uint8_t> buf(edges.NumBytes());
     edges.GetBytes(buf.data());
-    auto edges2 = PositionNodeEdges::FromBytes(buf.data(), buf.size());
+    auto edges2 = PositionNodeEdges(buf.data(), buf.size());
     ASSERT_EQ(edges, edges2);
   }
 }

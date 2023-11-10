@@ -19,11 +19,10 @@ struct ConstSizeStruct {
   void GetBytes(uint8_t x[]) const {
     memcpy(x, arr.data(), 64);
   }
-  static ConstSizeStruct FromBytes(const uint8_t data[], size_t sz) {
+  ConstSizeStruct() = default;
+  ConstSizeStruct(const uint8_t data[], size_t sz) {
     if (sz != 64) throw 1;
-    ConstSizeStruct s;
-    memcpy(s.arr.data(), data, 64);
-    return s;
+    memcpy(arr.data(), data, 64);
   }
 };
 
@@ -39,11 +38,10 @@ struct VarSizeStruct {
   void GetBytes(uint8_t x[]) const {
     memcpy(x, arr.data(), arr.size());
   }
-  static VarSizeStruct FromBytes(const uint8_t data[], size_t sz) {
-    VarSizeStruct s;
-    s.arr.resize(sz);
-    memcpy(s.arr.data(), data, sz);
-    return s;
+  VarSizeStruct() = default;
+  VarSizeStruct(const uint8_t data[], size_t sz) {
+    arr.resize(sz);
+    memcpy(arr.data(), data, sz);
   }
 };
 

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "hash.h"
+#include "io_helpers.h"
 #include "constexpr_helpers.h"
 
 class alignas(32) Board;
@@ -14,7 +15,19 @@ constexpr Board operator|(const Board& x, const Board& y);
 constexpr Board operator&(const Board& x, const Board& y);
 
 constexpr int kBoardBytes = 25;
-using CompactBoard = std::array<uint8_t, kBoardBytes>;
+struct CompactBoard : public SimpleIOArray<uint8_t, kBoardBytes> {
+  using SimpleIOArray<uint8_t, kBoardBytes>::SimpleIOArray;
+  constexpr int Count() const {
+    uint64_t x[4] = {};
+    memcpy(x, data(), kBoardBytes);
+    return 200 - (__builtin_popcountll(x[0]) + __builtin_popcountll(x[1]) +
+                  __builtin_popcountll(x[2]) + __builtin_popcountll(x[3]));
+  }
+  constexpr int Group() const {
+    return (Count() >> 1) % 5;
+  }
+};
+
 using ByteBoard = std::array<std::array<uint8_t, 10>, 20>;
 
 // A 20x10 board is represented by 4 64-bit integers.
@@ -182,6 +195,9 @@ class alignas(32) Board {
   constexpr int Count() const {
     return 200 - (__builtin_popcountll(b1) + __builtin_popcountll(b2) +
                   __builtin_popcountll(b3) + __builtin_popcountll(b4));
+  }
+  constexpr int Group() const {
+    return (Count() >> 1) % 5;
   }
 
   constexpr void Normalize() {

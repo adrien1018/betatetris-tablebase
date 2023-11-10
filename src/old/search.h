@@ -1,8 +1,8 @@
 #ifndef SEARCH_H_
 #define SEARCH_H_
 
-#include "board.h"
-#include "position.h"
+#include "../board.h"
+#include "../position.h"
 
 #include <bitset>
 #include <vector>

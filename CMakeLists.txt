@@ -41,17 +41,29 @@ if(NOT HAVE_BMI2)
   message(FATAL_ERROR "Must have bmi2 support.")
 endif()
 
+include(FetchContentExclude)
+FetchContent_Declare(
+  argparse
+  URL "https://github.com/p-ranav/argparse/archive/refs/tags/v3.0.zip"
+)
+
+FetchContent_MakeAvailable_Exclude(argparse)
+
 #add_executable(graph_gen graph_gen.cpp)
 #add_executable(gametree gametree.cpp)
 add_executable(mytest test.cpp)
 add_executable(random_boards scripts/random_boards.cpp)
+
+file(GLOB MAIN_SRC "src/*.cpp")
+add_executable(main ${MAIN_SRC})
+
+target_link_libraries(main argparse::argparse)
 
 #target_link_libraries(graph_gen PRIVATE Threads::Threads "${TBB_LIB}")
 #target_link_libraries(gametree PRIVATE Threads::Threads)
 
 if(BUILD_TESTS)
   enable_testing()
-  include(FetchContentExclude)
   FetchContent_Declare(
     googletest
     URL "https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip"
@@ -59,7 +71,7 @@ if(BUILD_TESTS)
   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable_Exclude(googletest)
 
-  file(GLOB TEST_SRC "test/*.cpp" "test/*.h")
+  file(GLOB TEST_SRC "test/*.cpp" "src/files.cpp" "src/config.cpp")
   add_executable(run-test ${TEST_SRC})
   target_link_libraries(run-test gtest_main)
 

@@ -130,8 +130,6 @@ class EvaluateNodeEdges {
   std::vector<uint8_t> adj_subset;
   std::vector<std::pair<uint8_t, int>> subset_idx_prev; // (idx, prev)
 
-  EvaluateNodeEdges() : cell_count(), use_subset() {}
-
   bool operator==(const EvaluateNodeEdges&) const = default;
   bool operator!=(const EvaluateNodeEdges&) const = default;
 
@@ -202,22 +200,22 @@ class EvaluateNodeEdges {
     if (ind != sz) throw std::runtime_error("size not match");
   }
 
-  static EvaluateNodeEdges FromBytes(const uint8_t data[], size_t sz) {
-    EvaluateNodeEdges ret;
+  EvaluateNodeEdges() : cell_count(), use_subset() {}
+  EvaluateNodeEdges(const uint8_t data[], size_t sz) {
     size_t ind = 0;
-    ret.cell_count = data[ind++];
-    ret.use_subset = data[ind++];
-    ind += VecInput<1>(ret.next_ids, data + ind, [](auto& i, const uint8_t data[]) {
+    cell_count = data[ind++];
+    use_subset = data[ind++];
+    ind += VecInput<1>(next_ids, data + ind, [](auto& i, const uint8_t data[]) {
       i.first = BytesToInt<uint32_t>(data);
       i.second = data[4];
       return 5;
     });
     // non_adjs
-    ind += SimpleVecInput<1>(ret.non_adj, data + ind);
+    ind += SimpleVecInput<1>(non_adj, data + ind);
     // adjs
-    if (ret.use_subset) {
-      ind += SimpleVecInput<1>(ret.adj_subset, data + ind);
-      ind += VecInput<1>(ret.subset_idx_prev, data + ind, [](auto& i, const uint8_t data[]) {
+    if (use_subset) {
+      ind += SimpleVecInput<1>(adj_subset, data + ind);
+      ind += VecInput<1>(subset_idx_prev, data + ind, [](auto& i, const uint8_t data[]) {
         i.first = data[0];
         i.second = data[1];
         if (i.second == 255) i.second = -1;
@@ -226,12 +224,11 @@ class EvaluateNodeEdges {
         return 2;
       });
     } else {
-      ind += VecInput<1>(ret.adj, data + ind, [](auto& adj_item, const uint8_t data[]) {
+      ind += VecInput<1>(adj, data + ind, [](auto& adj_item, const uint8_t data[]) {
         return SimpleVecInput<1>(adj_item, data);
       });
     }
     if (ind != sz) throw std::runtime_error("size not match");
-    return ret;
   }
 };
 
@@ -264,18 +261,17 @@ struct PositionNodeEdges {
     if (ind != sz) throw std::runtime_error("size not match");
   }
 
-  static PositionNodeEdges FromBytes(const uint8_t data[], size_t sz) {
-    PositionNodeEdges ret;
+  PositionNodeEdges() = default;
+  PositionNodeEdges(const uint8_t data[], size_t sz) {
     size_t ind = 0;
-    ind += VecInput<1>(ret.nexts, data + ind, [](auto& i, const uint8_t data[]) {
-      i = Position::FromBytes(data, 2);
+    ind += VecInput<1>(nexts, data + ind, [](auto& i, const uint8_t data[]) {
+      i = Position(data, 2);
       return 2;
     });
-    ind += VecInput<1>(ret.adj, data + ind, [](auto& i, const uint8_t data[]) {
-      i = Position::FromBytes(data, 2);
+    ind += VecInput<1>(adj, data + ind, [](auto& i, const uint8_t data[]) {
+      i = Position(data, 2);
       return 2;
     });
     if (ind != sz) throw std::runtime_error("size not match");
-    return ret;
   }
 };
