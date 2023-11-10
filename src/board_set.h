@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vector>
 #include <filesystem>
 #include <tsl/sparse_map.h>
 #include "board.h"
@@ -12,5 +13,6 @@ using BoardMap = tsl::sparse_map<Board, uint64_t, std::hash<Board>, std::equal_t
 void SplitBoards(const std::filesystem::path&);
 
 BoardMap GetBoardMap(int group);
+std::vector<Board> GetBoards(int group);
 
 void BuildEdges();

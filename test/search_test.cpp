@@ -14,27 +14,15 @@ class SearchTest : public ::testing::Test {
   void TearDown() override {}
 };
 
-// template for loop
-template<size_t N> struct Num { static const constexpr auto value = N; };
-template <class F, std::size_t... Is>
-void For(F func, std::index_sequence<Is...>) {
-  using expander = int[];
-  (void)expander{0, ((void)func(Num<Is>{}), 0)...};
-}
-template <std::size_t N, class Func>
-void For(Func&& func) {
-  For(func, std::make_index_sequence<N>());
-}
-
-template <Level level, int adj_delay, int... taps>
+template <Level level, int adj_delay, class Taps>
 void TestSearch(const Board& b) {
-  constexpr move_search::TapTable<taps...> taps_obj;
+  constexpr Taps taps_obj;
   For<7>([&](auto i_obj) {
     constexpr int piece = i_obj.value;
     auto byte_map = GetPieceMap(b.ToByteBoard(), piece);
     auto board_map = b.PieceMap<piece>();
     auto m1 = NaiveGetPossibleMoves(byte_map, level, adj_delay, taps_obj.data());
-    auto m2 = MoveSearch<level, Board::NumRotations(piece), adj_delay, taps...>(board_map);
+    auto m2 = MoveSearch<level, Board::NumRotations(piece), adj_delay, Taps>(board_map);
     m1.Normalize();
     size_t old_sz = m2.non_adj.size() + m2.adj.size();
     for (auto& i : m2.adj) old_sz += i.second.size();
@@ -60,30 +48,30 @@ void TestSearch(const Board& b) {
 TEST_F(SearchTest, Test30Hz) {
   SetUp();
   for (auto& board : kTestBoards) {
-    TestSearch<kLevel18, 18, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2>(board);
-    TestSearch<kLevel19, 18, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2>(board);
-    TestSearch<kLevel29, 18, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2>(board);
-    TestSearch<kLevel39, 18, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2>(board);
+    TestSearch<kLevel18, 18, Tap30Hz>(board);
+    TestSearch<kLevel19, 18, Tap30Hz>(board);
+    TestSearch<kLevel29, 18, Tap30Hz>(board);
+    TestSearch<kLevel39, 18, Tap30Hz>(board);
   }
 }
 
 TEST_F(SearchTest, Test30HzSmallAdj) {
   SetUp();
   for (auto& board : kTestBoards) {
-    TestSearch<kLevel18, 4, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2>(board);
-    TestSearch<kLevel19, 4, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2>(board);
-    TestSearch<kLevel29, 4, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2>(board);
-    TestSearch<kLevel39, 4, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2>(board);
+    TestSearch<kLevel18, 4, Tap30Hz>(board);
+    TestSearch<kLevel19, 4, Tap30Hz>(board);
+    TestSearch<kLevel29, 4, Tap30Hz>(board);
+    TestSearch<kLevel39, 4, Tap30Hz>(board);
   }
 }
 
 TEST_F(SearchTest, Test12Hz) {
   SetUp();
   for (auto& board : kTestBoards) {
-    TestSearch<kLevel18, 21, 0, 5, 5, 5, 5, 5, 5, 5, 5, 5>(board);
-    TestSearch<kLevel19, 21, 0, 5, 5, 5, 5, 5, 5, 5, 5, 5>(board);
-    TestSearch<kLevel29, 21, 0, 5, 5, 5, 5, 5, 5, 5, 5, 5>(board);
-    TestSearch<kLevel39, 21, 0, 5, 5, 5, 5, 5, 5, 5, 5, 5>(board);
+    TestSearch<kLevel18, 21, Tap12Hz>(board);
+    TestSearch<kLevel19, 21, Tap12Hz>(board);
+    TestSearch<kLevel29, 21, Tap12Hz>(board);
+    TestSearch<kLevel39, 21, Tap12Hz>(board);
   }
 }
 

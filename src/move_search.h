@@ -6,6 +6,7 @@
 
 #include "board.h"
 #include "position.h"
+#include "constexpr_helpers.h"
 
 enum Level {
   kLevel18,
@@ -76,6 +77,9 @@ class TapTable {
   constexpr const int* data() const { return t; }
 };
 
+template <class T> struct IsTapTable : std::false_type {};
+template <int... args> struct IsTapTable<TapTable<args...>> : std::true_type {};
+
 constexpr int abs(int x) { return x < 0 ? -x : x; }
 constexpr int sgn(int x) {
   return x == 0 ? 0 : x > 0 ? 1 : -1;
@@ -105,15 +109,16 @@ struct TableEntry {
   std::array<Board, R> masks, masks_nodrop;
 };
 
-template <Level level, int R, int... tap_args>
+template <Level level, int R, class Taps>
 constexpr int Phase1TableGen(int initial_frame, int initial_rot, int initial_col, TableEntry<R> entries[]) {
+  static_assert(IsTapTable<Taps>::value);
   int sz = 0;
   static_assert(R == 1 || R == 2 || R == 4, "unexpected rotations");
   constexpr uint8_t kA = 0x1;
   constexpr uint8_t kB = 0x2;
   constexpr uint8_t kL = 0x4;
   constexpr uint8_t kR = 0x8;
-  TapTable<tap_args...> taps;
+  constexpr Taps taps{};
   std::array<Board, R> masks[R][10] = {};
   std::array<Board, R> masks_nodrop[R][10] = {};
   uint8_t last_tap[R][10] = {};
@@ -206,19 +211,19 @@ constexpr int Phase1TableGen(int initial_frame, int initial_rot, int initial_col
   return sz;
 }
 
-template <Level level, int R, int adj_frame, int... tap_args>
+template <Level level, int R, int adj_frame, class Taps>
 struct Phase1Table {
-  static constexpr int initial_N = Phase1TableGen<level, R, tap_args...>(
+  static constexpr int initial_N = Phase1TableGen<level, R, Taps>(
       0, 0, 5, std::array<TableEntry<R>, 10*R>().data());
   TableEntry<R> initial[initial_N];
   int adj_N[initial_N];
   TableEntry<R> adj[initial_N][10 * R];
   constexpr Phase1Table() : initial{}, adj_N{}, adj{} {
-    TapTable<tap_args...> taps;
-    Phase1TableGen<level, R, tap_args...>(0, 0, 5, initial);
+    constexpr Taps taps{};
+    Phase1TableGen<level, R, Taps>(0, 0, 5, initial);
     for (int i = 0; i < initial_N; i++) {
       int frame_start = std::max(adj_frame, taps[initial[i].num_taps]);
-      adj_N[i] = Phase1TableGen<level, R, tap_args...>(
+      adj_N[i] = Phase1TableGen<level, R, Taps>(
           frame_start, initial[i].rot, initial[i].col, adj[i]);
     }
   }
@@ -385,26 +390,10 @@ constexpr TuckMasks<R> GetTuckMasks(const FrameMasks<R> m) {
   return ret;
 }
 
-template <Level level, int R, int adj_frame, int... tap_args>
+template <Level level, int R, int adj_frame, class Taps>
 class Search {
-  static constexpr TapTable<tap_args...> taps{};
-  static constexpr Phase1Table<level, R, adj_frame, tap_args...> table{};
-
-  // template for loop
-  template<size_t N>
-  struct Num { static const constexpr auto value = N; };
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-but-set-parameter"
-  template <class F, std::size_t... Is>
-  void For(F func, std::index_sequence<Is...>) const {
-    using expander = int[];
-    (void)expander{0, ((void)func(Num<Is>{}), 0)...};
-  }
-#pragma GCC diagnostic pop
-  template <std::size_t N, class Func>
-  void For(Func&& func) const {
-    For(func, std::make_index_sequence<N>());
-  }
+  static constexpr Taps taps{};
+  static constexpr Phase1Table<level, R, adj_frame, Taps> table{};
 
   template <bool is_adj> __attribute__((noinline)) constexpr void RunPhase2(
       const Column cols[R][10],
@@ -555,8 +544,13 @@ class Search {
 
 } // namespace move_search
 
-template <Level level, int R, int adj_frame, int... taps>
+template <Level level, int R, int adj_frame, class Taps>
 __attribute__((noinline)) PossibleMoves MoveSearch(const std::array<Board, R>& board) {
-  constexpr move_search::Search<level, R, adj_frame, taps...> search{};
+  constexpr move_search::Search<level, R, adj_frame, Taps> search{};
   return search.MoveSearch(board);
 }
+
+using Tap30Hz = move_search::TapTable<0, 2, 2, 2, 2, 2, 2, 2, 2, 2>;
+using Tap20Hz = move_search::TapTable<0, 3, 3, 3, 3, 3, 3, 3, 3, 3>;
+using Tap15Hz = move_search::TapTable<0, 4, 4, 4, 4, 4, 4, 4, 4, 4>;
+using Tap12Hz = move_search::TapTable<0, 5, 5, 5, 5, 5, 5, 5, 5, 5>;

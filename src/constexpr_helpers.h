@@ -96,3 +96,19 @@ template <>
 constexpr void IntToBytes(uint16_t x, uint8_t ret[]) {
   ret[0] = x; ret[1] = x >> 8;
 }
+
+// constexpr loop
+template<size_t N>
+struct TemplateNum { static const constexpr auto value = N; };
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-but-set-parameter"
+template <class F, std::size_t... Is>
+void For(F func, std::index_sequence<Is...>) {
+  using expander = int[];
+  (void)expander{0, ((void)func(TemplateNum<Is>{}), 0)...};
+}
+#pragma GCC diagnostic pop
+template <std::size_t N, class Func>
+void For(Func&& func) {
+  For(func, std::make_index_sequence<N>());
+}

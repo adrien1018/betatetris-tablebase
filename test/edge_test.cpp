@@ -23,11 +23,9 @@ class EdgeTest : public ::testing::Test {
     for (auto& b : kTestBoards) {
       constexpr int piece = 0;
       auto board_map = b.PieceMap<piece>();
-      auto m = MoveSearch<kLevel18, Board::NumRotations(piece), 18,
-           0, 2, 2, 2, 2, 2, 2, 2, 2, 2>(board_map);
+      auto m = MoveSearch<kLevel18, Board::NumRotations(piece), 18, Tap30Hz>(board_map);
       moves.push_back(m);
-      m = MoveSearch<kLevel19, Board::NumRotations(piece), 18,
-           0, 4, 4, 4, 4, 4, 4, 4, 4, 4>(board_map);
+      m = MoveSearch<kLevel19, Board::NumRotations(piece), 18, Tap15Hz>(board_map);
       moves.push_back(m);
     }
   }

@@ -4,6 +4,12 @@ project(db-tetris)
 
 # options
 option(BUILD_TESTS "Build test programs" ON)
+if(NOT ADJ_DELAY)
+  set(ADJ_DELAY 18)
+endif()
+if(NOT TAP_SPEED)
+  set(TAP_SPEED Tap30Hz)
+endif()
 
 if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
   if (NOT CMAKE_BUILD_TYPE)
@@ -57,6 +63,7 @@ add_executable(random_boards scripts/random_boards.cpp)
 file(GLOB MAIN_SRC "src/*.cpp")
 add_executable(main ${MAIN_SRC})
 
+target_compile_definitions(main PRIVATE -DTAP_SPEED=${TAP_SPEED} -DADJ_DELAY=${ADJ_DELAY})
 target_link_libraries(main argparse::argparse)
 
 #target_link_libraries(graph_gen PRIVATE Threads::Threads "${TBB_LIB}")
