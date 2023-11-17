@@ -52,8 +52,12 @@ FetchContent_Declare(
   argparse
   URL "https://github.com/p-ranav/argparse/archive/refs/tags/v3.0.zip"
 )
+FetchContent_Declare(
+  spdlog
+  URL "https://github.com/gabime/spdlog/archive/refs/tags/v1.12.0.zip"
+)
 
-FetchContent_MakeAvailable_Exclude(argparse)
+FetchContent_MakeAvailable_Exclude(argparse spdlog)
 
 #add_executable(graph_gen graph_gen.cpp)
 #add_executable(gametree gametree.cpp)
@@ -64,7 +68,7 @@ file(GLOB MAIN_SRC "src/*.cpp")
 add_executable(main ${MAIN_SRC})
 
 target_compile_definitions(main PRIVATE -DTAP_SPEED=${TAP_SPEED} -DADJ_DELAY=${ADJ_DELAY})
-target_link_libraries(main argparse::argparse)
+target_link_libraries(main argparse::argparse spdlog::spdlog)
 
 #target_link_libraries(graph_gen PRIVATE Threads::Threads "${TBB_LIB}")
 #target_link_libraries(gametree PRIVATE Threads::Threads)

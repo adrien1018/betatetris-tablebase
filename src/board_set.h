@@ -30,4 +30,4 @@ template <class Func> void ProcessBoards(int group, Func&& f) {
 
 BoardMap GetBoardMap(int group);
 
-void BuildEdges();
+void BuildEdges(const std::vector<int>& groups);

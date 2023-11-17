@@ -2,6 +2,13 @@
 
 #include <fstream>
 #include <algorithm>
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#include <spdlog/spdlog.h>
+#pragma GCC diagnostic pop
+
 #include <tsl/hopscotch_map.h>
 
 #include "edge.h"
@@ -16,19 +23,24 @@ constexpr size_t kBlock = 65536;
 } // namespace
 
 void SplitBoards(const std::filesystem::path& fname) {
+  spdlog::info("Start preprocessing");
   std::array<std::vector<CompactBoard>, kGroups> boards;
   ClassReader<CompactBoard> reader(fname);
   size_t num_boards = 0;
   try {
     num_boards = BoardCount(fname);
+    spdlog::info("Board file contains {} boards", num_boards);
   } catch (std::exception&) {}
   for (auto& i : boards) i.reserve(num_boards * 0.22 + 1);
+  spdlog::info("Start reading board file");
   while (true) {
     auto chunk = reader.ReadBatch(kBlock);
     for (auto& i : chunk) boards[i.Group()].push_back(i);
     if (chunk.size() < kBlock) break;
   }
-  BS::thread_pool pool(kParallel);
+  int threads = std::min(kParallel, kGroups);
+  spdlog::info("Finish reading board file, sorting with {} threads", threads);
+  BS::thread_pool pool(threads);
   pool.parallelize_loop(0, kGroups, [&](int l, int r){
     for (int i = l; i < r; i++) {
       std::sort(boards[i].begin(), boards[i].end(), [](const CompactBoard& a, const CompactBoard& b){
@@ -36,10 +48,13 @@ void SplitBoards(const std::filesystem::path& fname) {
       });
     }
   }).wait();
+  spdlog::info("Sorting finished");
   for (int group = 0; group < kGroups; group++) {
+    spdlog::info("Writing group {} with {} boards", group, boards[group].size());
     ClassWriter<CompactBoard> writer(BoardPath(group));
     writer.Write(boards[group]);
   }
+  spdlog::info("Done preprocessing");
 }
 
 BoardMap GetBoardMap(int group) {
@@ -58,8 +73,19 @@ namespace {
 using TapSpeed = TAP_SPEED;
 constexpr int kAdjDelay = ADJ_DELAY;
 
+struct EdgeStats {
+  std::atomic_long non_adj, adj, adj_ed, next, subset;
+  void Clear() {
+    non_adj.store(0);
+    adj.store(0);
+    adj_ed.store(0);
+    next.store(0);
+    subset.store(0);
+  }
+} edge_stats[4];
+
 inline std::pair<EvaluateNodeEdges, PositionNodeEdges> GetEdges(
-    const Board& b, int piece, const PossibleMoves& moves, const BoardMap& mp) {
+    const Board& b, int piece, const PossibleMoves& moves, const BoardMap& mp, int level) {
   constexpr uint64_t kNone = std::numeric_limits<uint64_t>::max();
   tsl::hopscotch_map<Position, std::pair<uint64_t, uint8_t>> mp_next;
   mp_next.reserve(48);
@@ -98,6 +124,7 @@ inline std::pair<EvaluateNodeEdges, PositionNodeEdges> GetEdges(
     }
   }
   // adjs
+  size_t adj_eds = 0;
   for (auto& adj : moves.adj) {
     std::vector<uint8_t> ids;
     for (auto& pos : adj.second) {
@@ -106,9 +133,26 @@ inline std::pair<EvaluateNodeEdges, PositionNodeEdges> GetEdges(
       }
     }
     if (ids.empty()) continue;
+    adj_eds += ids.size();
     eval_ed.adj.push_back(std::move(ids));
     pos_ed.adj.push_back(adj.first);
     ids.clear();
+  }
+  auto& stats = edge_stats[level];
+  stats.next += eval_ed.next_ids.size();
+  stats.non_adj += eval_ed.non_adj.size();
+  stats.adj += eval_ed.adj.size();
+  if (adj_eds >= 2 * eval_ed.adj.size() && adj_eds >= 6) {
+    eval_ed.CalculateSubset();
+    if (adj_eds >= 1.5 * eval_ed.subset_idx_prev.size()) {
+      eval_ed.adj.clear();
+      eval_ed.use_subset = true;
+      stats.subset += eval_ed.subset_idx_prev.size();
+    } else {
+      stats.adj_ed += adj_eds;
+    }
+  } else {
+    stats.adj_ed += adj_eds;
   }
   return {eval_ed, pos_ed};
 }
@@ -146,7 +190,7 @@ EdgeChunk BuildEdgeChunk(const std::vector<Board>&& boards, const BoardMap& mp) 
     cur_pos.reserve(boards.size() * kPieces);
     for (size_t i = 0; i < boards.size(); i++) {
       for (size_t j = 0; j < kPieces; j++) {
-        auto [eval_ed, pos_ed] = GetEdges(boards[i], j, cur_moves[i][j], mp);
+        auto [eval_ed, pos_ed] = GetEdges(boards[i], j, cur_moves[i][j], mp, level);
         cur_eval.push_back(std::move(eval_ed));
         cur_pos.push_back(std::move(pos_ed));
       }
@@ -156,8 +200,11 @@ EdgeChunk BuildEdgeChunk(const std::vector<Board>&& boards, const BoardMap& mp) 
 }
 
 void BuildEdges(int group) {
+  spdlog::info("Start building edges for group {}", group);
   int nxt_group = (group + 2) % kGroups;
+  spdlog::info("Loading board map for group {}", nxt_group);
   BoardMap mp = GetBoardMap(nxt_group);
+  spdlog::info("Board map loaded with {} boards", mp.size());
 
   std::vector<ClassWriter<EvaluateNodeEdges>> eval_writers;
   std::vector<ClassWriter<PositionNodeEdges>> pos_writers;
@@ -166,8 +213,22 @@ void BuildEdges(int group) {
     pos_writers.emplace_back(PositionEdgePath(group, level), 256);
   }
 
+  spdlog::info("Start building edges");
+  for (int i = 0; i < kLevels; i++) edge_stats[i].Clear();
+  auto PrintStats = [](size_t n_boards, int level, spdlog::level::level_enum log_level) {
+    auto& stats = edge_stats[level];
+    spdlog::log(log_level,
+        "{} boards processed, level {}: next {}, non_adj {}, adj {}, adj_ed {}, subset {}",
+        n_boards, level, stats.next, stats.non_adj, stats.adj, stats.adj_ed, stats.subset);
+  };
+  size_t n_boards = 0;
   auto thread_queue = MakeThreadQueue<EdgeChunk>(kParallel, [&](EdgeChunk&& chunk) {
+    constexpr size_t kOutput = 131072;
+    size_t sz = chunk.first[0].size() / 7;
+    bool output = n_boards / kOutput != (n_boards + sz) / kOutput;
+    n_boards += sz;
     for (int level = 0; level < kLevels; level++) {
+      if (output) PrintStats(n_boards, level, spdlog::level::debug);
       eval_writers[level].Write(chunk.first[level]);
       pos_writers[level].Write(chunk.second[level]);
     }
@@ -182,12 +243,13 @@ void BuildEdges(int group) {
     }
   });
   thread_queue.Push([block,&mp]() { return BuildEdgeChunk(std::move(block), std::cref(mp)); });
-  // destructor will finish the jobs
+  thread_queue.WaitAll();
+  for (int level = 0; level < kLevels; level++) PrintStats(n_boards, level, spdlog::level::info);
 }
 
 } // namespace
 
-void BuildEdges() {
+void BuildEdges(const std::vector<int>& groups) {
   std::array<BoardMap, kGroups> maps;
-  for (int i = 0; i < kGroups; i++) BuildEdges(i);
+  for (int i : groups) BuildEdges(i);
 }
