@@ -30,13 +30,12 @@ struct ClassIOAttr {
   }();
 };
 
-} // namespace io_internal
-
 template <class T>
-class ClassWriter : private io_internal::ClassIOAttr<T> {
-  using io_internal::ClassIOAttr<T>::kIsConstSize;
-  using io_internal::ClassIOAttr<T>::kSizeNumberBytes;
-  using io_internal::ClassIOAttr<T>::kBufferSize;
+class ClassWriterImpl {
+ protected:
+  static constexpr size_t kIsConstSize = ClassIOAttr<T>::kIsConstSize;
+  static constexpr size_t kSizeNumberBytes = ClassIOAttr<T>::kSizeNumberBytes;
+  static constexpr size_t kBufferSize = ClassIOAttr<T>::kBufferSize;
   static constexpr size_t kIndexBufferSize = 131072;
 
   std::vector<uint8_t> buf;
@@ -68,13 +67,12 @@ class ClassWriter : private io_internal::ClassIOAttr<T> {
     }
   }
  public:
-  ClassWriter(const std::string& fname, size_t items_per_index = 1024) :
+  ClassWriterImpl(const std::string& fname, size_t items_per_index) :
       current(0), items_per_index(items_per_index), current_written_size(0), moved(false) {
     static_assert(kIsConstSize || (kSizeNumberBytes >= 1 && kSizeNumberBytes <= 8));
     MkdirForFile(fname);
     fout.open(fname, std::ios_base::out | std::ios_base::trunc);
     if (!fout.is_open()) throw std::runtime_error("cannot open file");
-    if (items_per_index < 1) items_per_index = 0;
     if (HasIndex()) {
       fout_ind.open(fname + ".index", std::ios_base::out | std::ios_base::trunc);
       if (!fout_ind.is_open()) throw std::runtime_error("cannot open index file");
@@ -82,9 +80,8 @@ class ClassWriter : private io_internal::ClassIOAttr<T> {
     }
     buf.reserve(kBufferSize);
   }
-
-  ClassWriter(const ClassWriter&) = delete;
-  ClassWriter(ClassWriter&& x) :
+  ClassWriterImpl(const ClassWriterImpl&) = delete;
+  ClassWriterImpl(ClassWriterImpl&& x) :
       buf(std::move(x.buf)), inds(std::move(x.inds)),
       current(x.current), items_per_index(x.items_per_index),
       current_written_size(x.current_written_size),
@@ -92,7 +89,7 @@ class ClassWriter : private io_internal::ClassIOAttr<T> {
     x.moved = true;
   }
 
-  ~ClassWriter() {
+  ~ClassWriterImpl() {
     if (moved) return;
     inds.push_back(ByteSize());
     Flush();
@@ -103,7 +100,102 @@ class ClassWriter : private io_internal::ClassIOAttr<T> {
     return !kIsConstSize && items_per_index >= 1;
   }
 
+  size_t Size() const {
+    return current;
+  }
+
+  size_t ByteSize() {
+    return current_written_size + buf.size();
+  }
+};
+
+template <class T>
+class ClassReaderImpl {
+ protected:
+  static constexpr size_t kIsConstSize = ClassIOAttr<T>::kIsConstSize;
+  static constexpr size_t kSizeNumberBytes = ClassIOAttr<T>::kSizeNumberBytes;
+  static constexpr size_t kBufferSize = ClassIOAttr<T>::kBufferSize;
+
+  std::vector<uint8_t> buf;
+  size_t current;
+  size_t items_per_index;
+  bool eof;
+  std::ifstream fin;
+  std::ifstream fin_index;
+
+  void ReadUntilSize(size_t sz, size_t buf_size) {
+    size_t old_sz = buf.size();
+    sz = std::max(sz, buf_size);
+    if (sz <= old_sz) return;
+    buf.resize(sz);
+    fin.read(reinterpret_cast<char*>(buf.data() + old_sz), sz - old_sz);
+    buf.resize(old_sz + fin.gcount());
+  }
+
+  void ParseBufSize(size_t& buf_size) {
+    if (buf_size == std::string::npos) buf_size = kBufferSize;
+  }
+ public:
+  ClassReaderImpl(const std::string& fname, bool check_index) :
+      current(0), items_per_index(0), eof(false) {
+    static_assert(kIsConstSize || (kSizeNumberBytes >= 1 && kSizeNumberBytes <= 8));
+    fin.rdbuf()->pubsetbuf(nullptr, 0);
+    fin.open(fname);
+    if (!fin.is_open()) throw std::runtime_error("cannot open file");
+    uint8_t sz_buf[8] = {};
+    if (check_index) {
+      fin_index.rdbuf()->pubsetbuf(nullptr, 0);
+      fin_index.open(fname + ".index");
+      if (fin_index.is_open()) {
+        if (fin_index.read(reinterpret_cast<char*>(sz_buf), 8) && fin_index.gcount() == 8) {
+          items_per_index = BytesToInt<uint64_t>(sz_buf);
+        }
+        if (!items_per_index) throw std::runtime_error("invalid index file");
+      }
+    }
+    buf.reserve(kBufferSize);
+  }
+  ClassReaderImpl(const ClassReaderImpl&) = delete;
+  ClassReaderImpl(ClassReaderImpl&&) = default;
+
+  bool HasIndex() const {
+    return !kIsConstSize && items_per_index >= 1;
+  }
+
+  size_t Position() const {
+    return current;
+  }
+};
+
+} // namespace io_internal
+
+struct ReadError : std::out_of_range {
+  using std::out_of_range::out_of_range;
+};
+
+template <class T>
+class ClassWriter : public io_internal::ClassWriterImpl<T> {
+  using io_internal::ClassWriterImpl<T>::kIsConstSize;
+  using io_internal::ClassWriterImpl<T>::kSizeNumberBytes;
+  using io_internal::ClassWriterImpl<T>::kBufferSize;
+  using io_internal::ClassWriterImpl<T>::kIndexBufferSize;
+  using io_internal::ClassWriterImpl<T>::Flush;
+  using io_internal::ClassWriterImpl<T>::FlushIndex;
+  using io_internal::ClassWriterImpl<T>::current;
+  using io_internal::ClassWriterImpl<T>::inds;
+  using io_internal::ClassWriterImpl<T>::buf;
+  using io_internal::ClassWriterImpl<T>::items_per_index;
+ public:
+  using io_internal::ClassWriterImpl<T>::HasIndex;
+  using io_internal::ClassWriterImpl<T>::ByteSize;
+
+  ClassWriter(const std::string& fname, size_t items_per_index = 1024) :
+      io_internal::ClassWriterImpl<T>(fname, kIsConstSize ? 0 : items_per_index) {}
+  ClassWriter(const ClassWriter&) = delete;
+  ClassWriter(ClassWriter&&) = default;
+
   void Write(const T& item) {
+    using namespace io_internal;
     if (HasIndex() && current % items_per_index == 0) {
       inds.push_back(ByteSize());
       if (inds.size() >= kIndexBufferSize) FlushIndex();
@@ -127,37 +219,23 @@ class ClassWriter : private io_internal::ClassIOAttr<T> {
   void Write(const std::vector<T>& items) {
     for (auto& i : items) Write(i);
   }
-
-  size_t Size() const {
-    return current;
-  }
-
-  size_t ByteSize() {
-    return current_written_size + buf.size();
-  }
 };
 
 template <class T>
-class ClassReader : private io_internal::ClassIOAttr<T> {
-  using io_internal::ClassIOAttr<T>::kIsConstSize;
-  using io_internal::ClassIOAttr<T>::kSizeNumberBytes;
-  using io_internal::ClassIOAttr<T>::kBufferSize;
+class ClassReader : public io_internal::ClassReaderImpl<T> {
+  using io_internal::ClassReaderImpl<T>::kIsConstSize;
+  using io_internal::ClassReaderImpl<T>::kSizeNumberBytes;
+  using io_internal::ClassReaderImpl<T>::kBufferSize;
+  using io_internal::ClassReaderImpl<T>::ParseBufSize;
+  using io_internal::ClassReaderImpl<T>::ReadUntilSize;
+  using io_internal::ClassReaderImpl<T>::buf;
+  using io_internal::ClassReaderImpl<T>::eof;
+  using io_internal::ClassReaderImpl<T>::current;
+  using io_internal::ClassReaderImpl<T>::fin;
+  using io_internal::ClassReaderImpl<T>::fin_index;
+  using io_internal::ClassReaderImpl<T>::items_per_index;
 
-  std::vector<uint8_t> buf;
-  size_t current, current_offset;
-  size_t items_per_index;
-  bool eof;
-  std::ifstream fin;
-  std::ifstream fin_index;
-
-  void ReadUntilSize(size_t sz, size_t buf_size) {
-    size_t old_sz = buf.size();
-    sz = std::max(sz, buf_size);
-    if (sz <= old_sz) return;
-    buf.resize(sz);
-    fin.read(reinterpret_cast<char*>(buf.data() + old_sz), sz - old_sz);
-    buf.resize(old_sz + fin.gcount());
-  }
+  size_t current_offset;
 
   uint64_t GetNextSize(size_t buf_size) {
     if constexpr (kIsConstSize) return T::NumBytes();
@@ -171,41 +249,14 @@ class ClassReader : private io_internal::ClassIOAttr<T> {
     memcpy(sz_buf, buf.data() + current_offset, kSizeNumberBytes);
     return BytesToInt<uint64_t>(sz_buf);
   }
-
-  void ParseBufSize(size_t& buf_size) {
-    if (buf_size == std::string::npos) buf_size = kBufferSize;
-  }
  public:
-  struct ReadError : std::out_of_range {
-    using std::out_of_range::out_of_range;
-  };
+  using io_internal::ClassReaderImpl<T>::HasIndex;
+  using io_internal::ClassReaderImpl<T>::Position;
 
   ClassReader(const std::string& fname) :
-      current(0), current_offset(0), items_per_index(0), eof(false) {
-    static_assert(kIsConstSize || (kSizeNumberBytes >= 1 && kSizeNumberBytes <= 8));
-    fin.rdbuf()->pubsetbuf(nullptr, 0);
-    fin.open(fname);
-    if (!fin.is_open()) throw std::runtime_error("cannot open file");
-    uint8_t sz_buf[8] = {};
-    if constexpr (!kIsConstSize) {
-      fin_index.rdbuf()->pubsetbuf(nullptr, 0);
-      fin_index.open(fname + ".index");
-      if (fin_index.is_open()) {
-        if (fin_index.read(reinterpret_cast<char*>(sz_buf), 8) && fin_index.gcount() == 8) {
-          items_per_index = BytesToInt<uint64_t>(sz_buf);
-        }
-        if (!items_per_index) throw std::runtime_error("invalid index file");
-      }
-    }
-    buf.reserve(kBufferSize);
-  }
-
+      io_internal::ClassReaderImpl<T>(fname, !kIsConstSize), current_offset(0) {}
   ClassReader(const ClassReader&) = delete;
   ClassReader(ClassReader&&) = default;
-
-  bool HasIndex() const {
-    return !kIsConstSize && items_per_index >= 1;
-  }
 
   void SkipOne(size_t buf_size = std::string::npos) {
     ParseBufSize(buf_size);

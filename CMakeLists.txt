@@ -57,6 +57,7 @@ FetchContent_Declare(
   URL "https://github.com/gabime/spdlog/archive/refs/tags/v1.12.0.zip"
 )
 
+find_package(zstd REQUIRED)
 FetchContent_MakeAvailable_Exclude(argparse spdlog)
 
 #add_executable(graph_gen graph_gen.cpp)
@@ -68,7 +69,7 @@ file(GLOB MAIN_SRC "src/*.cpp")
 add_executable(main ${MAIN_SRC})
 
 target_compile_definitions(main PRIVATE -DTAP_SPEED=${TAP_SPEED} -DADJ_DELAY=${ADJ_DELAY})
-target_link_libraries(main argparse::argparse spdlog::spdlog)
+target_link_libraries(main argparse::argparse spdlog::spdlog zstd)
 
 #target_link_libraries(graph_gen PRIVATE Threads::Threads "${TBB_LIB}")
 #target_link_libraries(gametree PRIVATE Threads::Threads)
@@ -84,7 +85,7 @@ if(BUILD_TESTS)
 
   file(GLOB TEST_SRC "test/*.cpp" "src/files.cpp" "src/config.cpp")
   add_executable(run-test ${TEST_SRC})
-  target_link_libraries(run-test gtest_main)
+  target_link_libraries(run-test gtest_main zstd)
 
   include(GoogleTest)
   gtest_discover_tests(run-test)
