@@ -10,6 +10,8 @@
 #include "io_helpers.h"
 #include "constexpr_helpers.h"
 
+constexpr size_t kPieces = 7;
+
 class alignas(32) Board;
 constexpr Board operator|(const Board& x, const Board& y);
 constexpr Board operator&(const Board& x, const Board& y);

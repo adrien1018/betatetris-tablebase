@@ -10,8 +10,11 @@ namespace fs = std::filesystem;
 fs::path BoardPath(int group) {
   return kDataDir / "boards" / std::to_string(group);
 }
-fs::path SearchEdgePath(int group) {
-  return kDataDir / "edges" / (std::to_string(group) + ".search");
+fs::path EvaluateEdgePath(int group, int level) {
+  return kDataDir / "edges" / (std::to_string(group) + ".l" + std::to_string(level) + ".eval");
+}
+fs::path PositionEdgePath(int group, int level) {
+  return kDataDir / "edges" / (std::to_string(group) + ".l" + std::to_string(level) + ".pos");
 }
 fs::path ValuePath(int pieces) {
   std::string r = std::to_string(pieces);

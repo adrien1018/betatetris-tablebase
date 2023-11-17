@@ -46,6 +46,7 @@ class ClassWriter : private io_internal::ClassIOAttr<T> {
   size_t current_written_size;
   std::ofstream fout;
   std::ofstream fout_ind;
+  bool moved;
 
   void Flush() {
     if (!fout.write(reinterpret_cast<const char*>(buf.data()), buf.size())) {
@@ -68,7 +69,7 @@ class ClassWriter : private io_internal::ClassIOAttr<T> {
   }
  public:
   ClassWriter(const std::string& fname, size_t items_per_index = 1024) :
-      current(0), items_per_index(items_per_index), current_written_size(0) {
+      current(0), items_per_index(items_per_index), current_written_size(0), moved(false) {
     static_assert(kIsConstSize || (kSizeNumberBytes >= 1 && kSizeNumberBytes <= 8));
     MkdirForFile(fname);
     fout.open(fname, std::ios_base::out | std::ios_base::trunc);
@@ -82,7 +83,17 @@ class ClassWriter : private io_internal::ClassIOAttr<T> {
     buf.reserve(kBufferSize);
   }
 
+  ClassWriter(const ClassWriter&) = delete;
+  ClassWriter(ClassWriter&& x) :
+      buf(std::move(x.buf)), inds(std::move(x.inds)),
+      current(x.current), items_per_index(x.items_per_index),
+      current_written_size(x.current_written_size),
+      fout(std::move(x.fout)), fout_ind(std::move(x.fout_ind)), moved(false) {
+    x.moved = true;
+  }
+
   ~ClassWriter() {
+    if (moved) return;
     inds.push_back(ByteSize());
     Flush();
     FlushIndex();
@@ -188,6 +199,9 @@ class ClassReader : private io_internal::ClassIOAttr<T> {
     }
     buf.reserve(kBufferSize);
   }
+
+  ClassReader(const ClassReader&) = delete;
+  ClassReader(ClassReader&&) = default;
 
   bool HasIndex() const {
     return !kIsConstSize && items_per_index >= 1;

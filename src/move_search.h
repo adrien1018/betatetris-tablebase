@@ -8,6 +8,8 @@
 #include "position.h"
 #include "constexpr_helpers.h"
 
+constexpr int kLevels = 4;
+
 enum Level {
   kLevel18,
   kLevel19,

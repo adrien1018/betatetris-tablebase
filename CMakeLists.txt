@@ -17,9 +17,9 @@ if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
   endif()
 endif()
 
-set(CMAKE_CXX_FLAGS "-std=c++20 -march=native -mbmi2 -Wall -Wextra -Wno-unused-parameter")
+set(CMAKE_CXX_FLAGS "-std=c++20 -mbmi2 -Wall -Wextra -Wno-unused-parameter")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
