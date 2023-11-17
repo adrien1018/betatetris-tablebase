@@ -206,11 +206,11 @@ void BuildEdges(int group) {
   BoardMap mp = GetBoardMap(nxt_group);
   spdlog::info("Board map loaded with {} boards", mp.size());
 
-  std::vector<ClassWriter<EvaluateNodeEdges>> eval_writers;
-  std::vector<ClassWriter<PositionNodeEdges>> pos_writers;
+  std::vector<CompressedClassWriter<EvaluateNodeEdges>> eval_writers;
+  std::vector<CompressedClassWriter<PositionNodeEdges>> pos_writers;
   for (int level = 0; level < kLevels; level++) {
-    eval_writers.emplace_back(EvaluateEdgePath(group, level), 128);
-    pos_writers.emplace_back(PositionEdgePath(group, level), 256);
+    eval_writers.emplace_back(EvaluateEdgePath(group, level), 128 * 7);
+    pos_writers.emplace_back(PositionEdgePath(group, level), 128 * 7);
   }
 
   spdlog::info("Start building edges");

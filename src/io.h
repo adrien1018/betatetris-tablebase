@@ -5,6 +5,7 @@
 #include <vector>
 #include <fstream>
 #include <stdexcept>
+#include <zstd.h>
 
 #include "files.h"
 #include "constexpr_helpers.h"
@@ -91,13 +92,12 @@ class ClassWriterImpl {
 
   ~ClassWriterImpl() {
     if (moved) return;
-    inds.push_back(ByteSize());
     Flush();
     FlushIndex();
   }
 
   bool HasIndex() const {
-    return !kIsConstSize && items_per_index >= 1;
+    return items_per_index >= 1;
   }
 
   size_t Size() const {
@@ -159,7 +159,7 @@ class ClassReaderImpl {
   ClassReaderImpl(ClassReaderImpl&&) = default;
 
   bool HasIndex() const {
-    return !kIsConstSize && items_per_index >= 1;
+    return items_per_index >= 1;
   }
 
   size_t Position() const {
@@ -185,17 +185,22 @@ class ClassWriter : public io_internal::ClassWriterImpl<T> {
   using io_internal::ClassWriterImpl<T>::inds;
   using io_internal::ClassWriterImpl<T>::buf;
   using io_internal::ClassWriterImpl<T>::items_per_index;
+  using io_internal::ClassWriterImpl<T>::moved;
  public:
   using io_internal::ClassWriterImpl<T>::HasIndex;
   using io_internal::ClassWriterImpl<T>::ByteSize;
+  using io_internal::ClassWriterImpl<T>::Size;
 
   ClassWriter(const std::string& fname, size_t items_per_index = 1024) :
       io_internal::ClassWriterImpl<T>(fname, kIsConstSize ? 0 : items_per_index) {}
   ClassWriter(const ClassWriter&) = delete;
   ClassWriter(ClassWriter&&) = default;
+  ~ClassWriter() {
+    if (moved) return;
+    inds.push_back(ByteSize());
+  }
 
   void Write(const T& item) {
-    using namespace io_internal;
     if (HasIndex() && current % items_per_index == 0) {
       inds.push_back(ByteSize());
       if (inds.size() >= kIndexBufferSize) FlushIndex();
@@ -349,5 +354,83 @@ class ClassReader : public io_internal::ClassReaderImpl<T> {
       current_offset = 0;
     }
     while (location > current) SkipOne(buf_size);
+  }
+};
+
+template <class T>
+class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
+  using io_internal::ClassWriterImpl<T>::kIsConstSize;
+  using io_internal::ClassWriterImpl<T>::kSizeNumberBytes;
+  using io_internal::ClassWriterImpl<T>::kBufferSize;
+  using io_internal::ClassWriterImpl<T>::kIndexBufferSize;
+  using io_internal::ClassWriterImpl<T>::Flush;
+  using io_internal::ClassWriterImpl<T>::FlushIndex;
+  using io_internal::ClassWriterImpl<T>::current;
+  using io_internal::ClassWriterImpl<T>::inds;
+  using io_internal::ClassWriterImpl<T>::buf;
+  using io_internal::ClassWriterImpl<T>::items_per_index;
+  using io_internal::ClassWriterImpl<T>::moved;
+
+  ZSTD_CCtx* zstd_ctx;
+  std::vector<uint8_t> compress_buf;
+  int compress_level;
+
+  void DoCompress() {
+    inds.push_back(compress_buf.size());
+    size_t offset = buf.size();
+    size_t clear_size = ZSTD_compressBound(compress_buf.size());
+    buf.resize(offset + clear_size);
+    size_t nlen = ZSTD_compressCCtx(
+        zstd_ctx, buf.data() + offset, clear_size, compress_buf.data(), compress_buf.size(), -4);
+    buf.resize(offset + nlen);
+    compress_buf.clear();
+    inds.push_back(ByteSize());
+    if (buf.size() >= kBufferSize) Flush();
+  }
+ public:
+  using io_internal::ClassWriterImpl<T>::HasIndex;
+  using io_internal::ClassWriterImpl<T>::ByteSize;
+  using io_internal::ClassWriterImpl<T>::Size;
+
+  CompressedClassWriter(const std::string& fname, size_t items_per_index = 1024) :
+      io_internal::ClassWriterImpl<T>(fname, items_per_index == 0 ? 1 : items_per_index) {
+    zstd_ctx = ZSTD_createCCtx();
+    if (!zstd_ctx) throw std::runtime_error("zstd initialize failed");
+    inds.push_back(0);
+  }
+  CompressedClassWriter(const CompressedClassWriter&) = delete;
+  CompressedClassWriter(CompressedClassWriter&& x) :
+      io_internal::ClassWriterImpl<T>(std::move(x)),
+      zstd_ctx(x.zstd_ctx), compress_buf(std::move(x.compress_buf)) {
+    x.zstd_ctx = nullptr;
+  }
+  ~CompressedClassWriter() {
+    if (moved) return;
+    if (compress_buf.size()) DoCompress();
+    ZSTD_freeCCtx(zstd_ctx);
+  }
+
+  void Write(const T& item) {
+    current++;
+    size_t sz = item.NumBytes();
+    if (!kIsConstSize && kSizeNumberBytes < 8 && sz >= (1ll << (8 * kSizeNumberBytes))) {
+      throw std::out_of_range("output size too large");
+    }
+    size_t old_sz = compress_buf.size();
+    compress_buf.resize(old_sz + sz + kSizeNumberBytes);
+    if constexpr (!kIsConstSize) {
+      uint8_t sz_buf[8] = {};
+      IntToBytes<uint64_t>(sz, sz_buf);
+      memcpy(compress_buf.data() + old_sz, sz_buf, kSizeNumberBytes);
+    }
+    item.GetBytes(compress_buf.data() + old_sz + kSizeNumberBytes);
+    if (current % items_per_index == 0) {
+      DoCompress();
+      if (inds.size() >= kIndexBufferSize) FlushIndex();
+    }
+  }
+
+  void Write(const std::vector<T>& items) {
+    for (auto& i : items) Write(i);
   }
 };

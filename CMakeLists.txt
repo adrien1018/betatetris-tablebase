@@ -23,8 +23,8 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(zstd REQUIRED)
 find_package(Threads REQUIRED)
-find_library(TBB_LIB tbb)
 
 include(TestBigEndian)
 TEST_BIG_ENDIAN(IS_BIG_ENDIAN)
@@ -57,7 +57,6 @@ FetchContent_Declare(
   URL "https://github.com/gabime/spdlog/archive/refs/tags/v1.12.0.zip"
 )
 
-find_package(zstd REQUIRED)
 FetchContent_MakeAvailable_Exclude(argparse spdlog)
 
 #add_executable(graph_gen graph_gen.cpp)

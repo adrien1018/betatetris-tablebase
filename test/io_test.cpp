@@ -88,6 +88,7 @@ class IOTestVarSize : public IOTest {
 
 TEST_F(IOTestConstSize, ReadWrite) {
   SetUp(100);
+  ASSERT_EQ(std::filesystem::is_regular_file(kTestIndexFile), false);
   {
     ClassReader<ConstSizeStruct> reader(kTestFile);
     auto nvec = reader.ReadBatch(100);
@@ -120,9 +121,7 @@ TEST_F(IOTestVarSize, ReadWrite) {
   for (size_t index : {0, 256}) {
     TearDown();
     SetUp(100, index);
-    if (!index) {
-      ASSERT_EQ(std::filesystem::is_regular_file(kTestIndexFile), false);
-    }
+    ASSERT_EQ(std::filesystem::is_regular_file(kTestIndexFile), (bool)index);
     {
       ClassReader<VarSizeStruct> reader(kTestFile);
       auto nvec = reader.ReadBatch(100);

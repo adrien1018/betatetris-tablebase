@@ -18,13 +18,14 @@ class ThreadQueue {
   std::deque<std::pair<bool, std::future<T>>> queue;
 
   void CheckFinish() {
-    while (queue.size() && (queue.front().first || IsReady(queue.front().second))) {
+    for (size_t num_finish = 0;
+         num_finish < 3 && queue.size() && (queue.front().first || IsReady(queue.front().second));
+         num_finish++) {
       finish(queue.front().second.get());
       if (!queue.front().first) num_running--;
       queue.pop_front();
     }
-    for (size_t i = 1; i < queue.size(); i++) {
-      auto& item = queue[i];
+    for (auto& item : queue) {
       if (!item.first && IsReady(item.second)) {
         num_running--;
         item.first = true;
