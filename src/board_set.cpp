@@ -8,6 +8,7 @@
 #pragma GCC diagnostic ignored "-Wstringop-overflow"
 #include <spdlog/spdlog.h>
 #pragma GCC diagnostic pop
+#include <spdlog/fmt/fmt.h>
 
 #include <tsl/hopscotch_map.h>
 
@@ -74,19 +75,26 @@ using TapSpeed = TAP_SPEED;
 constexpr int kAdjDelay = ADJ_DELAY;
 
 struct EdgeStats {
-  std::atomic_long non_adj, adj, adj_ed, next, subset;
+  std::atomic_long next, non_adj, adj_orig, adj, adj_ed, adj_ed_fin, subset;
   void Clear() {
+    next.store(0);
     non_adj.store(0);
+    adj_orig.store(0);
     adj.store(0);
     adj_ed.store(0);
-    next.store(0);
+    adj_ed_fin.store(0);
     subset.store(0);
+  }
+  std::string ToText() const {
+    return fmt::format("next {}, non_adj {}, adj_orig {}, adj {}, adj_ed {}, adj_ed_fin {}, subset {}",
+        next.load(), non_adj.load(), adj_orig.load(), adj.load(), adj_ed.load(), adj_ed_fin.load(), subset.load());
   }
 } edge_stats[4];
 
 inline std::pair<EvaluateNodeEdges, PositionNodeEdges> GetEdges(
     const Board& b, int piece, const PossibleMoves& moves, const BoardMap& mp, int level) {
   constexpr uint64_t kNone = std::numeric_limits<uint64_t>::max();
+  // use position as key; note that multiple positions may lead to same board
   tsl::hopscotch_map<Position, std::pair<uint64_t, uint8_t>> mp_next;
   mp_next.reserve(48);
   for (auto& pos : moves.non_adj) mp_next[pos] = {kNone, 0};
@@ -118,41 +126,49 @@ inline std::pair<EvaluateNodeEdges, PositionNodeEdges> GetEdges(
     }
   }
   // non-adjs
-  for (auto& pos : moves.non_adj) {
+  for (const auto& pos : moves.non_adj) {
     if (auto it = mp_idx.find(pos); it != mp_idx.end()) {
       eval_ed.non_adj.push_back(it->second);
     }
   }
   // adjs
   size_t adj_eds = 0;
-  for (auto& adj : moves.adj) {
-    std::vector<uint8_t> ids;
-    for (auto& pos : adj.second) {
-      if (auto it = mp_idx.find(pos); it != mp_idx.end()) {
-        ids.push_back(it->second);
-      }
-    }
-    if (ids.empty()) continue;
-    adj_eds += ids.size();
-    eval_ed.adj.push_back(std::move(ids));
-    pos_ed.adj.push_back(adj.first);
-    ids.clear();
-  }
   auto& stats = edge_stats[level];
+  {
+    std::vector<Position> pos_adj;
+    for (const auto& adj : moves.adj) {
+      std::vector<uint8_t> ids;
+      for (const auto& pos : adj.second) {
+        if (auto it = mp_idx.find(pos); it != mp_idx.end()) {
+          ids.push_back(it->second);
+        }
+      }
+      if (ids.empty()) continue;
+      eval_ed.adj.push_back(std::move(ids));
+      pos_adj.push_back(adj.first);
+      ids.clear();
+    }
+    stats.adj_orig += eval_ed.adj.size();
+    const auto adj_mp = eval_ed.ReduceAdj();
+    for (const auto& i : adj_mp) {
+      pos_ed.adj.emplace_back();
+      for (const auto& j : i) pos_ed.adj.back().push_back(pos_adj[j]);
+    }
+    for (auto& i : eval_ed.adj) adj_eds += i.size();
+  }
+  // stats
   stats.next += eval_ed.next_ids.size();
   stats.non_adj += eval_ed.non_adj.size();
   stats.adj += eval_ed.adj.size();
-  if (adj_eds >= 2 * eval_ed.adj.size() && adj_eds >= 6) {
-    eval_ed.CalculateSubset();
-    if (adj_eds >= 1.5 * eval_ed.subset_idx_prev.size()) {
-      eval_ed.adj.clear();
-      eval_ed.use_subset = true;
-      stats.subset += eval_ed.subset_idx_prev.size();
-    } else {
-      stats.adj_ed += adj_eds;
-    }
+  stats.adj_ed += adj_eds;
+  // subset optim
+  eval_ed.CalculateSubset();
+  if (adj_eds >= 1.5 * eval_ed.subset_idx_prev.size()) {
+    eval_ed.adj.clear();
+    eval_ed.use_subset = true;
+    stats.subset += eval_ed.subset_idx_prev.size();
   } else {
-    stats.adj_ed += adj_eds;
+    stats.adj_ed_fin += adj_eds;
   }
   return {eval_ed, pos_ed};
 }
@@ -209,22 +225,20 @@ void BuildEdges(int group) {
   std::vector<CompressedClassWriter<EvaluateNodeEdges>> eval_writers;
   std::vector<CompressedClassWriter<PositionNodeEdges>> pos_writers;
   for (int level = 0; level < kLevels; level++) {
-    eval_writers.emplace_back(EvaluateEdgePath(group, level), 128 * 7);
-    pos_writers.emplace_back(PositionEdgePath(group, level), 128 * 7);
+    eval_writers.emplace_back(EvaluateEdgePath(group, level), 128 * kPieces);
+    pos_writers.emplace_back(PositionEdgePath(group, level), 128 * kPieces);
   }
 
   spdlog::info("Start building edges");
   for (int i = 0; i < kLevels; i++) edge_stats[i].Clear();
   auto PrintStats = [](size_t n_boards, int level, spdlog::level::level_enum log_level) {
-    auto& stats = edge_stats[level];
-    spdlog::log(log_level,
-        "{} boards processed, level {}: next {}, non_adj {}, adj {}, adj_ed {}, subset {}",
-        n_boards, level, stats.next, stats.non_adj, stats.adj, stats.adj_ed, stats.subset);
+    spdlog::log(log_level, "{} boards processed, level {}: {}",
+        n_boards, level, edge_stats[level].ToText());
   };
   size_t n_boards = 0;
   auto thread_queue = MakeThreadQueue<EdgeChunk>(kParallel, [&](EdgeChunk&& chunk) {
     constexpr size_t kOutput = 131072;
-    size_t sz = chunk.first[0].size() / 7;
+    size_t sz = chunk.first[0].size() / kPieces;
     bool output = n_boards / kOutput != (n_boards + sz) / kOutput;
     n_boards += sz;
     for (int level = 0; level < kLevels; level++) {

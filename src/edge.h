@@ -2,9 +2,12 @@
 
 #include <cstdint>
 #include <deque>
+#include <bitset>
 #include <vector>
 #include <stdexcept>
+#include <tsl/hopscotch_map.h>
 
+#include "hash.h"
 #include "position.h"
 #include "io_helpers.h"
 #include "constexpr_helpers.h"
@@ -133,6 +136,25 @@ class EvaluateNodeEdges {
   bool operator==(const EvaluateNodeEdges&) const = default;
   bool operator!=(const EvaluateNodeEdges&) const = default;
 
+  // ret[new_idx] = {old_idx...}
+  std::vector<std::vector<uint8_t>> ReduceAdj() {
+    using Key = std::bitset<256>;
+    tsl::hopscotch_map<Key, std::vector<uint8_t>, std::hash<Key>, std::equal_to<Key>,
+                       std::allocator<std::pair<Key, std::vector<uint8_t>>>, 30, true> mp;
+    for (size_t i = 0; i < adj.size(); i++) {
+      std::bitset<256> bs{};
+      for (const auto& j : adj[i]) bs[j] = true;
+      mp[bs].push_back(i);
+    }
+    std::vector<std::vector<uint8_t>> ret, new_adj;
+    for (auto& i : mp) {
+      new_adj.push_back(std::move(adj[i.second[0]]));
+      ret.push_back(std::move(i.second));
+    }
+    adj.swap(new_adj);
+    return ret;
+  }
+
   void CalculateSubset() {
     SubsetCalculator(next_ids.size(), adj, adj_subset, subset_idx_prev);
   }
@@ -237,14 +259,16 @@ struct PositionNodeEdges {
   static constexpr size_t kSizeNumberBytes = 2;
 
   std::vector<Position> nexts;
-  std::vector<Position> adj;
+  std::vector<std::vector<Position>> adj;
 
   bool operator==(const PositionNodeEdges&) const = default;
   bool operator!=(const PositionNodeEdges&) const = default;
 
   size_t NumBytes() const {
     if (nexts.size() >= 256 || adj.size() >= 256) throw std::out_of_range("output too large");
-    return 2 + nexts.size() * 2 + adj.size() * 2;
+    size_t ret = 2 + nexts.size() * 2;
+    for (auto& i : adj) ret += 1 + i.size() * 2;
+    return ret;
   }
 
   void GetBytes(uint8_t ret[]) const {
@@ -255,8 +279,10 @@ struct PositionNodeEdges {
       return 2;
     });
     ind += VecOutput<1>(adj, ret + ind, [&](auto& i, uint8_t data[]) {
-      i.GetBytes(data);
-      return 2;
+      return VecOutput<1>(i, data, [&](auto& j, uint8_t data2[]) {
+        j.GetBytes(data2);
+        return 2;
+      });
     });
     if (ind != sz) throw std::runtime_error("size not match");
   }
@@ -269,8 +295,10 @@ struct PositionNodeEdges {
       return 2;
     });
     ind += VecInput<1>(adj, data + ind, [](auto& i, const uint8_t data[]) {
-      i = Position(data, 2);
-      return 2;
+      return VecInput<1>(i, data, [](auto& j, const uint8_t data[]) {
+        j = Position(data, 2);
+        return 2;
+      });
     });
     if (ind != sz) throw std::runtime_error("size not match");
   }

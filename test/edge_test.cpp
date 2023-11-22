@@ -32,48 +32,45 @@ class EdgeTest : public ::testing::Test {
   void TearDown() override {}
 };
 
-EvaluateNodeEdges GenEvaluateEdges(const PossibleMoves& moves) {
+std::pair<EvaluateNodeEdges, PositionNodeEdges> GenEdges(const PossibleMoves& moves) {
   std::mt19937_64 gen(0);
   std::unordered_map<Position, int> mp;
   for (auto& i : moves.non_adj) mp.insert({i, (int)mp.size()});
   for (auto& adj : moves.adj) {
     for (auto& i : adj.second) mp.insert({i, (int)mp.size()});
   }
-  EvaluateNodeEdges ed;
+  EvaluateNodeEdges ed_eval;
+  PositionNodeEdges ed_pos;
+  ed_pos.nexts.resize(mp.size());
   std::vector<uint32_t> ind;
   for (size_t i = 0; i < mp.size(); i++) {
     ind.push_back(i);
-    ed.next_ids.push_back({(uint32_t)gen(), mrand(0, 4)(gen)});
+    ed_eval.next_ids.push_back({(uint32_t)gen(), mrand(0, 4)(gen)});
   }
   std::shuffle(ind.begin(), ind.end(), gen);
-  for (auto& i : moves.non_adj) ed.non_adj.push_back(ind[mp[i]]);
+  for (auto& i : moves.non_adj) ed_eval.non_adj.push_back(ind[mp[i]]);
+  for (auto& i : mp) ed_pos.nexts[ind[i.second]] = i.first;
+  std::vector<Position> pos_adj;
   for (auto& adj : moves.adj) {
-    ed.adj.emplace_back();
-    for (auto& i : adj.second) ed.adj.back().push_back(ind[mp[i]]);
+    ed_eval.adj.emplace_back();
+    for (auto& i : adj.second) ed_eval.adj.back().push_back(ind[mp[i]]);
+    pos_adj.push_back(adj.first);
   }
-  return ed;
-}
-
-PositionNodeEdges GenPositionEdges(const PossibleMoves& moves) {
-  std::mt19937_64 gen(0);
-  std::unordered_map<Position, int> mp;
-  for (auto& i : moves.non_adj) mp.insert({i, (int)mp.size()});
-  for (auto& adj : moves.adj) {
-    for (auto& i : adj.second) mp.insert({i, (int)mp.size()});
+  auto adj_mp = ed_eval.ReduceAdj();
+  for (auto& i : adj_mp) {
+    ed_pos.adj.emplace_back();
+    for (auto& j : i) ed_pos.adj.back().push_back(pos_adj[j]);
   }
-  std::vector<uint32_t> ind;
-  for (size_t i = 0; i < mp.size(); i++) ind.push_back(i);
-  std::shuffle(ind.begin(), ind.end(), gen);
-  PositionNodeEdges ed;
-  ed.nexts.resize(mp.size());
-  for (auto& i : mp) ed.nexts[ind[i.second]] = i.first;
-  for (auto& i : moves.adj) ed.adj.push_back(i.first);
-  return ed;
+  if (ed_pos.adj.size()) { // ensure multiple adj is tested
+    ed_pos.adj[0].push_back({1, 1, 1});
+    ed_pos.adj[0].push_back({1, 1, 2});
+  }
+  return {ed_eval, ed_pos};
 }
 
 TEST_F(EdgeTest, EvaluateSerialize) {
   for (auto& m : moves) {
-    auto edges = GenEvaluateEdges(m);
+    auto edges = GenEdges(m).first;
     std::vector<uint8_t> buf(edges.NumBytes());
     edges.GetBytes(buf.data());
     auto edges2 = EvaluateNodeEdges(buf.data(), buf.size());
@@ -91,7 +88,7 @@ TEST_F(EdgeTest, EvaluateSerialize) {
 
 TEST_F(EdgeTest, EvaluateSubset) {
   for (auto& m : moves) {
-    auto edges = GenEvaluateEdges(m);
+    auto edges = GenEdges(m).first;
     edges.CalculateSubset();
     std::vector<std::unordered_set<uint8_t>> s1;
     for (auto& i : edges.adj) s1.emplace_back(i.begin(), i.end());
@@ -104,7 +101,7 @@ TEST_F(EdgeTest, EvaluateSubset) {
 
 TEST_F(EdgeTest, PositionSerialize) {
   for (auto& m : moves) {
-    auto edges = GenPositionEdges(m);
+    auto edges = GenEdges(m).second;
     std::vector<uint8_t> buf(edges.NumBytes());
     edges.GetBytes(buf.data());
     auto edges2 = PositionNodeEdges(buf.data(), buf.size());

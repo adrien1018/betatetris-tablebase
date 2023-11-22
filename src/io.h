@@ -131,10 +131,6 @@ class ClassReaderImpl {
     fin.read(reinterpret_cast<char*>(buf.data() + old_sz), sz - old_sz);
     buf.resize(old_sz + fin.gcount());
   }
-
-  void ParseBufSize(size_t& buf_size) {
-    if (buf_size == std::string::npos) buf_size = kBufferSize;
-  }
  public:
   ClassReaderImpl(const std::string& fname, bool check_index) :
       current(0), items_per_index(0), eof(false) {
@@ -231,7 +227,6 @@ class ClassReader : public io_internal::ClassReaderImpl<T> {
   using io_internal::ClassReaderImpl<T>::kIsConstSize;
   using io_internal::ClassReaderImpl<T>::kSizeNumberBytes;
   using io_internal::ClassReaderImpl<T>::kBufferSize;
-  using io_internal::ClassReaderImpl<T>::ParseBufSize;
   using io_internal::ClassReaderImpl<T>::ReadUntilSize;
   using io_internal::ClassReaderImpl<T>::buf;
   using io_internal::ClassReaderImpl<T>::eof;
@@ -253,6 +248,10 @@ class ClassReader : public io_internal::ClassReaderImpl<T> {
     uint8_t sz_buf[8] = {};
     memcpy(sz_buf, buf.data() + current_offset, kSizeNumberBytes);
     return BytesToInt<uint64_t>(sz_buf);
+  }
+
+  void ParseBufSize(size_t& buf_size) {
+    if (buf_size == std::string::npos) buf_size = kBufferSize;
   }
  public:
   using io_internal::ClassReaderImpl<T>::HasIndex;
@@ -373,7 +372,6 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
 
   ZSTD_CCtx* zstd_ctx;
   std::vector<uint8_t> compress_buf;
-  int compress_level;
 
   void DoCompress() {
     inds.push_back(compress_buf.size());
@@ -382,6 +380,7 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
     buf.resize(offset + clear_size);
     size_t nlen = ZSTD_compressCCtx(
         zstd_ctx, buf.data() + offset, clear_size, compress_buf.data(), compress_buf.size(), -4);
+    if (ZSTD_isError(nlen)) throw std::runtime_error("zstd compress failed");
     buf.resize(offset + nlen);
     compress_buf.clear();
     inds.push_back(ByteSize());
@@ -432,5 +431,212 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
 
   void Write(const std::vector<T>& items) {
     for (auto& i : items) Write(i);
+  }
+};
+
+template <class T>
+class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
+  using io_internal::ClassReaderImpl<T>::kIsConstSize;
+  using io_internal::ClassReaderImpl<T>::kSizeNumberBytes;
+  using io_internal::ClassReaderImpl<T>::kBufferSize;
+  static constexpr size_t kIndexBufferSize = 131072;
+
+  using io_internal::ClassReaderImpl<T>::ReadUntilSize;
+  using io_internal::ClassReaderImpl<T>::buf;
+  using io_internal::ClassReaderImpl<T>::eof;
+  using io_internal::ClassReaderImpl<T>::current;
+  using io_internal::ClassReaderImpl<T>::fin;
+  using io_internal::ClassReaderImpl<T>::fin_index;
+  using io_internal::ClassReaderImpl<T>::items_per_index;
+
+  /*
+   * buf                                     [may partial]
+   *   buf_start_bytes                         fin.tallg() (bytes)
+   *                       block_start                     (item idx)
+   *   0               [infer from ind_buf]     buf.size() (buf idx)
+   *   |----------------------->********<............|
+   *
+   * ind_buf                                 [may partial]
+   *   ind_start           block_start=ind_start+ind_offset/2 (item idx)
+   *   0                   ind_offset        ind_buf.size()   (ind_buf idx)
+   *   |----------------------->*****<...............|
+   *                             len=3
+   * block_buf
+   *   block_start       current              [always full] (item idx)
+   *   0                 block_offset                       (block_buf idx)
+   *   |------------------->*********<...............|
+   */
+  ZSTD_DCtx* zstd_ctx;
+  size_t buf_start_bytes, ind_start, ind_offset, block_start, block_offset;
+  std::vector<uint8_t> block_buf;
+  std::vector<uint64_t> ind_buf;
+
+  void ReadIndUntilSize(size_t sz, size_t buf_size) {
+    size_t old_sz = ind_buf.size();
+    sz = std::max(sz, buf_size);
+    if (sz <= old_sz) return;
+    std::vector<char> tmp((sz - old_sz) * 8);
+    fin_index.read(tmp.data(), tmp.size());
+    tmp.resize(fin_index.gcount());
+    if (tmp.size() % 8 != 0) throw std::runtime_error("unexpected index file size");
+    size_t new_count = tmp.size() / 8;
+    ind_buf.reserve(old_sz + new_count);
+    for (size_t i = 0; i < new_count; i++) {
+      ind_buf.push_back(BytesToInt<uint64_t>(reinterpret_cast<const uint8_t*>(tmp.data() + i * 8)));
+    }
+  }
+
+  // if false, the offsets are in invalid state
+  bool MoveToNextBlock(size_t buf_size, size_t ind_buf_size) {
+    if (block_buf.size()) ind_offset += 2;
+    // ind_buf[ind_offset:ind_offset+3] = [start_byte, orig_size, end_byte]
+    if (ind_offset + 3 >= ind_buf.size()) {
+      for (size_t i = ind_offset; i < ind_buf.size(); i++) ind_buf[i - ind_offset] = ind_buf[i];
+      ind_buf.resize(ind_buf.size() - ind_offset);
+      ind_start += (ind_offset / 2) * items_per_index;
+      ind_offset = 0;
+      ReadIndUntilSize(3, ind_buf_size);
+      if (ind_buf.size() < 3) return false;
+    }
+    size_t start_offset = ind_buf[ind_offset] - buf_start_bytes;
+    size_t end_offset = ind_buf[ind_offset + 2] - buf_start_bytes;
+    if (end_offset >= buf.size()) {
+      for (size_t i = start_offset; i < buf.size(); i++) buf[i - start_offset] = buf[i];
+      buf.resize(buf.size() - start_offset);
+      buf_start_bytes += start_offset;
+      end_offset -= start_offset;
+      start_offset = 0;
+    }
+    ReadUntilSize(end_offset, buf_size);
+    if (buf.size() < end_offset) return false;
+    block_buf.resize(ind_buf[ind_offset + 1]);
+    size_t ret = ZSTD_decompressDCtx(
+        zstd_ctx, block_buf.data(), block_buf.size(), buf.data() + start_offset, end_offset - start_offset);
+    if (ZSTD_isError(ret)) throw std::runtime_error("zstd decompress failed");
+    if (ret != block_buf.size()) throw std::runtime_error("decompress: unexpected data length");
+    block_start = current;
+    block_offset = 0;
+    return true;
+  }
+
+  uint64_t GetNextSize(size_t buf_size, size_t ind_buf_size) {
+    if (block_offset == block_buf.size()) {
+      if (!MoveToNextBlock(buf_size, ind_buf_size)) {
+        eof = true;
+        throw ReadError("no more elements");
+      }
+    }
+    if constexpr (kIsConstSize) return T::NumBytes();
+    uint8_t sz_buf[8] = {};
+    memcpy(sz_buf, block_buf.data() + block_offset, kSizeNumberBytes);
+    return BytesToInt<uint64_t>(sz_buf);
+  }
+
+  void ParseBufSize(size_t& buf_size, size_t& ind_buf_size) {
+    if (buf_size == std::string::npos) buf_size = kBufferSize;
+    if (ind_buf_size == std::string::npos) ind_buf_size = kIndexBufferSize;
+  }
+
+  void SeekBuf(size_t start_bytes) {
+    if (!eof && buf_start_bytes <= start_bytes && start_bytes < buf_start_bytes + buf.size()) {
+      // nothing
+    } else {
+      buf_start_bytes = start_bytes;
+      buf.clear();
+      fin.clear();
+      fin.seekg(start_bytes);
+    }
+  }
+ public:
+  using io_internal::ClassReaderImpl<T>::HasIndex;
+  using io_internal::ClassReaderImpl<T>::Position;
+
+  CompressedClassReader(const std::string& fname) :
+      io_internal::ClassReaderImpl<T>(fname, true),
+      buf_start_bytes(0), ind_start(0), ind_offset(0), block_start(0), block_offset(0) {
+    if (items_per_index == 0) throw std::runtime_error("index file not found");
+    zstd_ctx = ZSTD_createDCtx();
+    if (!zstd_ctx) throw std::runtime_error("zstd initialize failed");
+  }
+  CompressedClassReader(const CompressedClassReader&) = delete;
+  CompressedClassReader(CompressedClassReader&& x) :
+      io_internal::ClassReaderImpl<T>(std::move(x)),
+      buf_start_bytes(x.buf_start_bytes), ind_start(x.ind_start), ind_offset(x.ind_offset),
+      block_start(x.block_start), block_offset(x.block_offset),
+      block_buf(std::move(x.block_buf)), ind_buf(std::move(x.ind_buf)) {
+    x.zstd_ctx = nullptr;
+  }
+  ~CompressedClassReader() {
+    if (zstd_ctx) ZSTD_freeDCtx(zstd_ctx);
+  }
+
+  void SkipOne(size_t buf_size = std::string::npos, size_t ind_buf_size = std::string::npos) {
+    ParseBufSize(buf_size, ind_buf_size);
+    uint64_t sz = GetNextSize(buf_size, ind_buf_size);
+    block_offset += kSizeNumberBytes + sz;
+    current++;
+  }
+
+  T ReadOne(size_t buf_size = std::string::npos, size_t ind_buf_size = std::string::npos) {
+    ParseBufSize(buf_size, ind_buf_size);
+    uint64_t sz = GetNextSize(buf_size, ind_buf_size);
+    if (block_buf.size() < block_offset + kSizeNumberBytes + sz) {
+      if constexpr (kIsConstSize) {
+        eof = true;
+        throw ReadError("no more elements");
+      } else {
+        throw std::runtime_error("invalid file format");
+      }
+    }
+    T ret(block_buf.data() + (block_offset + kSizeNumberBytes), sz);
+    block_offset += kSizeNumberBytes + sz;
+    current++;
+    return ret;
+  }
+
+  std::vector<T> ReadBatch(size_t num, size_t buf_size = std::string::npos, size_t ind_buf_size = std::string::npos) {
+    ParseBufSize(buf_size, ind_buf_size);
+    std::vector<T> ret;
+    ret.reserve(num);
+    try {
+      for (size_t i = 0; i < num; i++) ret.push_back(ReadOne(buf_size, ind_buf_size));
+    } catch (ReadError&) {}
+    return ret;
+  }
+
+  void Seek(size_t location, size_t buf_size = std::string::npos, size_t ind_buf_size = std::string::npos) {
+    ParseBufSize(buf_size, ind_buf_size);
+    if (!eof && block_start <= location && location < block_start + items_per_index) {
+      // same block
+      if (location < current) {
+        block_offset = 0;
+        current = block_start;
+      }
+    } else if (!eof && ind_buf.size() && ind_start <= location &&
+               location < ind_start + (ind_buf.size() - 1) / 2 * items_per_index) {
+      // different block, but in range of ind_buf
+      size_t block_idx_offset = (location - ind_start) / items_per_index;
+      ind_offset = block_idx_offset * 2;
+      block_start = ind_start + block_idx_offset * items_per_index;
+      block_buf.clear();
+      block_offset = 0;
+      current = block_start;
+      SeekBuf(ind_buf[ind_offset]);
+    } else {
+      // out of ind_buf
+      size_t block_idx = location / items_per_index;
+      ind_buf.clear();
+      ind_start = block_idx * items_per_index;
+      ind_offset = 0;
+      block_buf.clear();
+      block_start = ind_start;
+      block_offset = 0;
+      current = ind_start;
+      fin_index.clear();
+      fin_index.seekg((block_idx * 2 + 1) * 8);
+      ReadIndUntilSize(3, ind_buf_size);
+      SeekBuf(ind_buf[0]);
+    }
+    while (location > current) SkipOne(buf_size, ind_buf_size);
   }
 };
