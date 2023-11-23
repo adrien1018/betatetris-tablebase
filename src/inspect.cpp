@@ -9,18 +9,20 @@
 #include <spdlog/fmt/fmt.h>
 #include <spdlog/fmt/ranges.h>
 #pragma GCC diagnostic pop
+#include "thread_pool.hpp"
 
 #include "io.h"
 #include "edge.h"
 #include "board.h"
 #include "files.h"
+#include "config.h"
 
 template<> struct fmt::formatter<Position> {
   template <typename ParseContext>
   constexpr auto parse(ParseContext& ctx) const { return ctx.begin(); }
   template <typename FormatContext>
   auto format(const Position& pos, FormatContext& ctx) const {
-    return format_to(ctx.out(), "({},{},{})", pos.r, pos.x, pos.y);
+    return fmt::format_to(ctx.out(), "({},{},{})", pos.r, pos.x, pos.y);
   }
 };
 
@@ -85,8 +87,8 @@ void InspectEdge(int group, const std::vector<long>& board_idx, Level level, int
     reader_eval_ed.Seek(id * kPieces + piece, 0, 0);
     reader_pos_ed.Seek(id * kPieces + piece, 0, 0);
     auto board = Board(reader_cur.ReadOne(4096));
-    auto eval_ed = reader_eval_ed.ReadOne(0, 0);
-    auto pos_ed = reader_pos_ed.ReadOne(0, 0);
+    auto eval_ed = reader_eval_ed.ReadOne((size_t)0, 0);
+    auto pos_ed = reader_pos_ed.ReadOne((size_t)0, 0);
 
     std::cout << fmt::format("Group {}, board {}:\n", group, id) << board.ToString();
     std::vector<std::string> next_boards;
@@ -112,4 +114,39 @@ void InspectEdge(int group, const std::vector<long>& board_idx, Level level, int
       std::cout << fmt::format("{}: {}\n", pos_ed.adj[i], eval_ed.adj[i]);
     }
   }
+}
+
+void InspectEdgeStats(int group, Level level) {
+  int level_int = static_cast<int>(level);
+  CompressedClassReader<EvaluateNodeEdgesFast> reader(EvaluateEdgePath(group, level_int));
+  std::vector<size_t> num_next(256 * 7), num_piece(8);
+  size_t max_buf_size = 0;
+
+  std::vector<EvaluateNodeEdgesFast> batch(256 * 7);
+  while (true) {
+    size_t batch_size = reader.ReadBatch(batch.data(), 256 * 7);
+    for (size_t i = 0; i < batch_size; i += 7) {
+      size_t next = 0, piece = 0;
+      for (size_t j = 0; j < 7; j++) {
+        next += batch[i+j].next_ids_size;
+        piece += batch[i+j].next_ids_size != 0;
+        max_buf_size = std::max(max_buf_size, batch[i+j].buf_size);
+      }
+      num_next[next]++;
+      num_piece[piece]++;
+    }
+    if (batch_size < 256 * 7) break;
+  }
+
+  std::cout << "Number of next boards:\n";
+  for (size_t i = 0; i < num_next.size(); i++) {
+    if (!num_next[i]) continue;
+    std::cout << fmt::format("{}: {} boards\n", i, num_next[i]);
+  }
+  std::cout << "Number of next pieces:\n";
+  for (size_t i = 0; i < num_piece.size(); i++) {
+    if (!num_piece[i]) continue;
+    std::cout << fmt::format("{}: {} boards\n", i, num_piece[i]);
+  }
+  std::cout << "Max buf size: " << max_buf_size << '\n';
 }

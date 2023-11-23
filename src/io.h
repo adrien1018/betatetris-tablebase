@@ -488,6 +488,7 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
 
   // if false, the offsets are in invalid state
   bool MoveToNextBlock(size_t buf_size, size_t ind_buf_size) {
+    if (eof) return false;
     if (block_buf.size()) ind_offset += 2;
     // ind_buf[ind_offset:ind_offset+3] = [start_byte, orig_size, end_byte]
     if (ind_offset + 3 >= ind_buf.size()) {
@@ -541,11 +542,27 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
     if (!eof && buf_start_bytes <= start_bytes && start_bytes < buf_start_bytes + buf.size()) {
       // nothing
     } else {
+      eof = false;
       buf_start_bytes = start_bytes;
       buf.clear();
       fin.clear();
       fin.seekg(start_bytes);
     }
+  }
+
+  size_t ReadOneCommon(size_t buf_size, size_t ind_buf_size) {
+    ParseBufSize(buf_size, ind_buf_size);
+    uint64_t sz = GetNextSize(buf_size, ind_buf_size);
+    if (block_buf.size() < block_offset + kSizeNumberBytes + sz) {
+      if constexpr (kIsConstSize) {
+        eof = true;
+        throw ReadError("no more elements");
+      } else {
+        throw std::runtime_error("invalid file format");
+      }
+    }
+    current++;
+    return sz;
   }
  public:
   using io_internal::ClassReaderImpl<T>::HasIndex;
@@ -560,7 +577,7 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
   }
   CompressedClassReader(const CompressedClassReader&) = delete;
   CompressedClassReader(CompressedClassReader&& x) :
-      io_internal::ClassReaderImpl<T>(std::move(x)),
+      io_internal::ClassReaderImpl<T>(std::move(x)), zstd_ctx(x.zstd_ctx),
       buf_start_bytes(x.buf_start_bytes), ind_start(x.ind_start), ind_offset(x.ind_offset),
       block_start(x.block_start), block_offset(x.block_offset),
       block_buf(std::move(x.block_buf)), ind_buf(std::move(x.ind_buf)) {
@@ -578,20 +595,17 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
   }
 
   T ReadOne(size_t buf_size = std::string::npos, size_t ind_buf_size = std::string::npos) {
-    ParseBufSize(buf_size, ind_buf_size);
-    uint64_t sz = GetNextSize(buf_size, ind_buf_size);
-    if (block_buf.size() < block_offset + kSizeNumberBytes + sz) {
-      if constexpr (kIsConstSize) {
-        eof = true;
-        throw ReadError("no more elements");
-      } else {
-        throw std::runtime_error("invalid file format");
-      }
-    }
+    uint64_t sz = ReadOneCommon(buf_size, ind_buf_size);
     T ret(block_buf.data() + (block_offset + kSizeNumberBytes), sz);
     block_offset += kSizeNumberBytes + sz;
-    current++;
     return ret;
+  }
+
+  // the destruction should be handled by caller
+  void ReadOne(T* ret, size_t buf_size = std::string::npos, size_t ind_buf_size = std::string::npos) {
+    uint64_t sz = ReadOneCommon(buf_size, ind_buf_size);
+    new(ret) T(block_buf.data() + (block_offset + kSizeNumberBytes), sz);
+    block_offset += kSizeNumberBytes + sz;
   }
 
   std::vector<T> ReadBatch(size_t num, size_t buf_size = std::string::npos, size_t ind_buf_size = std::string::npos) {
@@ -604,6 +618,16 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
     return ret;
   }
 
+  // the destruction should be handled by caller
+  size_t ReadBatch(T* ret, size_t num, size_t buf_size = std::string::npos, size_t ind_buf_size = std::string::npos) {
+    ParseBufSize(buf_size, ind_buf_size);
+    size_t i = 0;
+    try {
+      for (; i < num; i++) ReadOne(ret + i, buf_size, ind_buf_size);
+    } catch (ReadError&) {}
+    return i;
+  }
+
   void Seek(size_t location, size_t buf_size = std::string::npos, size_t ind_buf_size = std::string::npos) {
     ParseBufSize(buf_size, ind_buf_size);
     if (!eof && block_start <= location && location < block_start + items_per_index) {
@@ -611,6 +635,7 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
       if (location < current) {
         block_offset = 0;
         current = block_start;
+        eof = false;
       }
     } else if (!eof && ind_buf.size() && ind_start <= location &&
                location < ind_start + (ind_buf.size() - 1) / 2 * items_per_index) {
@@ -635,6 +660,10 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
       fin_index.clear();
       fin_index.seekg((block_idx * 2 + 1) * 8);
       ReadIndUntilSize(3, ind_buf_size);
+      if (ind_buf.size() < 3) {
+        eof = true;
+        return;
+      }
       SeekBuf(ind_buf[0]);
     }
     while (location > current) SkipOne(buf_size, ind_buf_size);

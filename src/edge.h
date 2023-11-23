@@ -254,6 +254,104 @@ class EvaluateNodeEdges {
   }
 };
 
+struct EvaluateNodeEdgesFast {
+  static constexpr bool kIsConstSize = false;
+  static constexpr size_t kSizeNumberBytes = 2;
+
+  // edge for`evaluating; no position information available
+  uint8_t cell_count;
+  bool use_subset;
+  // (next board ID, lines)
+  std::pair<uint64_t, uint8_t>* next_ids;
+  size_t next_ids_size;
+  // indices of next_ids
+  uint8_t* non_adj;
+  size_t non_adj_size;
+  uint32_t* adj_lst;
+  size_t adj_lst_size;
+  uint8_t* adj;
+  // subset construction for faster calculation
+  uint8_t* adj_subset;
+  size_t adj_subset_size;
+  std::pair<uint8_t, int>* subset_idx_prev; // (idx, prev)
+  size_t subset_idx_prev_size;
+
+  uint8_t buf[1536];
+  size_t buf_size;
+
+  bool operator==(const EvaluateNodeEdgesFast&) const = default;
+  bool operator!=(const EvaluateNodeEdgesFast&) const = default;
+
+  size_t NumBytes() const {
+    throw std::runtime_error("should not use in write");
+  }
+
+  void GetBytes(uint8_t ret[]) const {
+    throw std::runtime_error("should not use in write");
+  }
+
+  EvaluateNodeEdgesFast() : cell_count(), use_subset() {}
+  EvaluateNodeEdgesFast(const uint8_t data[], size_t sz) {
+    size_t ind = 0, buf_ind = 0;
+    cell_count = data[ind++];
+    use_subset = data[ind++];
+    // nexts
+    next_ids_size = data[ind++];
+    next_ids = reinterpret_cast<decltype(next_ids)>(buf + buf_ind);
+    for (size_t i = 0; i < next_ids_size; i++) {
+      next_ids[i].first = BytesToInt<uint32_t>(data + ind);
+      next_ids[i].second = data[ind + 4];
+      ind += 5;
+    }
+    buf_ind += sizeof(decltype(*next_ids)) * next_ids_size;
+    // non_adjs
+    non_adj_size = data[ind++];
+    non_adj = buf + buf_ind;
+    memcpy(non_adj, data + ind, non_adj_size);
+    ind += non_adj_size;
+    buf_ind += non_adj_size;
+    // adjs
+    if (use_subset) {
+      adj_subset_size = data[ind++];
+      adj_subset = buf + buf_ind;
+      memcpy(adj_subset, data + ind, adj_subset_size);
+      ind += adj_subset_size;
+      buf_ind += adj_subset_size;
+
+      buf_ind = (buf_ind + 7) / 8 * 8; // align
+      subset_idx_prev_size = data[ind++];
+      subset_idx_prev = reinterpret_cast<decltype(subset_idx_prev)>(buf + buf_ind);
+      for (size_t i = 0; i < subset_idx_prev_size; i++) {
+        auto& item = subset_idx_prev[i];
+        item.first = data[ind];
+        item.second = data[ind + 1];
+        if (item.second == 255) item.second = -1;
+        ind += 2;
+      }
+      buf_ind += sizeof(decltype(*subset_idx_prev)) * next_ids_size;
+    } else {
+      buf_ind = (buf_ind + 7) / 8 * 8; // align
+      adj_lst_size = data[ind++];
+      adj_lst = reinterpret_cast<decltype(adj_lst)>(buf + buf_ind);
+      buf_ind += sizeof(decltype(*adj_lst)) * (adj_lst_size + 1);
+      adj = buf + buf_ind;
+      uint32_t offset = 0;
+      for (size_t i = 0; i < adj_lst_size; i++) {
+        uint8_t sz = data[ind++];
+        adj_lst[i] = offset;
+        memcpy(adj + offset, data + ind, sz);
+        offset += sz;
+        ind += sz;
+      }
+      adj_lst[adj_lst_size] = offset;
+      buf_ind += offset;
+    }
+    buf_size = buf_ind;
+    if (ind != sz) throw std::runtime_error("size not match");
+  }
+
+};
+
 struct PositionNodeEdges {
   static constexpr bool kIsConstSize = false;
   static constexpr size_t kSizeNumberBytes = 2;

@@ -70,28 +70,46 @@ int main(int argc, char** argv) {
 
   ArgumentParser program("main", "1.0");
 
-  auto AddDataDir = [](ArgumentParser& parser) {
+  auto DataDirArg = [](ArgumentParser& parser) {
     parser.add_argument("data_dir")
       .help("Directory for storing all results");
   };
-
-  ArgumentParser common_opts("common", "", default_arguments::none);
-  common_opts.add_argument("-p", "--parallel")
-    .help("Number of worker threads to use")
-    .metavar("N")
-    .default_value((int)std::thread::hardware_concurrency())
-    .scan<'i', int>();
-  AddDataDir(common_opts);
+  auto ParallelArg = [](ArgumentParser& parser) {
+    parser.add_argument("-p", "--parallel")
+      .help("Number of worker threads to use")
+      .metavar("N")
+      .default_value((int)std::thread::hardware_concurrency())
+      .scan<'i', int>();
+  };
+  auto GroupArg = [](ArgumentParser& parser) {
+    parser.add_argument("-g", "--group").required()
+      .help("Group (0-4)")
+      .metavar("GROUP")
+      .scan<'i', int>();
+  };
+  auto BoardIDArg = [](ArgumentParser& parser) {
+    parser.add_argument("-b", "--board-id").required()
+      .help("Board IDs (comma-separated)")
+      .metavar("ID");
+  };
+  auto LevelArg = [](ArgumentParser& parser) {
+    parser.add_argument("-l", "--level").required()
+      .help("Level (18,19,29,39)")
+      .metavar("[18/19/29/39]")
+      .scan<'i', int>();
+  };
 
   ArgumentParser preprocess("preprocess", "", default_arguments::help);
   preprocess.add_description("Preprocess a board file");
-  preprocess.add_parents(common_opts);
+  DataDirArg(preprocess);
+  ParallelArg(preprocess);
   preprocess.add_argument("board_file")
     .help("Board file");
 
   ArgumentParser build_edges("build-edges", "", default_arguments::help);
   build_edges.add_description("Build edges from boards");
-  build_edges.add_parents(common_opts);
+  DataDirArg(build_edges);
+  ParallelArg(build_edges);
   build_edges.add_argument("-g", "--groups")
     .help("The groups to build (0-4, comma-separated, support Python-like range)")
     .metavar("GROUP")
@@ -100,34 +118,32 @@ int main(int argc, char** argv) {
   ArgumentParser inspect("inspect", "", default_arguments::help);
   inspect.add_description("Inspect files");
 
-  ArgumentParser inspect_common_opts("inspect_common", "", default_arguments::none);
-  inspect_common_opts.add_argument("-g", "--group").required()
-    .help("Group (0-4)")
-    .metavar("GROUP")
-    .scan<'i', int>();
-  inspect_common_opts.add_argument("-b", "--board-id").required()
-    .help("Board IDs (comma-separated)")
-    .metavar("ID");
-
-  ArgumentParser inspect_board_id("board_id", "", default_arguments::help);
+  ArgumentParser inspect_board_id("board-id", "", default_arguments::help);
   inspect_board_id.add_description("Get board(s) by ID");
-  inspect_board_id.add_parents(inspect_common_opts);
-  AddDataDir(inspect_board_id);
+  GroupArg(inspect_board_id);
+  BoardIDArg(inspect_board_id);
+  DataDirArg(inspect_board_id);
 
   ArgumentParser inspect_edge("edge", "", default_arguments::help);
   inspect_edge.add_description("Get edges of a node");
-  inspect_edge.add_parents(inspect_common_opts);
-  inspect_edge.add_argument("-l", "--level").required()
-    .help("Level (18,19,29,39)")
-    .metavar("[18/19/29/39]")
-    .scan<'i', int>();
+  GroupArg(inspect_edge);
+  BoardIDArg(inspect_edge);
+  LevelArg(inspect_edge);
   inspect_edge.add_argument("-p", "--piece").required()
     .help("Piece (0-6 or TJZOSLI)")
     .metavar("PIECE");
-  AddDataDir(inspect_edge);
+  DataDirArg(inspect_edge);
+
+  ArgumentParser inspect_edge_stats("edge-stats", "", default_arguments::help);
+  inspect_edge_stats.add_description("Get edge stats");
+  GroupArg(inspect_edge_stats);
+  LevelArg(inspect_edge_stats);
+  ParallelArg(inspect_edge_stats);
+  DataDirArg(inspect_edge_stats);
 
   inspect.add_subparser(inspect_board_id);
   inspect.add_subparser(inspect_edge);
+  inspect.add_subparser(inspect_edge_stats);
 
   program.add_subparser(preprocess);
   program.add_subparser(build_edges);
@@ -143,10 +159,12 @@ int main(int argc, char** argv) {
       std::cerr << build_edges;
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
-      if (subparser.is_subcommand_used("board_id")) {
+      if (subparser.is_subcommand_used("board-id")) {
         std::cerr << inspect_board_id;
       } else if (subparser.is_subcommand_used("edge")) {
         std::cerr << inspect_edge;
+      } else if (subparser.is_subcommand_used("edge-stats")) {
+        std::cerr << inspect_edge_stats;
       } else {
         std::cerr << inspect;
       }
@@ -156,40 +174,58 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  auto SetInspectCommon = [&](const ArgumentParser& args) {
-    kDataDir = args.get<std::string>("data_dir");
-    int group = args.get<int>("--group");
-    auto board_id = ParseIntList<long>(args.get<std::string>("--board-id"));
-    return std::make_pair(group, board_id);
-  };
-  auto SetCommon = [&](const ArgumentParser& args) {
+  auto SetParallel = [&](const ArgumentParser& args) {
     kParallel = args.get<int>("-p");
+  };
+  auto SetDataDir = [&](const ArgumentParser& args) {
     kDataDir = args.get<std::string>("data_dir");
+  };
+  auto GetGroup = [](const ArgumentParser& args) {
+    return args.get<int>("--group");
+  };
+  auto GetBoardID = [](const ArgumentParser& args) {
+    return ParseIntList<long>(args.get<std::string>("--board-id"));
+  };
+  auto GetLevel = [](const ArgumentParser& args) {
+    return ParseLevel(args.get<int>("--level"));
   };
 
   try {
     if (program.is_subcommand_used("preprocess")) {
       auto& args = program.at<ArgumentParser>("preprocess");
-      SetCommon(args);
+      SetParallel(args);
+      SetDataDir(args);
       std::filesystem::path board_file = args.get<std::string>("board_file");
       SplitBoards(board_file);
     } else if (program.is_subcommand_used("build-edges")) {
       auto& args = program.at<ArgumentParser>("build-edges");
-      SetCommon(args);
+      SetParallel(args);
+      SetDataDir(args);
       auto groups = ParseIntList<int>(args.get<std::string>("--groups"));
       BuildEdges(groups);
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
-      if (subparser.is_subcommand_used("board_id")) {
-        auto& args = subparser.at<ArgumentParser>("board_id");
-        auto [group, board_id] = SetInspectCommon(args);
+      if (subparser.is_subcommand_used("board-id")) {
+        auto& args = subparser.at<ArgumentParser>("board-id");
+        auto group = GetGroup(args);
+        auto board_id = GetBoardID(args);
+        SetDataDir(args);
         InspectBoard(group, board_id);
       } else if (subparser.is_subcommand_used("edge")) {
         auto& args = subparser.at<ArgumentParser>("edge");
-        auto [group, board_id] = SetInspectCommon(args);
-        Level level = ParseLevel(args.get<int>("--level"));
+        auto group = GetGroup(args);
+        auto board_id = GetBoardID(args);
+        Level level = GetLevel(args);
         int piece = ParsePiece(args.get<std::string>("--piece"));
+        SetDataDir(args);
         InspectEdge(group, board_id, level, piece);
+      } else if (subparser.is_subcommand_used("edge-stats")) {
+        auto& args = subparser.at<ArgumentParser>("edge-stats");
+        auto group = GetGroup(args);
+        Level level = GetLevel(args);
+        SetParallel(args);
+        SetDataDir(args);
+        InspectEdgeStats(group, level);
       } else {
         std::cerr << inspect;
         return 1;
