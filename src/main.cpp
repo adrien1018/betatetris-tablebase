@@ -6,6 +6,7 @@
 #include "files.h"
 #include "config.h"
 #include "inspect.h"
+#include "evaluate.h"
 #include "board_set.h"
 
 template <class T>
@@ -115,6 +116,23 @@ int main(int argc, char** argv) {
     .metavar("GROUP")
     .default_value("0:5");
 
+  ArgumentParser evaluate("evaluate", "", default_arguments::help);
+  evaluate.add_description("Calculate values of every board");
+  DataDirArg(evaluate);
+  ParallelArg(evaluate);
+  evaluate.add_argument("-r", "--resume")
+    .help("Resume from a previous checkpoint")
+    .metavar("PIECES")
+    .scan<'i', int>()
+    .default_value(-1);
+  evaluate.add_argument("-c", "--checkpoints").required()
+    .help("Checkpoints (in pieces) to save the evaluate result (comma-separated, support Python-like range)");
+
+  build_edges.add_argument("-g", "--groups")
+    .help("The groups to build (0-4, comma-separated, support Python-like range)")
+    .metavar("GROUP")
+    .default_value("0:5");
+
   ArgumentParser inspect("inspect", "", default_arguments::help);
   inspect.add_description("Inspect files");
 
@@ -123,6 +141,11 @@ int main(int argc, char** argv) {
   GroupArg(inspect_board_id);
   BoardIDArg(inspect_board_id);
   DataDirArg(inspect_board_id);
+
+  ArgumentParser inspect_board_stats("board-stats", "", default_arguments::help);
+  inspect_board_stats.add_description("Get board stats");
+  GroupArg(inspect_board_stats);
+  DataDirArg(inspect_board_stats);
 
   ArgumentParser inspect_edge("edge", "", default_arguments::help);
   inspect_edge.add_description("Get edges of a node");
@@ -138,15 +161,16 @@ int main(int argc, char** argv) {
   inspect_edge_stats.add_description("Get edge stats");
   GroupArg(inspect_edge_stats);
   LevelArg(inspect_edge_stats);
-  ParallelArg(inspect_edge_stats);
   DataDirArg(inspect_edge_stats);
 
   inspect.add_subparser(inspect_board_id);
+  inspect.add_subparser(inspect_board_stats);
   inspect.add_subparser(inspect_edge);
   inspect.add_subparser(inspect_edge_stats);
 
   program.add_subparser(preprocess);
   program.add_subparser(build_edges);
+  program.add_subparser(evaluate);
   program.add_subparser(inspect);
 
   try {
@@ -157,10 +181,14 @@ int main(int argc, char** argv) {
       std::cerr << preprocess;
     } else if (program.is_subcommand_used("build-edges")) {
       std::cerr << build_edges;
+    } else if (program.is_subcommand_used("evaluate")) {
+      std::cerr << evaluate;
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
       if (subparser.is_subcommand_used("board-id")) {
         std::cerr << inspect_board_id;
+      } else if (subparser.is_subcommand_used("board-stats")) {
+        std::cerr << inspect_board_stats;
       } else if (subparser.is_subcommand_used("edge")) {
         std::cerr << inspect_edge;
       } else if (subparser.is_subcommand_used("edge-stats")) {
@@ -203,6 +231,13 @@ int main(int argc, char** argv) {
       SetDataDir(args);
       auto groups = ParseIntList<int>(args.get<std::string>("--groups"));
       BuildEdges(groups);
+    } else if (program.is_subcommand_used("evaluate")) {
+      auto& args = program.at<ArgumentParser>("evaluate");
+      SetParallel(args);
+      SetDataDir(args);
+      auto checkpoints = ParseIntList<int>(args.get<std::string>("--checkpoints"));
+      int resume = args.get<int>("--resume");
+      RunEvaluate(resume, checkpoints);
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
       if (subparser.is_subcommand_used("board-id")) {
@@ -211,6 +246,11 @@ int main(int argc, char** argv) {
         auto board_id = GetBoardID(args);
         SetDataDir(args);
         InspectBoard(group, board_id);
+      } else if (subparser.is_subcommand_used("board-stats")) {
+        auto& args = subparser.at<ArgumentParser>("board-stats");
+        auto group = GetGroup(args);
+        SetDataDir(args);
+        InspectBoardStats(group);
       } else if (subparser.is_subcommand_used("edge")) {
         auto& args = subparser.at<ArgumentParser>("edge");
         auto group = GetGroup(args);
@@ -223,7 +263,6 @@ int main(int argc, char** argv) {
         auto& args = subparser.at<ArgumentParser>("edge-stats");
         auto group = GetGroup(args);
         Level level = GetLevel(args);
-        SetParallel(args);
         SetDataDir(args);
         InspectEdgeStats(group, level);
       } else {

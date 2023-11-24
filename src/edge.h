@@ -254,10 +254,12 @@ class EvaluateNodeEdges {
   }
 };
 
-struct EvaluateNodeEdgesFast {
+template <int kBufSize>
+struct EvaluateNodeEdgesFastTmpl {
   static constexpr bool kIsConstSize = false;
   static constexpr size_t kSizeNumberBytes = 2;
 
+  uint8_t* base_ptr;
   // edge for`evaluating; no position information available
   uint8_t cell_count;
   bool use_subset;
@@ -267,7 +269,7 @@ struct EvaluateNodeEdgesFast {
   // indices of next_ids
   uint8_t* non_adj;
   size_t non_adj_size;
-  uint32_t* adj_lst;
+  uint32_t* adj_lst; // length=adj_lst_size+1
   size_t adj_lst_size;
   uint8_t* adj;
   // subset construction for faster calculation
@@ -276,11 +278,35 @@ struct EvaluateNodeEdgesFast {
   std::pair<uint8_t, int>* subset_idx_prev; // (idx, prev)
   size_t subset_idx_prev_size;
 
-  uint8_t buf[1536];
+  uint8_t buf[kBufSize];
   size_t buf_size;
 
-  bool operator==(const EvaluateNodeEdgesFast&) const = default;
-  bool operator!=(const EvaluateNodeEdgesFast&) const = default;
+  bool operator==(const EvaluateNodeEdgesFastTmpl<kBufSize>& x) const {
+    return std::equal(buf, buf + buf_size, x.buf);
+  }
+  bool operator!=(const EvaluateNodeEdgesFastTmpl<kBufSize>& x) const { return !(*this == x); }
+
+  bool operator==(const EvaluateNodeEdges& x) const {
+    if (!(cell_count == x.cell_count && use_subset == x.use_subset &&
+          next_ids_size == x.next_ids.size() &&
+          non_adj_size == x.non_adj.size() &&
+          std::equal(next_ids, next_ids + next_ids_size, x.next_ids.begin()) &&
+          std::equal(non_adj, non_adj + non_adj_size, x.non_adj.begin()))) {
+      return false;
+    }
+    if (use_subset) {
+      return adj_subset_size == x.adj_subset.size() &&
+        subset_idx_prev_size == x.subset_idx_prev.size() &&
+        std::equal(adj_subset, adj_subset + adj_subset_size, x.adj_subset.begin()) &&
+        std::equal(subset_idx_prev, subset_idx_prev + subset_idx_prev_size, x.subset_idx_prev.begin());
+    }
+    if (adj_lst_size != x.adj.size()) return false;
+    for (size_t i = 0; i < adj_lst_size; i++) {
+      if (!(adj_lst[i+1] - adj_lst[i] == x.adj[i].size() &&
+            std::equal(adj + adj_lst[i], adj + adj_lst[i+1], x.adj[i].begin()))) return false;
+    }
+    return true;
+  }
 
   size_t NumBytes() const {
     throw std::runtime_error("should not use in write");
@@ -290,8 +316,9 @@ struct EvaluateNodeEdgesFast {
     throw std::runtime_error("should not use in write");
   }
 
-  EvaluateNodeEdgesFast() : cell_count(), use_subset() {}
-  EvaluateNodeEdgesFast(const uint8_t data[], size_t sz) {
+  EvaluateNodeEdgesFastTmpl() : cell_count(), use_subset() {}
+  EvaluateNodeEdgesFastTmpl(const uint8_t data[], size_t sz) {
+    base_ptr = buf;
     size_t ind = 0, buf_ind = 0;
     cell_count = data[ind++];
     use_subset = data[ind++];
@@ -348,9 +375,11 @@ struct EvaluateNodeEdgesFast {
     }
     buf_size = buf_ind;
     if (ind != sz) throw std::runtime_error("size not match");
+    if (buf_size >= sizeof(buf)) throw std::runtime_error("buffer overflow");
   }
-
 };
+
+using EvaluateNodeEdgesFast = EvaluateNodeEdgesFastTmpl<1536>;
 
 struct PositionNodeEdges {
   static constexpr bool kIsConstSize = false;

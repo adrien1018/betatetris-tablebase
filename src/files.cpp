@@ -20,6 +20,10 @@ fs::path ValuePath(int pieces) {
   std::string r = std::to_string(pieces);
   return kDataDir / "values" / (std::string(4 - r.size(), '0') + r);
 }
+fs::path ValueStatsPath(int pieces) {
+  std::string r = std::to_string(pieces);
+  return kDataDir / "value_stats" / (std::string(4 - r.size(), '0') + r);
+}
 fs::path ProbPath(int pieces) {
   std::string r = std::to_string(pieces);
   return kDataDir / "probs" / (std::string(4 - r.size(), '0') + r);

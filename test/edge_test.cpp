@@ -86,6 +86,25 @@ TEST_F(EdgeTest, EvaluateSerialize) {
   }
 }
 
+TEST_F(EdgeTest, EvaluateSerializeFast) {
+  for (auto& m : moves) {
+    auto edges = GenEdges(m).first;
+    std::vector<uint8_t> buf(edges.NumBytes());
+    edges.GetBytes(buf.data());
+
+    auto edges2 = EvaluateNodeEdgesFastTmpl<4096>(buf.data(), buf.size());
+    ASSERT_EQ(edges2, edges);
+
+    edges.CalculateSubset();
+    edges.use_subset = true;
+    buf.resize(edges.NumBytes());
+    edges.GetBytes(buf.data());
+    edges.adj.clear();
+    edges2 = EvaluateNodeEdgesFastTmpl<4096>(buf.data(), buf.size());
+    ASSERT_EQ(edges2, edges);
+  }
+}
+
 TEST_F(EdgeTest, EvaluateSubset) {
   for (auto& m : moves) {
     auto edges = GenEdges(m).first;

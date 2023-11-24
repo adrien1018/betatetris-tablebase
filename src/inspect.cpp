@@ -16,6 +16,7 @@
 #include "board.h"
 #include "files.h"
 #include "config.h"
+#include "board_set.h"
 
 template<> struct fmt::formatter<Position> {
   template <typename ParseContext>
@@ -73,6 +74,13 @@ void InspectBoard(int group, const std::vector<long>& board_idx) {
     } catch (ReadError&) {
       std::cout << fmt::format("Group {}, board {} not found\n", group, id);
     }
+  }
+}
+
+void InspectBoardStats(int group) {
+  auto offsets = GetBoardCountOffset(group);
+  for (size_t i = 0; i < offsets.size() - 1; i++) {
+    std::cout << fmt::format("Count {}: {} boards\n", i * 10 + group * 2, offsets[i+1] - offsets[i]);
   }
 }
 

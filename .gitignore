@@ -1,4 +1,4 @@
-build/
-build_debug/
+build
+build_debug
 test.cpp
 test.py
