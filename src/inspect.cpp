@@ -16,6 +16,7 @@
 #include "board.h"
 #include "files.h"
 #include "config.h"
+#include "evaluate.h"
 #include "board_set.h"
 
 template<> struct fmt::formatter<Position> {
@@ -115,6 +116,7 @@ void InspectEdge(int group, const std::vector<long>& board_idx, Level level, int
     std::cout << fmt::format("Non-adj: {} {}\n", eval_ed.non_adj, non_adj_pos);
     std::cout << "Adjs:\n";
     if (eval_ed.use_subset) {
+      for (auto& i : eval_ed.subset_idx_prev) std::cout << fmt::format("{} {}\n", i.first, i.second);
       std::cout << fmt::format("({} before expanding)\n", eval_ed.subset_idx_prev.size());
       eval_ed.CalculateAdj();
     }
@@ -126,11 +128,11 @@ void InspectEdge(int group, const std::vector<long>& board_idx, Level level, int
 
 void InspectEdgeStats(int group, Level level) {
   int level_int = static_cast<int>(level);
-  CompressedClassReader<EvaluateNodeEdgesFast> reader(EvaluateEdgePath(group, level_int));
+  CompressedClassReader<EvaluateNodeEdgesFastTmpl<4096>> reader(EvaluateEdgePath(group, level_int));
   std::vector<size_t> num_next(256 * 7), num_piece(8);
   size_t max_buf_size = 0;
 
-  std::vector<EvaluateNodeEdgesFast> batch(256 * 7);
+  std::vector<EvaluateNodeEdgesFastTmpl<4096>> batch(256 * 7);
   while (true) {
     size_t batch_size = reader.ReadBatch(batch.data(), 256 * 7);
     for (size_t i = 0; i < batch_size; i += 7) {
@@ -157,4 +159,16 @@ void InspectEdgeStats(int group, Level level) {
     std::cout << fmt::format("{}: {} boards\n", i, num_piece[i]);
   }
   std::cout << "Max buf size: " << max_buf_size << '\n';
+}
+
+void InspectValue(int pieces, const std::vector<long>& board_idx) {
+  CompressedClassReader<NodeEval> reader(ValuePath(pieces));
+  for (auto id : board_idx) {
+    reader.Seek(id, 4096);
+    NodeEval val = reader.ReadOne();
+    std::vector<float> ev(7), var(7);
+    val.GetEv(ev.data());
+    val.GetVar(var.data());
+    std::cout << fmt::format("{} {} {}\n", id, ev, var);
+  }
 }

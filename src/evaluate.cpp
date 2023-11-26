@@ -153,7 +153,7 @@ void CalculateSameLevel(
 
   auto fname = EvaluateEdgePath(group, GetLevelSpeed(level));
   CompressedClassReader<EvaluateNodeEdgesFast> reader(fname);
-  reader.Seek(start);
+  reader.Seek(start * kPieces);
 
   auto thread_queue = MakeThreadQueue<std::pair<size_t, size_t>>(kParallel,
       [&](std::pair<size_t, size_t> range) {

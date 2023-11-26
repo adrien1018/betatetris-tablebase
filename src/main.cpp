@@ -163,10 +163,20 @@ int main(int argc, char** argv) {
   LevelArg(inspect_edge_stats);
   DataDirArg(inspect_edge_stats);
 
+  ArgumentParser inspect_value("value", "", default_arguments::help);
+  inspect_value.add_description("Get values of a node");
+  BoardIDArg(inspect_value);
+  inspect_value.add_argument("-p", "--pieces").required()
+    .help("Location (pieces)")
+    .metavar("PIECES")
+    .scan<'i', int>();
+  DataDirArg(inspect_value);
+
   inspect.add_subparser(inspect_board_id);
   inspect.add_subparser(inspect_board_stats);
   inspect.add_subparser(inspect_edge);
   inspect.add_subparser(inspect_edge_stats);
+  inspect.add_subparser(inspect_value);
 
   program.add_subparser(preprocess);
   program.add_subparser(build_edges);
@@ -193,6 +203,8 @@ int main(int argc, char** argv) {
         std::cerr << inspect_edge;
       } else if (subparser.is_subcommand_used("edge-stats")) {
         std::cerr << inspect_edge_stats;
+      } else if (subparser.is_subcommand_used("value")) {
+        std::cerr << inspect_value;
       } else {
         std::cerr << inspect;
       }
@@ -265,6 +277,12 @@ int main(int argc, char** argv) {
         Level level = GetLevel(args);
         SetDataDir(args);
         InspectEdgeStats(group, level);
+      } else if (subparser.is_subcommand_used("value")) {
+        auto& args = subparser.at<ArgumentParser>("value");
+        int pieces = args.get<int>("--pieces");
+        auto board_id = GetBoardID(args);
+        SetDataDir(args);
+        InspectValue(pieces, board_id);
       } else {
         std::cerr << inspect;
         return 1;

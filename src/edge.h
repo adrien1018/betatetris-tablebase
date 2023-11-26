@@ -355,7 +355,7 @@ struct EvaluateNodeEdgesFastTmpl {
         if (item.second == 255) item.second = -1;
         ind += 2;
       }
-      buf_ind += sizeof(decltype(*subset_idx_prev)) * next_ids_size;
+      buf_ind += sizeof(decltype(*subset_idx_prev)) * subset_idx_prev_size;
     } else {
       buf_ind = (buf_ind + 7) / 8 * 8; // align
       adj_lst_size = data[ind++];
@@ -379,7 +379,7 @@ struct EvaluateNodeEdgesFastTmpl {
   }
 };
 
-using EvaluateNodeEdgesFast = EvaluateNodeEdgesFastTmpl<1536>;
+using EvaluateNodeEdgesFast = EvaluateNodeEdgesFastTmpl<2560>;
 
 struct PositionNodeEdges {
   static constexpr bool kIsConstSize = false;
