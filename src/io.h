@@ -370,7 +370,7 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
   using io_internal::ClassWriterImpl<T>::items_per_index;
   using io_internal::ClassWriterImpl<T>::moved;
 
-  ZSTD_CCtx* zstd_ctx;
+  std::unique_ptr<ZSTD_CCtx, size_t(*)(ZSTD_CCtx*)> zstd_ctx;
   std::vector<uint8_t> compress_buf;
 
   void DoCompress() {
@@ -379,7 +379,7 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
     size_t clear_size = ZSTD_compressBound(compress_buf.size());
     buf.resize(offset + clear_size);
     size_t nlen = ZSTD_compressCCtx(
-        zstd_ctx, buf.data() + offset, clear_size, compress_buf.data(), compress_buf.size(), -4);
+        zstd_ctx.get(), buf.data() + offset, clear_size, compress_buf.data(), compress_buf.size(), -4);
     if (ZSTD_isError(nlen)) throw std::runtime_error("zstd compress failed");
     buf.resize(offset + nlen);
     compress_buf.clear();
@@ -392,21 +392,18 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
   using io_internal::ClassWriterImpl<T>::Size;
 
   CompressedClassWriter(const std::string& fname, size_t items_per_index = 1024) :
-      io_internal::ClassWriterImpl<T>(fname, items_per_index == 0 ? 1 : items_per_index) {
-    zstd_ctx = ZSTD_createCCtx();
+      io_internal::ClassWriterImpl<T>(fname, items_per_index == 0 ? 1 : items_per_index),
+      zstd_ctx(ZSTD_createCCtx(), ZSTD_freeCCtx) {
     if (!zstd_ctx) throw std::runtime_error("zstd initialize failed");
     inds.push_back(0);
   }
   CompressedClassWriter(const CompressedClassWriter&) = delete;
   CompressedClassWriter(CompressedClassWriter&& x) :
       io_internal::ClassWriterImpl<T>(std::move(x)),
-      zstd_ctx(x.zstd_ctx), compress_buf(std::move(x.compress_buf)) {
-    x.zstd_ctx = nullptr;
-  }
+      zstd_ctx(std::move(x.zstd_ctx)), compress_buf(std::move(x.compress_buf)) {}
   ~CompressedClassWriter() {
     if (moved) return;
     if (compress_buf.size()) DoCompress();
-    ZSTD_freeCCtx(zstd_ctx);
   }
 
   void Write(const T& item) {
@@ -466,7 +463,7 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
    *   0                 block_offset                       (block_buf idx)
    *   |------------------->*********<...............|
    */
-  ZSTD_DCtx* zstd_ctx;
+  std::unique_ptr<ZSTD_DCtx, size_t(*)(ZSTD_DCtx*)> zstd_ctx;
   size_t buf_start_bytes, ind_start, ind_offset, block_start, block_offset;
   std::vector<uint8_t> block_buf;
   std::vector<uint64_t> ind_buf;
@@ -512,7 +509,7 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
     if (buf.size() < end_offset) return false;
     block_buf.resize(ind_buf[ind_offset + 1]);
     size_t ret = ZSTD_decompressDCtx(
-        zstd_ctx, block_buf.data(), block_buf.size(), buf.data() + start_offset, end_offset - start_offset);
+        zstd_ctx.get(), block_buf.data(), block_buf.size(), buf.data() + start_offset, end_offset - start_offset);
     if (ZSTD_isError(ret)) throw std::runtime_error("zstd decompress failed");
     if (ret != block_buf.size()) throw std::runtime_error("decompress: unexpected data length");
     block_start = current;
@@ -570,22 +567,17 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
 
   CompressedClassReader(const std::string& fname) :
       io_internal::ClassReaderImpl<T>(fname, true),
+      zstd_ctx(ZSTD_createDCtx(), ZSTD_freeDCtx),
       buf_start_bytes(0), ind_start(0), ind_offset(0), block_start(0), block_offset(0) {
     if (items_per_index == 0) throw std::runtime_error("index file not found");
-    zstd_ctx = ZSTD_createDCtx();
     if (!zstd_ctx) throw std::runtime_error("zstd initialize failed");
   }
   CompressedClassReader(const CompressedClassReader&) = delete;
   CompressedClassReader(CompressedClassReader&& x) :
-      io_internal::ClassReaderImpl<T>(std::move(x)), zstd_ctx(x.zstd_ctx),
+      io_internal::ClassReaderImpl<T>(std::move(x)), zstd_ctx(std::move(x.zstd_ctx)),
       buf_start_bytes(x.buf_start_bytes), ind_start(x.ind_start), ind_offset(x.ind_offset),
       block_start(x.block_start), block_offset(x.block_offset),
-      block_buf(std::move(x.block_buf)), ind_buf(std::move(x.ind_buf)) {
-    x.zstd_ctx = nullptr;
-  }
-  ~CompressedClassReader() {
-    if (zstd_ctx) ZSTD_freeDCtx(zstd_ctx);
-  }
+      block_buf(std::move(x.block_buf)), ind_buf(std::move(x.ind_buf)) {}
 
   void SkipOne(size_t buf_size = std::string::npos, size_t ind_buf_size = std::string::npos) {
     ParseBufSize(buf_size, ind_buf_size);
