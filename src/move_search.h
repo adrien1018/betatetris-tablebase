@@ -231,7 +231,7 @@ struct Phase1Table {
   }
 };
 
-// Column is simply a column; each bit LSB is topmost
+// Column is simply a column; each bit is a cell, LSB is topmost
 // Frames is a processed form of a column; each bit is a frame, LSB is the first frame
 // Frames comes in two flavors: normal and drop mask
 //   normal mask just corresponds to the row the piece is in on each frame

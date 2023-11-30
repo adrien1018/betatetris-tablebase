@@ -113,7 +113,7 @@ void CalculateBlock(
         for (size_t i = 0; i < item.subset_idx_prev_size; i++) {
           auto& [idx, prev] = item.subset_idx_prev[i];
           adj_val[i] = local_val[idx];
-          if (prev != -1) adj_val[i].MaxWith(adj_val[prev]);
+          if (prev != 255) adj_val[i].MaxWith(adj_val[prev]);
         }
         for (size_t i = 0; i < item.adj_subset_size; i++) {
           Update(adj_val[item.adj_subset[i]]);
@@ -146,34 +146,72 @@ auto make_copyable_function(F&& f) {
 }
 
 void CalculateSameLevel(
-    int group, size_t start, size_t end,
+    int group, size_t start, size_t end, int io_threads,
     const std::vector<NodeEval>& prev, int level,
     NodeEval out[]) {
   constexpr size_t kBatchSize = 1024;
+  constexpr size_t kBlockSize = 524288;
 
   auto fname = EvaluateEdgePath(group, GetLevelSpeed(level));
-  CompressedClassReader<EvaluateNodeEdgesFast> reader(fname);
-  reader.Seek(start * kPieces);
+  using Result = std::pair<size_t, size_t>;
 
-  auto thread_queue = MakeThreadQueue<std::pair<size_t, size_t>>(kParallel,
-      [&](std::pair<size_t, size_t> range) {
+  BS::thread_pool io_pool(io_threads);
+  auto thread_queue = MakeThreadQueue<Result>(kParallel,
+      [&](Result range) {
         /* collect stats */
       });
-  for (size_t batch_l = start; batch_l < end; batch_l += kBatchSize) {
-    size_t batch_r = std::min(end, batch_l + kBatchSize);
-    size_t num_to_read = (batch_r - batch_l) * kPieces;
-    std::unique_ptr<EvaluateNodeEdgesFast[]> edges(new EvaluateNodeEdgesFast[num_to_read]);
-    if (num_to_read != reader.ReadBatch(edges.get(), num_to_read)) throw std::runtime_error("read failure");
-    thread_queue.Push(make_copyable_function([edges=std::move(edges),num_to_read,&prev,level,out,batch_l,batch_r]() {
-      CalculateBlock(edges.get(), num_to_read, prev, level, out + batch_l);
-      return std::make_pair(batch_l, batch_r);
-    }));
+
+  std::mutex mtx;
+  std::condition_variable cv;
+  size_t unfinished = 0;
+  std::deque<std::function<Result()>> works;
+
+  std::vector<std::thread> thrs;
+  for (size_t block_start = start; block_start < end; block_start += kBlockSize) {
+    size_t block_end = std::min(end, block_start + kBlockSize);
+    unfinished++;
+    io_pool.push_task([&fname,&thread_queue,&works,&unfinished,&cv,&mtx,block_start,block_end,&prev,level,out]() {
+      CompressedClassReader<EvaluateNodeEdgesFast> reader(fname);
+      reader.Seek(block_start * kPieces);
+      for (size_t batch_l = block_start; batch_l < block_end; batch_l += kBatchSize) {
+        size_t batch_r = std::min(block_end, batch_l + kBatchSize);
+        size_t num_to_read = (batch_r - batch_l) * kPieces;
+        std::unique_ptr<EvaluateNodeEdgesFast[]> edges(new EvaluateNodeEdgesFast[num_to_read]);
+        if (num_to_read != reader.ReadBatch(edges.get(), num_to_read)) throw std::runtime_error("read failure");
+        {
+          std::lock_guard lck(mtx);
+          works.push_back(make_copyable_function([
+                edges=std::move(edges),&works,&unfinished,&cv,&mtx,num_to_read,batch_l,batch_r,&prev,level,out
+          ]() {
+            CalculateBlock(edges.get(), num_to_read, prev, level, out + batch_l);
+            return std::make_pair(batch_l, batch_r);
+          }));
+        }
+        cv.notify_one();
+      }
+      {
+        std::lock_guard lck(mtx);
+        unfinished--;
+      }
+      cv.notify_one();
+    });
   }
+  {
+    std::unique_lock lck(mtx);
+    while (unfinished) {
+      cv.wait(lck, [&]{ return unfinished == 0 || works.size(); });
+      while (works.size()) {
+        thread_queue.Push(std::move(works.front()));
+        works.pop_front();
+      }
+    }
+  }
+  io_pool.wait_for_tasks();
   thread_queue.WaitAll();
 }
 
 std::vector<NodeEval> CalculatePiece(
-    int pieces, const std::vector<NodeEval>& prev, const std::vector<size_t>& offsets) {
+    int pieces, int io_threads, const std::vector<NodeEval>& prev, const std::vector<size_t>& offsets) {
   int group = GetGroupByPieces(pieces);
   std::vector<NodeEval> ret(offsets.back());
 
@@ -198,14 +236,14 @@ std::vector<NodeEval> CalculatePiece(
     int level = GetLevelByLines(lines);
     if (level != cur_level && cur_level != 0) {
       spdlog::debug("Calculate group {} lvl {}: {} - {}", group, cur_level, start, offsets[i]);
-      CalculateSameLevel(group, start, offsets[i], prev, cur_level, ret.data());
+      CalculateSameLevel(group, start, offsets[i], io_threads, prev, cur_level, ret.data());
       start = offsets[i];
     }
     cur_level = level;
   }
   if (cur_level != 0) {
     spdlog::debug("Calculate group {} lvl {}: {} - {}", group, cur_level, start, last);
-    CalculateSameLevel(group, start, last, prev, cur_level, ret.data());
+    CalculateSameLevel(group, start, last, io_threads, prev, cur_level, ret.data());
   }
   {
     MkdirForFile(ValueStatsPath(pieces));
@@ -226,7 +264,7 @@ std::vector<NodeEval> CalculatePiece(
 
 } // namespace
 
-void RunEvaluate(int start_pieces, const std::vector<int>& output_locations) {
+void RunEvaluate(int io_threads, int start_pieces, const std::vector<int>& output_locations) {
   std::vector<size_t> offsets[5];
   for (int i = 0; i < kGroups; i++) offsets[i] = GetBoardCountOffset(i);
 
@@ -251,7 +289,7 @@ void RunEvaluate(int start_pieces, const std::vector<int>& output_locations) {
   std::set<int> location_set(output_locations.begin(), output_locations.end());
   int last_output = *location_set.begin();
   for (int pieces = start_pieces - 1; pieces >= last_output; pieces--) {
-    values = CalculatePiece(pieces, values, offsets[GetGroupByPieces(pieces)]);
+    values = CalculatePiece(pieces, io_threads, values, offsets[GetGroupByPieces(pieces)]);
     if (location_set.count(pieces)) {
       spdlog::info("Writing values of piece {}", pieces);
       CompressedClassWriter<NodeEval> writer(ValuePath(pieces), 2048);

@@ -275,7 +275,7 @@ struct EvaluateNodeEdgesFastTmpl {
   // subset construction for faster calculation
   uint8_t* adj_subset;
   size_t adj_subset_size;
-  std::pair<uint8_t, int>* subset_idx_prev; // (idx, prev)
+  std::pair<uint8_t, uint8_t>* subset_idx_prev; // (idx, prev)
   size_t subset_idx_prev_size;
 
   uint8_t buf[kBufSize];
@@ -298,7 +298,10 @@ struct EvaluateNodeEdgesFastTmpl {
       return adj_subset_size == x.adj_subset.size() &&
         subset_idx_prev_size == x.subset_idx_prev.size() &&
         std::equal(adj_subset, adj_subset + adj_subset_size, x.adj_subset.begin()) &&
-        std::equal(subset_idx_prev, subset_idx_prev + subset_idx_prev_size, x.subset_idx_prev.begin());
+        std::equal(subset_idx_prev, subset_idx_prev + subset_idx_prev_size, x.subset_idx_prev.begin(),
+                   [](const std::pair<uint8_t, uint8_t>& a, const std::pair<uint8_t, int>& b) {
+                     return a.first == b.first && a.second == (b.second == -1 ? 255 : (unsigned)b.second);
+                   });
     }
     if (adj_lst_size != x.adj.size()) return false;
     for (size_t i = 0; i < adj_lst_size; i++) {
@@ -348,13 +351,9 @@ struct EvaluateNodeEdgesFastTmpl {
       buf_ind = (buf_ind + 7) / 8 * 8; // align
       subset_idx_prev_size = data[ind++];
       subset_idx_prev = reinterpret_cast<decltype(subset_idx_prev)>(buf + buf_ind);
-      for (size_t i = 0; i < subset_idx_prev_size; i++) {
-        auto& item = subset_idx_prev[i];
-        item.first = data[ind];
-        item.second = data[ind + 1];
-        if (item.second == 255) item.second = -1;
-        ind += 2;
-      }
+      memcpy(buf + buf_ind, data + ind, subset_idx_prev_size * 2);
+      static_assert(sizeof(decltype(*subset_idx_prev)) == 2);
+      ind += subset_idx_prev_size * 2;
       buf_ind += sizeof(decltype(*subset_idx_prev)) * subset_idx_prev_size;
     } else {
       buf_ind = (buf_ind + 7) / 8 * 8; // align
@@ -379,7 +378,7 @@ struct EvaluateNodeEdgesFastTmpl {
   }
 };
 
-using EvaluateNodeEdgesFast = EvaluateNodeEdgesFastTmpl<2560>;
+using EvaluateNodeEdgesFast = EvaluateNodeEdgesFastTmpl<1536>;
 
 struct PositionNodeEdges {
   static constexpr bool kIsConstSize = false;

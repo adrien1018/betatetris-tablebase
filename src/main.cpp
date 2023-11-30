@@ -127,6 +127,11 @@ int main(int argc, char** argv) {
     .default_value(-1);
   evaluate.add_argument("-c", "--checkpoints").required()
     .help("Checkpoints (in pieces) to save the evaluate result (comma-separated, support Python-like range)");
+  evaluate.add_argument("-i", "--io-threads")
+    .help("Number of readers")
+    .metavar("N")
+    .scan<'i', int>()
+    .default_value(4);
 
   build_edges.add_argument("-g", "--groups")
     .help("The groups to build (0-4, comma-separated, support Python-like range)")
@@ -249,7 +254,8 @@ int main(int argc, char** argv) {
       SetDataDir(args);
       auto checkpoints = ParseIntList<int>(args.get<std::string>("--checkpoints"));
       int resume = args.get<int>("--resume");
-      RunEvaluate(resume, checkpoints);
+      int io_threads = args.get<int>("--io-threads");
+      RunEvaluate(io_threads, resume, checkpoints);
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
       if (subparser.is_subcommand_used("board-id")) {

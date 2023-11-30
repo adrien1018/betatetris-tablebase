@@ -87,4 +87,4 @@ class NodeEval {
   }
 };
 
-void RunEvaluate(int start_pieces, const std::vector<int>& output_locations);
+void RunEvaluate(int io_threads, int start_pieces, const std::vector<int>& output_locations);
