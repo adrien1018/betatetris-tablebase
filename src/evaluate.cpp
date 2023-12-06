@@ -47,14 +47,6 @@ constexpr Level GetLevelSpeed(int level) {
   return kLevel39;
 }
 
-constexpr int GetGroupByPieces(int pieces) {
-  return pieces * 4 / 2 % 5;
-}
-static_assert(GetGroupByPieces(0) == 0);
-static_assert(GetGroupByPieces(1) == 2);
-static_assert(GetGroupByPieces(4) == 3);
-static_assert(GetGroupByPieces(9) == 3);
-
 constexpr int Score(int lines, int level) {
   constexpr int kTable[] = {0, 40, 100, 300, 1200};
   return kTable[lines] * (level + 1);
@@ -146,8 +138,7 @@ auto make_copyable_function(F&& f) {
 }
 
 void CalculateSameLevel(
-    int group, size_t start, size_t end, int io_threads,
-    const std::vector<NodeEval>& prev, int level,
+    int group, size_t start, size_t end, const std::vector<NodeEval>& prev, int level,
     NodeEval out[]) {
   constexpr size_t kBatchSize = 1024;
   constexpr size_t kBlockSize = 524288;
@@ -155,7 +146,7 @@ void CalculateSameLevel(
   auto fname = EvaluateEdgePath(group, GetLevelSpeed(level));
   using Result = std::pair<size_t, size_t>;
 
-  BS::thread_pool io_pool(io_threads);
+  BS::thread_pool io_pool(kIOThreads);
   auto thread_queue = MakeThreadQueue<Result>(kParallel,
       [&](Result range) {
         /* collect stats */
@@ -210,8 +201,10 @@ void CalculateSameLevel(
   thread_queue.WaitAll();
 }
 
+} // namespace
+
 std::vector<NodeEval> CalculatePiece(
-    int pieces, int io_threads, const std::vector<NodeEval>& prev, const std::vector<size_t>& offsets) {
+    int pieces, const std::vector<NodeEval>& prev, const std::vector<size_t>& offsets) {
   int group = GetGroupByPieces(pieces);
   std::vector<NodeEval> ret(offsets.back());
 
@@ -236,14 +229,14 @@ std::vector<NodeEval> CalculatePiece(
     int level = GetLevelByLines(lines);
     if (level != cur_level && cur_level != 0) {
       spdlog::debug("Calculate group {} lvl {}: {} - {}", group, cur_level, start, offsets[i]);
-      CalculateSameLevel(group, start, offsets[i], io_threads, prev, cur_level, ret.data());
+      CalculateSameLevel(group, start, offsets[i], prev, cur_level, ret.data());
       start = offsets[i];
     }
     cur_level = level;
   }
   if (cur_level != 0) {
     spdlog::debug("Calculate group {} lvl {}: {} - {}", group, cur_level, start, last);
-    CalculateSameLevel(group, start, last, io_threads, prev, cur_level, ret.data());
+    CalculateSameLevel(group, start, last, prev, cur_level, ret.data());
   }
   {
     MkdirForFile(ValueStatsPath(pieces));
@@ -262,11 +255,48 @@ std::vector<NodeEval> CalculatePiece(
   return ret;
 }
 
-} // namespace
+std::vector<NodeEval> ReadValues(int pieces, size_t total_size) {
+  int group = GetGroupByPieces(pieces);
+  if (!total_size) total_size = BoardCount(BoardPath(group));
+  CompressedClassReader<NodeEval> reader(ValuePath(pieces));
+  auto values = reader.ReadBatch(total_size);
+  if (values.size() != total_size) throw std::length_error("value file length incorrect");
+  return values;
+}
 
-void RunEvaluate(int io_threads, int start_pieces, const std::vector<int>& output_locations) {
-  std::vector<size_t> offsets[5];
+void RunEvaluate(int start_pieces, const std::vector<int>& output_locations, bool sample) {
+  std::vector<size_t> offsets[kGroups];
   for (int i = 0; i < kGroups; i++) offsets[i] = GetBoardCountOffset(i);
+
+  std::vector<std::pair<uint32_t, uint8_t>> samples[kGroups];
+  if (sample) {
+    spdlog::info("Start reading sample files");
+    for (int g = 0; g < kGroups; g++) {
+      auto fname = SVDSamplePath(g);
+      std::vector<uint8_t> mask(offsets[g].back());
+      if (mask.size() >= (1ll << 32)) throw std::length_error("too many boards");
+      if (mask.size() != std::filesystem::file_size(fname)) throw std::length_error("sample file length incorrect");
+      std::ifstream(fname).read(reinterpret_cast<char*>(mask.data()), mask.size());
+      for (uint64_t i = 0; i < mask.size(); i++) {
+        if (!mask[i]) continue;
+        for (uint8_t p = 0; p < kPieces; p++) {
+          if (mask[i] >> p & 1) samples[g].push_back({(uint32_t)i, p});
+        }
+      }
+
+      std::vector<uint8_t> cnt(samples[g].size());
+      for (size_t i = 0, idx = 0; i < offsets[g].size() - 1; i++) {
+        for (; samples[g][idx].first < offsets[g][i+1] && idx < samples[g].size(); idx++) {
+          cnt[idx] = i * 10 + g * 2;
+        }
+      }
+      auto cnt_fname = SVDSampleCountPath(g);
+      MkdirForFile(cnt_fname);
+      std::ofstream fout(cnt_fname);
+      if (!fout.is_open()) throw std::runtime_error("file open failed");
+      fout.write(reinterpret_cast<const char*>(cnt.data()), cnt.size());
+    }
+  }
 
   std::vector<NodeEval> values;
   if (start_pieces == -1) {
@@ -280,8 +310,7 @@ void RunEvaluate(int io_threads, int start_pieces, const std::vector<int>& outpu
     memset(values.data(), 0x0, values.size() * sizeof(NodeEval));
   } else {
     int start_group = GetGroupByPieces(start_pieces);
-    CompressedClassReader<NodeEval> reader(ValuePath(start_pieces));
-    values = reader.ReadBatch(offsets[start_group].back());
+    values = ReadValues(start_pieces, offsets[start_group].back());
     if (values.size() != offsets[start_group].back()) throw std::length_error("initial value file incorrect");
   }
 
@@ -289,11 +318,22 @@ void RunEvaluate(int io_threads, int start_pieces, const std::vector<int>& outpu
   std::set<int> location_set(output_locations.begin(), output_locations.end());
   int last_output = *location_set.begin();
   for (int pieces = start_pieces - 1; pieces >= last_output; pieces--) {
-    values = CalculatePiece(pieces, io_threads, values, offsets[GetGroupByPieces(pieces)]);
+    values = CalculatePiece(pieces, values, offsets[GetGroupByPieces(pieces)]);
     if (location_set.count(pieces)) {
       spdlog::info("Writing values of piece {}", pieces);
       CompressedClassWriter<NodeEval> writer(ValuePath(pieces), 2048);
       writer.Write(values);
+    }
+    if (sample) {
+      spdlog::info("Writing samples of piece {}", pieces);
+      ClassWriter<BasicIOType<float>> writer_ev(SVDEvPath(pieces)), writer_var(SVDVarPath(pieces));
+      for (auto& [v, p] : samples[GetGroupByPieces(pieces)]) {
+        float ev[8], var[8];
+        values[v].GetEv(ev);
+        values[v].GetVar(var);
+        writer_ev.Write(ev[p]);
+        writer_var.Write(var[p]);
+      }
     }
   }
 }

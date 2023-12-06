@@ -8,6 +8,7 @@
 #include "inspect.h"
 #include "evaluate.h"
 #include "board_set.h"
+#include "sample_svd.h"
 
 template <class T>
 std::vector<T> ParseIntList(const std::string& str) {
@@ -99,6 +100,13 @@ int main(int argc, char** argv) {
       .metavar("[18/19/29/39]")
       .scan<'i', int>();
   };
+  auto IOThreadsArg = [](ArgumentParser& parser) {
+    parser.add_argument("-i", "--io-threads")
+      .help("Number of readers")
+      .metavar("N")
+      .scan<'i', int>()
+      .default_value(4);
+  };
 
   ArgumentParser preprocess("preprocess", "", default_arguments::help);
   preprocess.add_description("Preprocess a board file");
@@ -120,6 +128,7 @@ int main(int argc, char** argv) {
   evaluate.add_description("Calculate values of every board");
   DataDirArg(evaluate);
   ParallelArg(evaluate);
+  IOThreadsArg(evaluate);
   evaluate.add_argument("-r", "--resume")
     .help("Resume from a previous checkpoint")
     .metavar("PIECES")
@@ -127,16 +136,31 @@ int main(int argc, char** argv) {
     .default_value(-1);
   evaluate.add_argument("-c", "--checkpoints").required()
     .help("Checkpoints (in pieces) to save the evaluate result (comma-separated, support Python-like range)");
-  evaluate.add_argument("-i", "--io-threads")
-    .help("Number of readers")
-    .metavar("N")
-    .scan<'i', int>()
-    .default_value(4);
+  evaluate.add_argument("-s", "--store-sample")
+    .help("Store sampled values (must have sample file available)")
+    .default_value(false)
+    .implicit_value(true);
 
-  build_edges.add_argument("-g", "--groups")
-    .help("The groups to build (0-4, comma-separated, support Python-like range)")
-    .metavar("GROUP")
-    .default_value("0:5");
+  ArgumentParser sample("sample", "", default_arguments::help);
+  sample.add_description("Sample boards for SVD");
+  DataDirArg(sample);
+  ParallelArg(sample);
+  IOThreadsArg(sample);
+  sample.add_argument("-s", "--start-pieces").required()
+    .help("Start pieces for sampling (must be a saved evaluate result)")
+    .metavar("PIECES")
+    .scan<'i', int>();
+  sample.add_argument("-n", "--num-samples-per-group").required()
+    .help("Number of samples for each group")
+    .scan<'i', long>();
+  sample.add_argument("--pow")
+    .help("Exponent used for scaling to get more high-valued samples")
+    .scan<'f', float>()
+    .default_value(0.5f);
+  sample.add_argument("--seed")
+    .help("Random seed")
+    .scan<'i', long>()
+    .default_value(0l);
 
   ArgumentParser inspect("inspect", "", default_arguments::help);
   inspect.add_description("Inspect files");
@@ -186,6 +210,7 @@ int main(int argc, char** argv) {
   program.add_subparser(preprocess);
   program.add_subparser(build_edges);
   program.add_subparser(evaluate);
+  program.add_subparser(sample);
   program.add_subparser(inspect);
 
   try {
@@ -198,6 +223,8 @@ int main(int argc, char** argv) {
       std::cerr << build_edges;
     } else if (program.is_subcommand_used("evaluate")) {
       std::cerr << evaluate;
+    } else if (program.is_subcommand_used("sample")) {
+      std::cerr << sample;
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
       if (subparser.is_subcommand_used("board-id")) {
@@ -224,6 +251,9 @@ int main(int argc, char** argv) {
   };
   auto SetDataDir = [&](const ArgumentParser& args) {
     kDataDir = args.get<std::string>("data_dir");
+  };
+  auto SetIOThreads = [&](const ArgumentParser& args) {
+    kIOThreads = args.get<int>("--io-threads");
   };
   auto GetGroup = [](const ArgumentParser& args) {
     return args.get<int>("--group");
@@ -252,10 +282,21 @@ int main(int argc, char** argv) {
       auto& args = program.at<ArgumentParser>("evaluate");
       SetParallel(args);
       SetDataDir(args);
+      SetIOThreads(args);
       auto checkpoints = ParseIntList<int>(args.get<std::string>("--checkpoints"));
       int resume = args.get<int>("--resume");
-      int io_threads = args.get<int>("--io-threads");
-      RunEvaluate(io_threads, resume, checkpoints);
+      bool sample = args.get<bool>("--store-sample");
+      RunEvaluate(resume, checkpoints, sample);
+    } else if (program.is_subcommand_used("sample")) {
+      auto& args = program.at<ArgumentParser>("sample");
+      SetParallel(args);
+      SetDataDir(args);
+      SetIOThreads(args);
+      int pieces = args.get<int>("--start-pieces");
+      long num_samples = args.get<long>("--num-samples-per-group");
+      float smooth_pow = args.get<float>("--pow");
+      long seed = args.get<long>("--seed");
+      RunSample(pieces, num_samples, smooth_pow, seed);
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
       if (subparser.is_subcommand_used("board-id")) {

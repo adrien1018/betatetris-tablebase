@@ -87,4 +87,15 @@ class NodeEval {
   }
 };
 
-void RunEvaluate(int io_threads, int start_pieces, const std::vector<int>& output_locations);
+constexpr int GetGroupByPieces(int pieces) {
+  return pieces * 4 / 2 % 5;
+}
+static_assert(GetGroupByPieces(0) == 0);
+static_assert(GetGroupByPieces(1) == 2);
+static_assert(GetGroupByPieces(4) == 3);
+static_assert(GetGroupByPieces(9) == 3);
+
+std::vector<NodeEval> CalculatePiece(
+    int pieces, const std::vector<NodeEval>& prev, const std::vector<size_t>& offsets);
+std::vector<NodeEval> ReadValues(int pieces, size_t total_size = 0);
+void RunEvaluate(int start_pieces, const std::vector<int>& output_locations, bool sample);

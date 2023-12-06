@@ -10,5 +10,11 @@ std::filesystem::path PositionEdgePath(int group, int level);
 std::filesystem::path ValuePath(int pieces);
 std::filesystem::path ValueStatsPath(int pieces);
 std::filesystem::path ProbPath(int pieces);
+
+std::filesystem::path SVDSamplePath(int group);
+std::filesystem::path SVDSampleCountPath(int group);
+std::filesystem::path SVDEvPath(int pieces);
+std::filesystem::path SVDVarPath(int pieces);
+
 uint64_t BoardCount(const std::filesystem::path& board_file);
 bool MkdirForFile(std::filesystem::path);
