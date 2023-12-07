@@ -73,11 +73,13 @@ FetchContent_Declare(
   spdlog
   URL "https://github.com/gabime/spdlog/archive/refs/tags/v1.12.0.zip"
 )
+FetchContent_Declare(
+  eigen
+  URL "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.zip"
+)
 
-FetchContent_MakeAvailable_Exclude(argparse spdlog)
+FetchContent_MakeAvailable_Exclude(argparse spdlog eigen)
 
-#add_executable(graph_gen graph_gen.cpp)
-#add_executable(gametree gametree.cpp)
 add_executable(mytest test.cpp)
 add_executable(random_boards scripts/random_boards.cpp)
 
@@ -85,10 +87,8 @@ file(GLOB MAIN_SRC "src/*.cpp")
 add_executable(main ${MAIN_SRC})
 
 target_compile_definitions(main PRIVATE -DTAP_SPEED=${TAP_SPEED} -DADJ_DELAY=${ADJ_DELAY} -DLINE_CAP=${LINE_CAP})
-target_link_libraries(main argparse::argparse spdlog::spdlog zstd)
-
-#target_link_libraries(graph_gen PRIVATE Threads::Threads "${TBB_LIB}")
-#target_link_libraries(gametree PRIVATE Threads::Threads)
+target_link_libraries(main argparse::argparse spdlog::spdlog zstd eigen)
+target_link_libraries(mytest eigen)
 
 if(BUILD_TESTS)
   enable_testing()

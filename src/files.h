@@ -15,6 +15,8 @@ std::filesystem::path SVDSamplePath(int group);
 std::filesystem::path SVDSampleCountPath(int group);
 std::filesystem::path SVDEvPath(int pieces);
 std::filesystem::path SVDVarPath(int pieces);
+std::filesystem::path SVDResultPath(bool ev);
+std::filesystem::path SVDResultListPath(bool ev, int rank);
 
 uint64_t BoardCount(const std::filesystem::path& board_file);
 bool MkdirForFile(std::filesystem::path);

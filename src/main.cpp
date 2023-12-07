@@ -162,6 +162,24 @@ int main(int argc, char** argv) {
     .scan<'i', long>()
     .default_value(0l);
 
+  ArgumentParser svd("svd", "", default_arguments::help);
+  svd.add_description("Run SVD for value compression");
+  svd.add_argument("-r", "--ranks")
+    .help("The ranks to build (comma-separated, support Python-like range)")
+    .default_value("1:65");
+  svd.add_argument("-t", "--training-split")
+    .help("Portion of training data")
+    .scan<'f', float>()
+    .default_value(0.5f);
+  svd.add_argument("--seed")
+    .help("Random seed")
+    .scan<'i', long>()
+    .default_value(0l);
+  svd.add_argument("ev_var").required()
+    .help("Value type (ev/var)")
+    .metavar("ev/var");
+  DataDirArg(svd);
+
   ArgumentParser inspect("inspect", "", default_arguments::help);
   inspect.add_description("Inspect files");
 
@@ -211,6 +229,7 @@ int main(int argc, char** argv) {
   program.add_subparser(build_edges);
   program.add_subparser(evaluate);
   program.add_subparser(sample);
+  program.add_subparser(svd);
   program.add_subparser(inspect);
 
   try {
@@ -225,6 +244,8 @@ int main(int argc, char** argv) {
       std::cerr << evaluate;
     } else if (program.is_subcommand_used("sample")) {
       std::cerr << sample;
+    } else if (program.is_subcommand_used("svd")) {
+      std::cerr << svd;
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
       if (subparser.is_subcommand_used("board-id")) {
@@ -297,6 +318,14 @@ int main(int argc, char** argv) {
       float smooth_pow = args.get<float>("--pow");
       long seed = args.get<long>("--seed");
       RunSample(pieces, num_samples, smooth_pow, seed);
+    } else if (program.is_subcommand_used("svd")) {
+      auto& args = program.at<ArgumentParser>("svd");
+      SetDataDir(args);
+      auto ranks = ParseIntList<int>(args.get<std::string>("--ranks"));
+      float training_split = args.get<float>("--training-split");
+      long seed = args.get<long>("--seed");
+      bool is_ev = args.get<std::string>("ev_var") == "ev";
+      DoSVD(is_ev, training_split, ranks, seed);
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
       if (subparser.is_subcommand_used("board-id")) {

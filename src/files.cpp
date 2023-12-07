@@ -46,6 +46,12 @@ fs::path SVDEvPath(int pieces) {
 fs::path SVDVarPath(int pieces) {
   return kDataDir / "svd" / (NumToStr(pieces) + ".var");
 }
+fs::path SVDResultPath(bool ev) {
+  return kDataDir / "svd" / "result" / (std::string("overall") + (ev ? "-ev" : "-var") + ".txt");
+}
+fs::path SVDResultListPath(bool ev, int rank) {
+  return kDataDir / "svd" / "result" / (NumToStr(rank, 3) + (ev ? "-ev" : "-var") + ".txt");
+}
 
 uint64_t BoardCount(const fs::path& board_file) {
   return fs::file_size(board_file) / kBoardBytes;

@@ -65,10 +65,10 @@ template <class T> struct BasicIOType {
   static constexpr bool kIsConstSize = true;
   static constexpr size_t NumBytes() { return sizeof(T); }
   T val;
-  template <class... Args> BasicIOType(Args&&... args) : val(std::forward<Args>(args)...) {}
   BasicIOType(const uint8_t buf[], size_t) {
     memcpy(this, buf, sizeof(T));
   }
+  template <class... Args> BasicIOType(Args&&... args) : val(std::forward<Args>(args)...) {}
   void GetBytes(uint8_t ret[]) const {
     memcpy(ret, this, sizeof(T));
   }

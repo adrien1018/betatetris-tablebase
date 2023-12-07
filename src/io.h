@@ -124,6 +124,7 @@ class ClassReaderImpl {
   std::ifstream fin_index;
 
   void ReadUntilSize(size_t sz, size_t buf_size) {
+    if (!fin) return;
     size_t old_sz = buf.size();
     sz = std::max(sz, buf_size);
     if (sz <= old_sz) return;
@@ -287,7 +288,7 @@ class ClassReader : public io_internal::ClassReaderImpl<T> {
         throw std::runtime_error("invalid file format");
       }
     }
-    T ret(buf.data() + (current_offset + kSizeNumberBytes), sz);
+    T ret(static_cast<const uint8_t*>(buf.data() + (current_offset + kSizeNumberBytes)), sz);
     current_offset += kSizeNumberBytes + sz;
     current++;
     if (current_offset + kSizeNumberBytes >= buf.size()) {
@@ -588,7 +589,7 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
 
   T ReadOne(size_t buf_size = std::string::npos, size_t ind_buf_size = std::string::npos) {
     uint64_t sz = ReadOneCommon(buf_size, ind_buf_size);
-    T ret(block_buf.data() + (block_offset + kSizeNumberBytes), sz);
+    T ret(static_cast<const uint8_t*>(block_buf.data() + (block_offset + kSizeNumberBytes)), sz);
     block_offset += kSizeNumberBytes + sz;
     return ret;
   }
@@ -596,7 +597,7 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
   // the destruction should be handled by caller
   void ReadOne(T* ret, size_t buf_size = std::string::npos, size_t ind_buf_size = std::string::npos) {
     uint64_t sz = ReadOneCommon(buf_size, ind_buf_size);
-    new(ret) T(block_buf.data() + (block_offset + kSizeNumberBytes), sz);
+    new(ret) T(static_cast<const uint8_t*>(block_buf.data() + (block_offset + kSizeNumberBytes)), sz);
     block_offset += kSizeNumberBytes + sz;
   }
 
