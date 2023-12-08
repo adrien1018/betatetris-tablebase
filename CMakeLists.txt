@@ -21,7 +21,7 @@ if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
 endif()
 
 set(CMAKE_CXX_FLAGS "-std=c++20 -mbmi2 -mavx2 -mfma -Wall -Wextra -Wno-unused-parameter")
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
+set(CMAKE_CXX_FLAGS_DEBUG "-Og -g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -102,6 +102,7 @@ if(BUILD_TESTS)
   file(GLOB TEST_SRC "test/*.cpp" "src/files.cpp" "src/config.cpp")
   add_executable(run-test ${TEST_SRC})
   target_link_libraries(run-test gtest_main zstd)
+  target_compile_definitions(run-test PRIVATE -DTESTING=1)
 
   include(GoogleTest)
   gtest_discover_tests(run-test)

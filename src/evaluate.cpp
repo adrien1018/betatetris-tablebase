@@ -10,48 +10,15 @@
 #include <spdlog/fmt/ranges.h>
 #pragma GCC diagnostic pop
 #include "edge.h"
+#include "game.h"
 #include "board.h"
 #include "config.h"
 #include "board_set.h"
-#include "move_search.h"
 #include "thread_queue.h"
 
 #pragma GCC diagnostic ignored "-Wclass-memaccess"
 
 namespace {
-
-constexpr int kLineCap = LINE_CAP;
-
-alignas(32) constexpr float kTransitionProb[][8] = {
-  {1./32, 5./32, 6./32, 5./32, 5./32, 5./32, 5./32}, // T
-  {6./32, 1./32, 5./32, 5./32, 5./32, 5./32, 5./32}, // J
-  {5./32, 6./32, 1./32, 5./32, 5./32, 5./32, 5./32}, // Z
-  {5./32, 5./32, 5./32, 2./32, 5./32, 5./32, 5./32}, // O
-  {5./32, 5./32, 5./32, 5./32, 2./32, 5./32, 5./32}, // S
-  {6./32, 5./32, 5./32, 5./32, 5./32, 1./32, 5./32}, // L
-  {5./32, 5./32, 5./32, 5./32, 6./32, 5./32, 1./32}, // I
-};
-
-constexpr int GetLevelByLines(int lines) {
-  if (lines < 130) return 18;
-  return lines / 10 + 6;
-}
-static_assert(GetLevelByLines(130) == 19);
-static_assert(GetLevelByLines(230) == 29);
-static_assert(GetLevelByLines(330) == 39);
-
-constexpr Level GetLevelSpeed(int level) {
-  if (level == 18) return kLevel18;
-  if (level < 29) return kLevel19;
-  if (level < 39) return kLevel29;
-  return kLevel39;
-}
-
-constexpr int Score(int lines, int level) {
-  constexpr int kTable[] = {0, 40, 100, 300, 1200};
-  return kTable[lines] * (level + 1);
-}
-
 
 struct Stats {
   static constexpr int kBucketSize = 32;

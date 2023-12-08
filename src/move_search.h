@@ -4,18 +4,10 @@
 #include <stdexcept>
 #include <algorithm>
 
+#include "game.h"
 #include "board.h"
 #include "position.h"
 #include "constexpr_helpers.h"
-
-constexpr int kLevels = 4;
-
-enum Level {
-  kLevel18,
-  kLevel19,
-  kLevel29,
-  kLevel39
-};
 
 class PossibleMoves {
   static void UniqueVector_(std::vector<Position>& p) {
@@ -550,6 +542,31 @@ template <Level level, int R, int adj_frame, class Taps>
 __attribute__((noinline)) PossibleMoves MoveSearch(const std::array<Board, R>& board) {
   constexpr move_search::Search<level, R, adj_frame, Taps> search{};
   return search.MoveSearch(board);
+}
+
+template <Level level, int adj_frame, class Taps>
+PossibleMoves MoveSearch(const Board& b, int piece) {
+  switch (piece) {
+    case 0: return MoveSearch<level, Board::NumRotations(0), adj_frame, Taps>(b.TMap());
+    case 1: return MoveSearch<level, Board::NumRotations(1), adj_frame, Taps>(b.JMap());
+    case 2: return MoveSearch<level, Board::NumRotations(2), adj_frame, Taps>(b.ZMap());
+    case 3: return MoveSearch<level, Board::NumRotations(3), adj_frame, Taps>(b.OMap());
+    case 4: return MoveSearch<level, Board::NumRotations(4), adj_frame, Taps>(b.SMap());
+    case 5: return MoveSearch<level, Board::NumRotations(5), adj_frame, Taps>(b.LMap());
+    case 6: return MoveSearch<level, Board::NumRotations(6), adj_frame, Taps>(b.IMap());
+  }
+  __builtin_unreachable();
+}
+
+template <int adj_frame, class Taps>
+PossibleMoves MoveSearch(const Board& b, Level level, int piece) {
+  switch (level) {
+    case kLevel18: return MoveSearch<kLevel18, adj_frame, Taps>(b, piece);
+    case kLevel19: return MoveSearch<kLevel19, adj_frame, Taps>(b, piece);
+    case kLevel29: return MoveSearch<kLevel29, adj_frame, Taps>(b, piece);
+    case kLevel39: return MoveSearch<kLevel39, adj_frame, Taps>(b, piece);
+  }
+  __builtin_unreachable();
 }
 
 using Tap30Hz = move_search::TapTable<0, 2, 2, 2, 2, 2, 2, 2, 2, 2>;

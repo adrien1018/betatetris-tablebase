@@ -10,13 +10,13 @@
 #include <spdlog/fmt/ranges.h>
 #pragma GCC diagnostic pop
 
+#include "game.h"
 #include "files.h"
 #include "evaluate.h"
 #include "board_set.h"
 
 namespace {
 
-constexpr int kLineCap = LINE_CAP;
 constexpr int kBucketSize = 32;
 constexpr int kMaximum = 2400000;
 
@@ -155,6 +155,21 @@ void ReadGroup(int group, bool is_ev, std::vector<std::array<float, kSVDColumns>
   }
 }
 
+template <class Mat, class Stream>
+void OutputMatrix(const Mat& mat, Stream& fout) {
+  if (mat.cols() == 1) {
+    for (long i = 0; i < mat.rows(); i++) {
+      fout << mat(i, 0) << " \n"[i == mat.rows() - 1];
+    }
+    return;
+  }
+  for (long i = 0; i < mat.rows(); i++) {
+    for (long j = 0; j < mat.cols(); j++) {
+      fout << mat(i, j) << " \n"[j == mat.cols() - 1];
+    }
+  }
+}
+
 void OutputStats(const MatrixSVD& original, const MatrixSVD& reconstruct,
                  std::ofstream& fout, std::ofstream* fsample = nullptr) {
   float mse = std::sqrt((original - reconstruct).array().square().mean());
@@ -183,24 +198,17 @@ void OutputStats(const MatrixSVD& original, const MatrixSVD& reconstruct,
     fout << str << '\n';
     spdlog::debug(str);
   }
+  fout << "Extreme:";
+  for (long i = 0; i < original.rows(); i++) {
+    if (row_max(i) >= extreme) {
+      OutputMatrix(original.row(i), fout);
+      OutputMatrix(reconstruct.row(i), fout);
+      fout << "---\n";
+    }
+  }
   if (fsample) {
     for (long i = 0; i < original.rows(); i++) {
       *fsample << original(i, 0) << ' ' << row_max(i) << '\n';
-    }
-  }
-}
-
-template <class Mat, class Stream>
-void OutputMatrix(const Mat& mat, Stream& fout) {
-  if (mat.cols() == 1) {
-    for (long i = 0; i < mat.rows(); i++) {
-      fout << mat(i, 0) << " \n"[i == mat.rows() - 1];
-    }
-    return;
-  }
-  for (long i = 0; i < mat.rows(); i++) {
-    for (long j = 0; j < mat.cols(); j++) {
-      fout << mat(i, j) << " \n"[j == mat.cols() - 1];
     }
   }
 }
@@ -230,13 +238,13 @@ void RunSample(int start_pieces, size_t num_samples, float smooth_pow, size_t se
   }
 }
 
-#include <iostream>
 void DoSVD(bool is_ev, float training_split, const std::vector<int>& ranks, size_t seed) {
   size_t total_samples = 0;
   for (int g = 0; g < kGroups; g++) total_samples += std::filesystem::file_size(SVDSampleCountPath(g));
   training_split = std::min(1.0f, std::max(0.0f, training_split));
   const size_t training_samples = total_samples * training_split;
   const size_t testing_samples = total_samples - training_samples;
+  float max_val = 0;
   MatrixSVD training_mat(training_samples, kSVDColumns), testing_mat(testing_samples, kSVDColumns);
   {
     std::vector<std::array<float, kSVDColumns>> tmp_mat;
@@ -252,28 +260,43 @@ void DoSVD(bool is_ev, float training_split, const std::vector<int>& ranks, size
     std::mt19937_64 gen(seed);
     std::shuffle(perm.begin(), perm.end(), gen);
     for (size_t i = 0; i < training_samples; i++) {
+      max_val = std::max(max_val, tmp_mat[perm[i]][0]);
       for (size_t j = 0; j < kSVDColumns; j++) training_mat(i, j) = tmp_mat[perm[i]][j];
     }
     for (size_t i = 0; i < testing_samples; i++) {
       for (size_t j = 0; j < kSVDColumns; j++) testing_mat(i, j) = tmp_mat[perm[i + training_samples]][j];
     }
   }
-
-  OutputMatrix(training_mat.topRows(32), std::cout);
+  /*
+  MatrixSVD svd_mat = training_mat;
+  for (size_t i = 0; i < training_samples; i++) {
+    svd_mat.row(i) *= std::sqrt((training_mat(i, 0) + 1) / max_val);
+  }
+  */
 
   using namespace Eigen;
 
   spdlog::info("Start calculating SVD");
   JacobiSVD<Eigen::MatrixXf> svd(training_mat, ComputeThinU | ComputeThinV);
-  auto singular_vals = svd.singularValues();
+  Eigen::Matrix<float, kSVDColumns, 1> scale;
   MatrixSVDTrans scaled_v = svd.matrixV();
-  for (size_t i = 0; i < kSVDColumns; i++) scaled_v.col(i) *= singular_vals(i);
+  {
+    /*
+    JacobiSVD<MatrixXf> svd_lin(scaled_v, ComputeThinU | ComputeThinV);
+    scale = svd_lin.solve(training_mat.transpose()).array().square().rowwise().mean().sqrt();
+    */
+    MatrixXf u = svd.matrixU();
+    auto sing = svd.singularValues();
+    for (size_t i = 0; i < kSVDColumns; i++) u.col(i) *= sing(i);
+    scale = u.array().square().colwise().mean().sqrt().transpose();
+  }
+  for (size_t i = 0; i < kSVDColumns; i++) scaled_v.col(i) *= scale(i);
 
   spdlog::info("SVD done, writing results");
   MkdirForFile(SVDResultPath(is_ev));
   std::ofstream fout(SVDResultPath(is_ev));
-  fout << "Singular values:\n";
-  OutputMatrix(singular_vals, fout);
+  fout << "Scaling factors:\n";
+  OutputMatrix(scale, fout);
   fout << "V:\n";
   OutputMatrix(svd.matrixV(), fout);
   fout << "Scaled V:\n";
@@ -281,18 +304,19 @@ void DoSVD(bool is_ev, float training_split, const std::vector<int>& ranks, size
   for (int rank : ranks) {
     spdlog::debug("Testing rank {}", rank);
     MatrixSVDTrans lin_mat = scaled_v.leftCols(rank);
+    JacobiSVD<MatrixXf> svd_lin(lin_mat, ComputeThinU | ComputeThinV);
     {
       fout << "\nRank " << rank << "\nTraining\n";
-      JacobiSVD<MatrixXf> svd_lin(lin_mat, ComputeThinU | ComputeThinV);
-      auto result = svd_lin.solve(training_mat.transpose());
+      MatrixSVDTrans trans = training_mat.transpose();
+      auto result = svd_lin.solve(trans);
       MatrixSVD reconstruct = result.transpose() * lin_mat.transpose();
       OutputStats(training_mat, reconstruct, fout);
     }
     if (testing_samples) {
       std::ofstream fsample(SVDResultListPath(is_ev, rank));
       fout << "Testing\n";
-      JacobiSVD<MatrixXf> svd_lin(lin_mat, ComputeThinU | ComputeThinV);
-      auto result = svd_lin.solve(testing_mat.transpose());
+      MatrixSVDTrans trans = testing_mat.transpose();
+      auto result = svd_lin.solve(trans);
       MatrixSVD reconstruct = result.transpose() * lin_mat.transpose();
       OutputStats(testing_mat, reconstruct, fout, &fsample);
     }
