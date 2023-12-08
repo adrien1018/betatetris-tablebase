@@ -221,6 +221,10 @@ PyObject* Tetris_GetRunLines(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
   return PyLong_FromLong(self->tetris.RunLines());
 }
 
+PyObject* Tetris_GetRunPieces(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
+  return PyLong_FromLong(self->tetris.RunPieces());
+}
+
 PyMethodDef py_tetris_class_methods[] = {
     {"IsOver", (PyCFunction)Tetris_IsOver, METH_NOARGS,
      "Check whether the game is over"},
@@ -236,8 +240,9 @@ PyMethodDef py_tetris_class_methods[] = {
     {"ResetRandom", (PyCFunction)Tetris_ResetRandom, METH_VARARGS | METH_KEYWORDS,
      "Reset game and assign pieces randomly"},
     {"GetBoard", (PyCFunction)Tetris_GetBoard, METH_NOARGS, "Get board object"},
-    {"GetRunLines", (PyCFunction)Tetris_GetRunLines, METH_NOARGS, "Get lines of this run"},
     {"GetRunScore", (PyCFunction)Tetris_GetRunScore, METH_NOARGS, "Get score of this run"},
+    {"GetRunLines", (PyCFunction)Tetris_GetRunLines, METH_NOARGS, "Get lines of this run"},
+    {"GetRunPieces", (PyCFunction)Tetris_GetRunPieces, METH_NOARGS, "Get pieces of this run"},
     {nullptr}};
 
 } // namespace

@@ -159,13 +159,13 @@ template <class Mat, class Stream>
 void OutputMatrix(const Mat& mat, Stream& fout) {
   if (mat.cols() == 1) {
     for (long i = 0; i < mat.rows(); i++) {
-      fout << mat(i, 0) << " \n"[i == mat.rows() - 1];
+      fout << fmt::format("{}", mat(i, 0)) << " \n"[i == mat.rows() - 1];
     }
     return;
   }
   for (long i = 0; i < mat.rows(); i++) {
     for (long j = 0; j < mat.cols(); j++) {
-      fout << mat(i, j) << " \n"[j == mat.cols() - 1];
+      fout << fmt::format("{}", mat(i, j)) << " \n"[j == mat.cols() - 1];
     }
   }
 }
@@ -185,7 +185,7 @@ void OutputStats(const MatrixSVD& original, const MatrixSVD& reconstruct,
     for (size_t i = 0; i < 10; i++) {
       high_percentile[i] = data[(data.size() - 1) * (i + 90) / 100];
     }
-    extreme = data[(data.size() - 1) * 9999 / 10000];
+    extreme = data[(data.size() - 1) * 399999 / 400000];
   }
   {
     std::string str = fmt::format("MSE: {}; Rowwise MSE: {}", mse, mse_row);

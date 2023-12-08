@@ -23,8 +23,9 @@ class Tetris {
   MoveMap move_map_;
 
   // stats
-  int score_;
+  int run_score_;
   int run_lines_;
+  int run_pieces_;
 
   void CalculateMoves_(bool regenerate) {
     if (regenerate) {
@@ -56,8 +57,9 @@ class Tetris {
     next_piece_ = next_piece;
     game_over_ = false;
     CalculateMoves_(true);
-    score_ = 0;
+    run_score_ = 0;
     run_lines_ = 0;
+    run_pieces_ = 0;
   }
 
   // (score, lines)
@@ -81,8 +83,9 @@ class Tetris {
       } else {
         CalculateMoves_(true);
       }
-      score_ += delta_score;
+      run_score_ += delta_score;
       run_lines_ += lines;
+      run_pieces_++;
       return {delta_score, lines};
     } else {
       for (size_t i = 0; i < moves_.adj.size(); i++) {
@@ -114,6 +117,7 @@ class Tetris {
   int NextPiece() const { return next_piece_; }
   bool IsOver() const { return game_over_; }
 
+  int RunPieces() const { return run_pieces_; }
   int RunLines() const { return run_lines_; }
-  int RunScore() const { return score_; }
+  int RunScore() const { return run_score_; }
 };
