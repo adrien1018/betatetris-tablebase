@@ -558,7 +558,13 @@ class alignas(32) Board {
     r.Normalize();
     return r;
   }
+
+  static const Board Zeros;
+  static const Board Ones;
 };
+
+inline constexpr Board Board::Zeros = Board(0, 0, 0, 0);
+inline constexpr Board Board::Ones = ~Board(0, 0, 0, 0);
 
 constexpr Board operator|(const Board& x, const Board& y) {
   return {x.b1 | y.b1, x.b2 | y.b2, x.b3 | y.b3, x.b4 | y.b4};
