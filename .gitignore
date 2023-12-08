@@ -2,3 +2,4 @@ build
 build_debug
 test.cpp
 test.py
+*.swp

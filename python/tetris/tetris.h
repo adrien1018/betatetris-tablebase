@@ -38,6 +38,12 @@ class PythonTetris {
     Reset(Board::Ones, 0);
   }
 
+  void Reset(const Board& b) {
+    int lines = b.Count() % 4 != 0;
+    lines += std::uniform_int_distribution<int>(0, kLineCap / 2 - 1)(rng_) * 2;
+    Reset(b, lines);
+  }
+
   void Reset(const Board& b, int lines) {
     int first_piece = std::uniform_int_distribution<int>(0, kPieces - 1)(rng_);
     next_piece_ = GenNextPiece_(first_piece);
@@ -53,9 +59,13 @@ class PythonTetris {
   std::pair<double, double> InputPlacement(const Position& pos) {
     int score = tetris.InputPlacement(pos, next_piece_).first;
     if (score == -1) return {kInvalidReward_, 0.0f};
-    if (!tetris.IsAdj()) next_piece_ = GenNextPiece_(next_piece_);
     double reward = score * kRewardMultiplier_;
-    return {reward + step_reward_, reward};
+    double n_reward = reward;
+    if (!tetris.IsAdj()) {
+      next_piece_ = GenNextPiece_(next_piece_);
+      n_reward += step_reward_;
+    }
+    return {n_reward, reward};
   }
 
   struct State {

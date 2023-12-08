@@ -115,14 +115,18 @@ PyObject* Tetris_ResetRandom(PythonTetris* self, PyObject* args, PyObject* kwds)
     "lines", "board",
     nullptr
   };
-  int lines = 0;
+  int lines = -1;
   Board board = Board::Ones;
   PyObject* board_obj = nullptr;
   if (!PyArg_ParseTupleAndKeywords(args, kwds, "|iO", (char**)kwlist, &lines, &board_obj)) {
     return nullptr;
   }
   if (!CheckBoard(board, board_obj)) return nullptr;
-  self->Reset(board, lines);
+  if (lines == -1) {
+    self->Reset(board);
+  } else {
+    self->Reset(board, lines);
+  }
   Py_RETURN_NONE;
 }
 

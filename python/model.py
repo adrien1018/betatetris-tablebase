@@ -132,7 +132,7 @@ class Model(nn.Module):
         x = self.board_embed(board, board_meta)
         x = self.main_start(x)
         if not pi_only:
-            evdev = self.evdev_final(self.evdev_head(x), meta_int[:,0])
+            evdev = self.evdev_final(self.evdev_head(x), meta_int[:,0].type(torch.LongTensor))
         if not evdev_only:
             x = x + self.moves_embed(moves, moves_meta)
             x = self.main_end(x)

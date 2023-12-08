@@ -10,7 +10,7 @@ constexpr T pext(T a, T mask) {
       std::is_same<T, uint32_t>::value ||
       std::is_same<T, uint64_t>::value,
       "not implemented");
-  if (std::__is_constant_evaluated()) {
+  if (std::is_constant_evaluated()) {
     T res = 0;
     for (T bb = 1; mask != 0; bb <<= 1) {
       if (a & mask & -mask) res |= bb;
@@ -30,7 +30,7 @@ constexpr T pdep(T a, T mask) {
       std::is_same<T, uint32_t>::value ||
       std::is_same<T, uint64_t>::value,
       "not implemented");
-  if (std::__is_constant_evaluated()) {
+  if (std::is_constant_evaluated()) {
     T res = 0;
     for (T bb = 1; mask; bb <<= 1) {
       if (a & bb) res |= mask & -mask;

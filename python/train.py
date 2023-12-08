@@ -220,7 +220,6 @@ def claim_experiment(uuid: str):
 
 if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
-    torch.autograd.set_detect_anomaly(True)
     conf, args, _ = LoadConfig()
     m = Main(conf, args['name'])
     experiment.add_model_savers({

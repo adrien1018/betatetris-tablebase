@@ -23,8 +23,8 @@ class Configs(BaseConfigs):
     # number of epochs to train the model with sampled data
     epochs: int = 1
     # number of worker processes
-    n_workers: int = 8
-    env_per_worker: int = 32
+    n_workers: int = 4
+    env_per_worker: int = 64
     # number of steps to run on each process for a single update
     worker_steps: int = 128
     # size of mini batches
