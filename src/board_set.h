@@ -2,7 +2,10 @@
 
 #include <vector>
 #include <filesystem>
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdangling-reference"
 #include <tsl/sparse_map.h>
+#pragma GCC diagnostic pop
 
 #include "io.h"
 #include "board.h"

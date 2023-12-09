@@ -188,12 +188,14 @@ int main(int argc, char** argv) {
   DataDirArg(svd);
 
   ArgumentParser sample_train("sample_train", "", default_arguments::help);
-  sample_train.add_description("Sample boards for SVD");
+  sample_train.add_description("Sample boards for training");
   DataDirArg(sample_train);
   ParallelArg(sample_train);
   IOThreadsArg(sample_train);
   sample_train.add_argument("-s", "--start-pieces").required()
     .help("Start pieces for sampling (must be a saved evaluate result; comma-separated)");
+  sample_train.add_argument("-o", "--output").required()
+    .help("Output file");
   NumSamplesArg(sample_train);
   PowArg(sample_train);
   SeedArg(sample_train);
