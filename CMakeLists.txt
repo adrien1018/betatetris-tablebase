@@ -77,18 +77,26 @@ FetchContent_Declare(
   eigen
   URL "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.zip"
 )
+FetchContent_Declare(
+  sparse_map
+  URL "https://github.com/Tessil/sparse-map/archive/refs/tags/v0.6.2.zip"
+)
+FetchContent_Declare(
+  hopscotch_map
+  URL "https://github.com/Tessil/hopscotch-map/archive/refs/tags/v2.3.1.zip"
+)
 
-FetchContent_MakeAvailable_Exclude(argparse spdlog eigen)
+FetchContent_MakeAvailable_Exclude(argparse spdlog eigen sparse_map hopscotch_map)
 
-add_executable(mytest test.cpp)
+#add_executable(mytest test.cpp)
 add_executable(random_boards scripts/random_boards.cpp)
 
 file(GLOB MAIN_SRC "src/*.cpp")
 add_executable(main ${MAIN_SRC})
 
 target_compile_definitions(main PRIVATE -DTAP_SPEED=${TAP_SPEED} -DADJ_DELAY=${ADJ_DELAY} -DLINE_CAP=${LINE_CAP})
-target_link_libraries(main argparse::argparse spdlog::spdlog zstd eigen)
-target_link_libraries(mytest eigen)
+target_link_libraries(main argparse::argparse spdlog::spdlog zstd eigen tsl::sparse_map tsl::hopscotch_map)
+#target_link_libraries(mytest eigen)
 
 if(BUILD_TESTS)
   enable_testing()
@@ -101,7 +109,7 @@ if(BUILD_TESTS)
 
   file(GLOB TEST_SRC "test/*.cpp" "src/files.cpp" "src/config.cpp")
   add_executable(run-test ${TEST_SRC})
-  target_link_libraries(run-test gtest_main zstd)
+  target_link_libraries(run-test gtest_main zstd tsl::sparse_map tsl::hopscotch_map)
   target_compile_definitions(run-test PRIVATE -DTESTING=1)
 
   include(GoogleTest)

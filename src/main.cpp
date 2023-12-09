@@ -9,6 +9,7 @@
 #include "evaluate.h"
 #include "board_set.h"
 #include "sample_svd.h"
+#include "sample_train.h"
 
 template <class T>
 std::vector<T> ParseIntList(const std::string& str) {
@@ -107,6 +108,23 @@ int main(int argc, char** argv) {
       .scan<'i', int>()
       .default_value(4);
   };
+  auto NumSamplesArg = [](ArgumentParser& parser) {
+    parser.add_argument("-n", "--num-samples-per-group").required()
+      .help("Number of samples for each group")
+      .scan<'i', long>();
+  };
+  auto PowArg = [](ArgumentParser& parser) {
+    parser.add_argument("--pow")
+      .help("Exponent used for scaling to get more high-valued samples")
+      .scan<'f', float>()
+      .default_value(0.5f);
+  };
+  auto SeedArg = [](ArgumentParser& parser) {
+    parser.add_argument("--seed")
+      .help("Random seed")
+      .scan<'i', long>()
+      .default_value(0l);
+  };
 
   ArgumentParser preprocess("preprocess", "", default_arguments::help);
   preprocess.add_description("Preprocess a board file");
@@ -141,26 +159,18 @@ int main(int argc, char** argv) {
     .default_value(false)
     .implicit_value(true);
 
-  ArgumentParser sample("sample", "", default_arguments::help);
-  sample.add_description("Sample boards for SVD");
-  DataDirArg(sample);
-  ParallelArg(sample);
-  IOThreadsArg(sample);
-  sample.add_argument("-s", "--start-pieces").required()
+  ArgumentParser sample_svd("sample_svd", "", default_arguments::help);
+  sample_svd.add_description("Sample boards for SVD");
+  DataDirArg(sample_svd);
+  ParallelArg(sample_svd);
+  IOThreadsArg(sample_svd);
+  sample_svd.add_argument("-s", "--start-pieces").required()
     .help("Start pieces for sampling (must be a saved evaluate result)")
     .metavar("PIECES")
     .scan<'i', int>();
-  sample.add_argument("-n", "--num-samples-per-group").required()
-    .help("Number of samples for each group")
-    .scan<'i', long>();
-  sample.add_argument("--pow")
-    .help("Exponent used for scaling to get more high-valued samples")
-    .scan<'f', float>()
-    .default_value(0.5f);
-  sample.add_argument("--seed")
-    .help("Random seed")
-    .scan<'i', long>()
-    .default_value(0l);
+  NumSamplesArg(sample_svd);
+  PowArg(sample_svd);
+  SeedArg(sample_svd);
 
   ArgumentParser svd("svd", "", default_arguments::help);
   svd.add_description("Run SVD for value compression");
@@ -171,14 +181,22 @@ int main(int argc, char** argv) {
     .help("Portion of training data")
     .scan<'f', float>()
     .default_value(0.5f);
-  svd.add_argument("--seed")
-    .help("Random seed")
-    .scan<'i', long>()
-    .default_value(0l);
+  SeedArg(svd);
   svd.add_argument("ev_var").required()
     .help("Value type (ev/var)")
     .metavar("ev/var");
   DataDirArg(svd);
+
+  ArgumentParser sample_train("sample_train", "", default_arguments::help);
+  sample_train.add_description("Sample boards for SVD");
+  DataDirArg(sample_train);
+  ParallelArg(sample_train);
+  IOThreadsArg(sample_train);
+  sample_train.add_argument("-s", "--start-pieces").required()
+    .help("Start pieces for sampling (must be a saved evaluate result; comma-separated)");
+  NumSamplesArg(sample_train);
+  PowArg(sample_train);
+  SeedArg(sample_train);
 
   ArgumentParser inspect("inspect", "", default_arguments::help);
   inspect.add_description("Inspect files");
@@ -228,8 +246,9 @@ int main(int argc, char** argv) {
   program.add_subparser(preprocess);
   program.add_subparser(build_edges);
   program.add_subparser(evaluate);
-  program.add_subparser(sample);
+  program.add_subparser(sample_svd);
   program.add_subparser(svd);
+  program.add_subparser(sample_train);
   program.add_subparser(inspect);
 
   try {
@@ -242,10 +261,12 @@ int main(int argc, char** argv) {
       std::cerr << build_edges;
     } else if (program.is_subcommand_used("evaluate")) {
       std::cerr << evaluate;
-    } else if (program.is_subcommand_used("sample")) {
-      std::cerr << sample;
+    } else if (program.is_subcommand_used("sample_svd")) {
+      std::cerr << sample_svd;
     } else if (program.is_subcommand_used("svd")) {
       std::cerr << svd;
+    } else if (program.is_subcommand_used("sample_train")) {
+      std::cerr << sample_train;
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
       if (subparser.is_subcommand_used("board-id")) {
@@ -285,6 +306,15 @@ int main(int argc, char** argv) {
   auto GetLevel = [](const ArgumentParser& args) {
     return ParseLevel(args.get<int>("--level"));
   };
+  auto GetNumSamples = [](const ArgumentParser& args) {
+    return args.get<long>("--num-samples-per-group");
+  };
+  auto GetPow = [](const ArgumentParser& args) {
+    return args.get<float>("--pow");
+  };
+  auto GetSeed = [](const ArgumentParser& args) {
+    return args.get<long>("--seed");
+  };
 
   try {
     if (program.is_subcommand_used("preprocess")) {
@@ -308,24 +338,35 @@ int main(int argc, char** argv) {
       int resume = args.get<int>("--resume");
       bool sample = args.get<bool>("--store-sample");
       RunEvaluate(resume, checkpoints, sample);
-    } else if (program.is_subcommand_used("sample")) {
-      auto& args = program.at<ArgumentParser>("sample");
+    } else if (program.is_subcommand_used("sample_svd")) {
+      auto& args = program.at<ArgumentParser>("sample_svd");
       SetParallel(args);
       SetDataDir(args);
       SetIOThreads(args);
       int pieces = args.get<int>("--start-pieces");
-      long num_samples = args.get<long>("--num-samples-per-group");
-      float smooth_pow = args.get<float>("--pow");
-      long seed = args.get<long>("--seed");
+      long num_samples = GetNumSamples(args);
+      float smooth_pow = GetPow(args);
+      long seed = GetSeed(args);
       RunSample(pieces, num_samples, smooth_pow, seed);
     } else if (program.is_subcommand_used("svd")) {
       auto& args = program.at<ArgumentParser>("svd");
       SetDataDir(args);
       auto ranks = ParseIntList<int>(args.get<std::string>("--ranks"));
       float training_split = args.get<float>("--training-split");
-      long seed = args.get<long>("--seed");
+      long seed = GetSeed(args);
       bool is_ev = args.get<std::string>("ev_var") == "ev";
       DoSVD(is_ev, training_split, ranks, seed);
+    } else if (program.is_subcommand_used("sample_train")) {
+      auto& args = program.at<ArgumentParser>("sample_train");
+      SetParallel(args);
+      SetDataDir(args);
+      SetIOThreads(args);
+      auto pieces = ParseIntList<int>(args.get<std::string>("--start-pieces"));
+      long num_samples = GetNumSamples(args);
+      float smooth_pow = GetPow(args);
+      long seed = GetSeed(args);
+      std::filesystem::path output = args.get<std::string>("--output");
+      SampleTrainingBoards(pieces, num_samples, smooth_pow, seed, output);
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
       if (subparser.is_subcommand_used("board-id")) {

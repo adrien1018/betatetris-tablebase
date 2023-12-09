@@ -215,6 +215,18 @@ void OutputStats(const MatrixSVD& original, const MatrixSVD& reconstruct,
 
 } // namespace
 
+void SampleFromEval(
+    const std::vector<NodeEval>& val, size_t num_samples, float smooth_pow, size_t seed, uint32_t mark,
+    std::vector<std::pair<uint32_t, uint32_t>>& ret) {
+  auto mask = DoSample(val, num_samples, smooth_pow, seed);
+  for (size_t i = 0; i < mask.size(); i++) {
+    if (!mask[i]) continue;
+    for (size_t j = 0; j < kPieces; j++) {
+      if (mask[i] >> j & 1) ret.push_back({i, j | mark});
+    }
+  }
+}
+
 void RunSample(int start_pieces, size_t num_samples, float smooth_pow, size_t seed) {
   if (start_pieces < kGroups) throw std::range_error("start_piece too small");
   if (smooth_pow > 1) {
