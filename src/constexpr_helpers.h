@@ -45,6 +45,63 @@ constexpr T pdep(T a, T mask) {
 }
 
 template <class T>
+constexpr int popcount(T a) {
+  static_assert(
+      std::is_same<T, uint32_t>::value ||
+      std::is_same<T, uint64_t>::value,
+      "not implemented");
+#ifdef _MSC_VER
+  return std::popcount(a);
+#else
+  return __builtin_popcountll(a);
+#endif
+}
+
+template <class T>
+constexpr int ctz(T a) {
+  static_assert(
+      std::is_same<T, uint32_t>::value ||
+      std::is_same<T, uint64_t>::value,
+      "not implemented");
+#ifdef _MSC_VER
+  return std::countr_zero(a);
+#else
+  if constexpr(std::is_same<T, uint64_t>::value) {
+    return __builtin_ctzll(a);
+  } else {
+    return __builtin_ctz(a);
+  }
+#endif
+}
+
+template <class T>
+constexpr int clz(T a) {
+  static_assert(
+      std::is_same<T, uint32_t>::value ||
+      std::is_same<T, uint64_t>::value,
+      "not implemented");
+#ifdef _MSC_VER
+  return std::countl_zero(a);
+#else
+  if constexpr(std::is_same<T, uint64_t>::value) {
+    return __builtin_clzll(a);
+  } else {
+    return __builtin_clz(a);
+  }
+#endif
+}
+
+[[noreturn]] inline void unreachable() {
+#ifdef __GNUC__ // GCC, Clang, ICC
+  __builtin_unreachable();
+#else
+#ifdef _MSC_VER // MSVC
+  __assume(false);
+#endif
+#endif
+}
+
+template <class T>
 constexpr T BytesToInt(const uint8_t x[]) {
   static_assert(
       std::is_same<T, uint16_t>::value ||

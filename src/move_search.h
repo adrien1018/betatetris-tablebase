@@ -9,6 +9,12 @@
 #include "position.h"
 #include "constexpr_helpers.h"
 
+#ifdef _MSC_VER
+#define NOINLINE __declspec(noinline)
+#else
+#define NOINLINE __attribute__((noinline))
+#endif
+
 class PossibleMoves {
   static void UniqueVector_(std::vector<Position>& p) {
     std::sort(p.begin(), p.end());
@@ -33,7 +39,7 @@ constexpr int GetRow(int frame, Level level) {
     case kLevel29: return frame;
     case kLevel39: return frame * 2;
   }
-  __builtin_unreachable();
+  unreachable();
 }
 
 constexpr bool IsDropFrame(int frame, Level level) {
@@ -51,7 +57,7 @@ constexpr int GetLastFrameOnRow(int row, Level level) {
     case kLevel29: return row;
     case kLevel39: return row / 2;
   }
-  __builtin_unreachable();
+  unreachable();
 }
 
 template <
@@ -105,7 +111,9 @@ struct TableEntry {
 
 template <Level level, int R, class Taps>
 constexpr int Phase1TableGen(int initial_frame, int initial_rot, int initial_col, TableEntry<R> entries[]) {
+#ifndef _MSC_VER
   static_assert(IsTapTable<Taps>::value);
+#endif
   int sz = 0;
   static_assert(R == 1 || R == 2 || R == 4, "unexpected rotations");
   constexpr uint8_t kA = 0x1;
@@ -257,7 +265,7 @@ constexpr Frames ColumnToNormalFrameMask(Column col) {
       return pext(col, kMask);
     }
   }
-  __builtin_unreachable();
+  unreachable();
 }
 
 template <Level level>
@@ -274,7 +282,7 @@ constexpr Frames ColumnToDropFrameMask(Column col) {
       return pext(col & col >> 1 & col >> 2, kMask);
     }
   }
-  __builtin_unreachable();
+  unreachable();
 }
 
 template <Level level>
@@ -303,7 +311,7 @@ constexpr int FindLockRow(uint32_t col, int start_row) {
   // col+(1<<row)      = 00111100100101
   // col^(col+(1<<row))= 00000000111000
   //              highbit=31-clz ^
-  return 31 - __builtin_clz(col ^ (col + (1 << start_row))) - 1;
+  return 31 - clz<uint32_t>(col ^ (col + (1 << start_row))) - 1;
 }
 
 // note: "tuck" here means tucks, spins or spintucks
@@ -389,7 +397,7 @@ class Search {
   static constexpr Taps taps{};
   static constexpr Phase1Table<level, R, adj_frame, Taps> table{};
 
-  template <bool is_adj> __attribute__((noinline)) constexpr void RunPhase2(
+  template <bool is_adj> NOINLINE constexpr void RunPhase2(
       const Column cols[R][10],
       const TuckMasks<R> tuck_masks,
       const Column lock_positions_without_tuck[R][10],
@@ -418,7 +426,7 @@ class Search {
         Column cur = cols[rot][col];
         Column tuck_lock_positions = (after_tuck_positions + cur) >> 1 & (cur & ~cur >> 1) & ~lock_positions_without_tuck[rot][col];
         while (tuck_lock_positions) {
-          int row = __builtin_ctz(tuck_lock_positions);
+          int row = ctz(tuck_lock_positions);
           Insert({rot, row, col});
           tuck_lock_positions ^= 1 << row;
         }
@@ -450,7 +458,7 @@ class Search {
     Column lock_positions_without_tuck[R][10] = {};
 
     bool phase_2_possible = false;
-    bool can_reach[N] = {};
+    bool can_reach[std::max(N, 1)] = {};
     For<N>([&](auto i_obj) {
       constexpr int i = i_obj.value;
       constexpr auto& entry = is_adj ? table.adj[initial_id][i] : table.initial[i];
@@ -539,7 +547,7 @@ class Search {
 } // namespace move_search
 
 template <Level level, int R, int adj_frame, class Taps>
-__attribute__((noinline)) PossibleMoves MoveSearch(const std::array<Board, R>& board) {
+NOINLINE PossibleMoves MoveSearch(const std::array<Board, R>& board) {
   constexpr move_search::Search<level, R, adj_frame, Taps> search{};
   return search.MoveSearch(board);
 }
@@ -555,7 +563,7 @@ PossibleMoves MoveSearch(const Board& b, int piece) {
     case 5: return MoveSearch<level, Board::NumRotations(5), adj_frame, Taps>(b.LMap());
     case 6: return MoveSearch<level, Board::NumRotations(6), adj_frame, Taps>(b.IMap());
   }
-  __builtin_unreachable();
+  unreachable();
 }
 
 template <int adj_frame, class Taps>
@@ -566,7 +574,7 @@ PossibleMoves MoveSearch(const Board& b, Level level, int piece) {
     case kLevel29: return MoveSearch<kLevel29, adj_frame, Taps>(b, piece);
     case kLevel39: return MoveSearch<kLevel39, adj_frame, Taps>(b, piece);
   }
-  __builtin_unreachable();
+  unreachable();
 }
 
 using Tap30Hz = move_search::TapTable<0, 2, 2, 2, 2, 2, 2, 2, 2, 2>;

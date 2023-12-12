@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <bit>
 #include <array>
 #include <string>
 #include <vector>
@@ -19,11 +20,13 @@ constexpr Board operator&(const Board& x, const Board& y);
 constexpr int kBoardBytes = 25;
 struct CompactBoard : public SimpleIOArray<uint8_t, kBoardBytes> {
   using SimpleIOArray<uint8_t, kBoardBytes>::SimpleIOArray;
+  constexpr CompactBoard() {}
   constexpr int Count() const {
-    uint64_t x[4] = {};
-    memcpy(x, data(), kBoardBytes);
-    return 200 - (__builtin_popcountll(x[0]) + __builtin_popcountll(x[1]) +
-                  __builtin_popcountll(x[2]) + __builtin_popcountll(x[3]));
+    uint64_t x[4] = {BytesToInt<uint64_t>(data()),
+                     BytesToInt<uint64_t>(data() + 8),
+                     BytesToInt<uint64_t>(data() + 16),
+                     data()[24]};
+    return 200 - (popcount(x[0]) + popcount(x[1]) + popcount(x[2]) + popcount(x[3]));
   }
   constexpr int Group() const {
     return (Count() >> 1) % 5;
@@ -81,7 +84,7 @@ class alignas(32) Board {
       case 3: case 4: case 5: r.b2 &= ~(piece << (x + (y - 3) * 22)); break;
       case 6: case 7: case 8: r.b3 &= ~(piece << (x + (y - 6) * 22)); break;
       case 9: r.b4 &= ~(piece << x); break;
-      default: __builtin_unreachable();
+      default: unreachable();
     }
     return r;
   }
@@ -100,7 +103,7 @@ class alignas(32) Board {
       case 3: case 4: r.b2 &= ~(piece << (x + (y - 3) * 22)); break;
       case 8: r.b4 &= ~(piece >> (22 - x)); // fallthrough
       case 6: case 7: r.b3 &= ~(piece << (x + (y - 6) * 22)); break;
-      default: __builtin_unreachable();
+      default: unreachable();
     }
     return r;
   }
@@ -119,7 +122,7 @@ class alignas(32) Board {
       case 3: r.b2 &= ~(piece << (x + (y - 3) * 22)); break;
       case 7: r.b4 &= ~(piece >> (44 - x)); // fallthrough
       case 6: r.b3 &= ~(piece << (x + (y - 6) * 22)); break;
-      default: __builtin_unreachable();
+      default: unreachable();
     }
     return r;
   }
@@ -134,7 +137,7 @@ class alignas(32) Board {
       case 4: r.b2 &= ~(kIPiece0b_ << (x + 22)); r.b3 &= ~(kIPiece0b_ << x); break;
       case 5: r.b2 &= ~(kIPiece0c_ << (x + 44)); r.b3 &= ~(kIPiece0a_ << x); break;
       case 6: r.b3 &= ~(kIPiece0a_ << x); r.b4 &= ~(kIPiece0c_ << x); break;
-      default: __builtin_unreachable();
+      default: unreachable();
     }
     return r;
   }
@@ -195,8 +198,7 @@ class alignas(32) Board {
   }
 
   constexpr int Count() const {
-    return 200 - (__builtin_popcountll(b1) + __builtin_popcountll(b2) +
-                  __builtin_popcountll(b3) + __builtin_popcountll(b4));
+    return 200 - (popcount(b1) + popcount(b2) + popcount(b3) + popcount(b4));
   }
   constexpr int Group() const {
     return (Count() >> 1) % 5;
@@ -216,7 +218,7 @@ class alignas(32) Board {
       case 6: case 7: case 8: return b3 >> ((c - 6) * 22) & kColumnMask;
       case 9: return b4;
     }
-    __builtin_unreachable();
+    unreachable();
   }
 
   constexpr bool Cell(int x, int y) const {
@@ -273,7 +275,7 @@ class alignas(32) Board {
       case 3: case 4: case 5: b2 &= ~(1ll << ((col - 3) * 22 + row)); break;
       case 6: case 7: case 8: b3 &= ~(1ll << ((col - 6) * 22 + row)); break;
       case 9: b4 &= ~(1ll << row); break;
-      default: __builtin_unreachable();
+      default: unreachable();
     }
   }
 
@@ -283,7 +285,7 @@ class alignas(32) Board {
       case 3: case 4: case 5: b2 |= 1ll << ((col - 3) * 22 + row); break;
       case 6: case 7: case 8: b3 |= 1ll << ((col - 6) * 22 + row); break;
       case 9: b4 |= 1ll << row; break;
-      default: __builtin_unreachable();
+      default: unreachable();
     }
   }
 
@@ -303,7 +305,7 @@ class alignas(32) Board {
     uint32_t linemask = (cols[0] | cols[1] | cols[2] | cols[3] | cols[4] |
                          cols[5] | cols[6] | cols[8] | cols[9] | cols[10]) & kColumnMask;
     if (linemask == kColumnMask) return {0, *this};
-    int lines = 20 - __builtin_popcount(linemask);
+    int lines = 20 - popcount(linemask);
     for (int i = 0; i < 11; i++) {
       cols[i] = pext(cols[i], linemask) << lines | ((1 << lines) - 1);
     }
@@ -434,7 +436,7 @@ class alignas(32) Board {
       case 5: return 4;
       case 6: return 2;
     }
-    __builtin_unreachable();
+    unreachable();
   }
 
   template <int piece> constexpr std::array<Board, NumRotations(piece)> PieceMap() const {
@@ -445,7 +447,7 @@ class alignas(32) Board {
     if constexpr (piece == 4) return SMap();
     if constexpr (piece == 5) return LMap();
     if constexpr (piece == 6) return IMap();
-    __builtin_unreachable();
+    unreachable();
   }
 
   std::vector<Board> PieceMap(int piece) const {
@@ -460,7 +462,7 @@ class alignas(32) Board {
       ONECASE(6)
 #undef ONECASE
     }
-    __builtin_unreachable();
+    unreachable();
   }
 
   constexpr Board PlaceT(int r, int x, int y) const {
@@ -470,7 +472,7 @@ class alignas(32) Board {
       case 2: return Place3Wide_(kTPiece2_, x, y, 1, 1);
       case 3: return Place2Wide_(kTPiece3_, x, y, 1, 0);
     }
-    __builtin_unreachable();
+    unreachable();
   }
   constexpr Board PlaceJ(int r, int x, int y) const {
     switch (r) {
@@ -479,14 +481,14 @@ class alignas(32) Board {
       case 2: return Place3Wide_(kJPiece2_, x, y, 1, 1);
       case 3: return Place2Wide_(kJPiece3_, x, y, 1, 0);
     }
-    __builtin_unreachable();
+    unreachable();
   }
   constexpr Board PlaceZ(int r, int x, int y) const {
     switch (r) {
       case 0: return Place3Wide_(kZPiece0_, x, y, 0, 1);
       case 1: return Place2Wide_(kZPiece1_, x, y, 1, 0);
     }
-    __builtin_unreachable();
+    unreachable();
   }
   constexpr Board PlaceO(int r, int x, int y) const {
     return Place2Wide_(kOPiece_, x, y, 0, 1);
@@ -496,7 +498,7 @@ class alignas(32) Board {
       case 0: return Place3Wide_(kSPiece0_, x, y, 0, 1);
       case 1: return Place2Wide_(kSPiece1_, x, y, 1, 0);
     }
-    __builtin_unreachable();
+    unreachable();
   }
   constexpr Board PlaceL(int r, int x, int y) const {
     switch (r) {
@@ -505,14 +507,14 @@ class alignas(32) Board {
       case 2: return Place3Wide_(kLPiece2_, x, y, 1, 1);
       case 3: return Place2Wide_(kLPiece3_, x, y, 1, 0);
     }
-    __builtin_unreachable();
+    unreachable();
   }
   constexpr Board PlaceI(int r, int x, int y) const {
     switch (r) {
       case 0: return PlaceI0_(x, y);
       case 1: return Place1Wide_(kIPiece1_, x, y, 2);
     }
-    __builtin_unreachable();
+    unreachable();
   }
 
   constexpr Board Place(int piece, int r, int x, int y) const {
@@ -525,7 +527,7 @@ class alignas(32) Board {
       case 5: return PlaceL(r, x, y);
       case 6: return PlaceI(r, x, y);
     }
-    __builtin_unreachable();
+    unreachable();
   }
 
   constexpr bool operator==(const Board& x) const = default;
@@ -535,7 +537,7 @@ class alignas(32) Board {
     Board obj = invert ? ~*this : *this;
     uint64_t p = obj.b1 & obj.b2 & obj.b3 & (obj.b4 | ~(uint64_t)kColumnMask);
     uint32_t rows = ~(p & p >> 22 & p >> 44) & kColumnMask;
-    int first_row = rows == 0 ? 20 : __builtin_ctz(rows);
+    int first_row = rows == 0 ? 20 : ctz(rows);
     if (first_row > 0) first_row--;
     if (!compact) first_row = 0;
 
