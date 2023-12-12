@@ -97,7 +97,7 @@ PyObject* Tetris_Reset(PythonTetris* self, PyObject* args, PyObject* kwds) {
   int lines = 0;
   Board board = Board::Ones;
   PyObject* board_obj = nullptr;
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO|i", (char**)kwlist,
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO|iO", (char**)kwlist,
         &now_obj, &next_obj, &lines, &board_obj)) {
     return nullptr;
   }

@@ -1,4 +1,5 @@
 import os, argparse
+from typing import Optional
 
 from labml import experiment
 from labml.configs import BaseConfigs, FloatDynamicHyperParam
@@ -23,8 +24,8 @@ class Configs(BaseConfigs):
     # number of epochs to train the model with sampled data
     epochs: int = 1
     # number of worker processes
-    n_workers: int = 4
-    env_per_worker: int = 64
+    n_workers: int = 2
+    env_per_worker: int = 128
     # number of steps to run on each process for a single update
     worker_steps: int = 128
     # size of mini batches
@@ -40,6 +41,7 @@ class Configs(BaseConfigs):
     reg_l2: float = FloatDynamicHyperParam(0., range_ = (0, 5e-5))
 
     save_interval: int = 500
+    board_file: Optional[str] = None
 
 
 def LoadConfig(with_experiment = True):
@@ -57,6 +59,8 @@ def LoadConfig(with_experiment = True):
         if ptype == FloatDynamicHyperParam:
             ptype = float
             dynamic_keys.add(key)
+        elif key == 'board_file':
+            ptype = str
         parser.add_argument('--' + key.replace('_', '-'), type = ptype)
 
     args, others = parser.parse_known_args()

@@ -7,6 +7,7 @@ from typing import Dict, List
 
 import numpy as np, torch
 from torch import optim
+from torch.nn import functional as F
 from torch.distributions import Categorical, Normal, kl_divergence
 from torch.cuda.amp import GradScaler
 
@@ -34,6 +35,7 @@ class Main:
         # #### Initialize
         # model for sampling
         self.model = Model(*c.model_args()).to(device)
+        self.model_opt = torch.compile(self.model)
 
         # dynamic hyperparams
         self.cur_lr = self.c.lr()
@@ -43,12 +45,12 @@ class Main:
 
         # optimizer
         self.scaler = GradScaler()
-        self.optimizer = optim.Adam(self.model.parameters(),
+        self.optimizer = optim.Adam(self.model_opt.parameters(),
                 lr=self.cur_lr, weight_decay=self.cur_reg_l2)
 
         # generator
         cur_params = self.get_game_params()
-        self.generator = GeneratorProcess(self.model, self.name, self.c, cur_params, device)
+        self.generator = GeneratorProcess(self.model_opt, self.name, self.c, cur_params, device)
         self.set_game_params(cur_params)
 
     def get_game_params(self):
@@ -102,8 +104,8 @@ class Main:
                     self.scaler.scale(loss).backward()
                 # compute gradients
                 self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm = 0.5)
-                torch.nn.utils.clip_grad_value_(self.model.parameters(), 16)
+                torch.nn.utils.clip_grad_norm_(self.model_opt.parameters(), max_norm = 0.5)
+                torch.nn.utils.clip_grad_value_(self.model_opt.parameters(), 16)
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
 
@@ -125,9 +127,9 @@ class Main:
     def _calc_loss(self, samples: Dict[str, torch.Tensor], clip_range: float) -> torch.Tensor:
         """## PPO Loss"""
         # Sampled observations are fed into the model to get $\pi_\theta(a_t|s_t)$ and $V^{\pi_\theta}(s_t)$;
-        pi, value = self.model(samples['obs'])
+        pi, value = self.model_opt(samples['obs'])
         pi = Categorical(logits=pi)
-        raw_dist = Normal(value[1], value[2].clamp(min=1e-5))
+        raw_dist = Normal(value[1], F.softplus(value[2], beta=1e3).clamp(min=1e-5))
         raw_dev = value[2]
         value = value[0]
 
@@ -162,7 +164,7 @@ class Main:
 
         # #### Score distribution
         raw_loss = kl_divergence(Normal(samples['raw_returns'], samples['raw_devs']), raw_dist).mean()
-        raw_loss += 5 * -(raw_dev - 1e-5).clamp(max=0).mean() # penalize negative values
+        raw_loss += 5 * -(raw_dev - 1e-3).clamp(max=0).mean() # penalize negative values
 
         # we want to maximize $\mathcal{L}^{CLIP+VF+EB}(\theta)$
         # so we take the negative of it as the loss
@@ -185,7 +187,7 @@ class Main:
         offset = tracker.get_global_step()
         if offset > 1:
             # If resumed, sample several iterations first to reduce sampling bias
-            self.generator.SendModel(self.model, offset)
+            self.generator.SendModel(self.model_opt, offset)
             for i in range(16): self.generator.StartGenerate(offset)
             tracker.save() # increment step
         else:
@@ -198,7 +200,7 @@ class Main:
             tracker.add(info)
             # train the model
             self.train(samples)
-            self.generator.SendModel(self.model, epoch)
+            self.generator.SendModel(self.model_opt, epoch)
             # write summary info to the writer, and log to the screen
             tracker.save()
             # update hyperparams
@@ -220,6 +222,8 @@ def claim_experiment(uuid: str):
 
 if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
+    torch.set_float32_matmul_precision('high')
+    torch.backends.cuda.matmul.allow_tf32 = True
     conf, args, _ = LoadConfig()
     m = Main(conf, args['name'])
     experiment.add_model_savers({

@@ -143,7 +143,10 @@ class Model(nn.Module):
             if categorical: pi = Categorical(logits=pi)
         return pi, torch.concat([v, evdev])
 
-def obs_to_torch(obs):
+def obs_to_torch(obs, device=None):
+    if device is None:
+        # local
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
     if len(obs[0].shape) == 3:
         return [torch.tensor(i, device=device).unsqueeze(0) for i in obs]
     else:

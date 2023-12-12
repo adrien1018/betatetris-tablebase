@@ -40,7 +40,7 @@ class DataGenerator:
         shm = [(shm.name, shape, typ) for shm, shape, typ in zip(self.shms, shapes, types)]
         seed = secrets.randbelow(2**40)
         self.workers = [
-            Worker(name, shm, self.w_range(i), seed + i)
+            Worker(name, shm, self.w_range(i), seed + i, c.board_file)
             for i in range(self.n_workers)
         ]
 
@@ -222,8 +222,11 @@ class DataGenerator:
 
 def generator_process(remote, name, c, game_params, device):
     torch.backends.cudnn.benchmark = True
+    torch.set_float32_matmul_precision('high')
+    torch.backends.cuda.matmul.allow_tf32 = True
     try:
         model = Model(*c.model_args()).to(device)
+        model = torch.compile(model)
         generator = DataGenerator(name, model, c, game_params)
         samples = None
         while True:
