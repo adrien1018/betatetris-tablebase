@@ -33,7 +33,7 @@ class BoardManager:
             self.board_cnt += pieces
 
     def GetNewBoard(self):
-        if not self.eof and self.normal_cnt > self.board_cnt:
+        if not self.eof and self.normal_cnt * 1.5 > self.board_cnt:
             if self.data_offset >= len(self.data):
                 self._NextBatch()
                 if self.data_offset >= len(self.data):
@@ -103,7 +103,7 @@ class Game:
 
     def reset(self, manager=None):
         self.reward = 0.
-        self.start_speed = np.argmin(self.speed_cnt * np.array([2., 1.5, 1., 1.]))
+        self.start_speed = np.argmin(self.speed_cnt / np.array([2., 1.6, 1.3, 1.]))
         blank_lines = RandLinesFromSpeed(self.start_speed)
 
         if manager:
@@ -136,7 +136,7 @@ def worker_process(remote, name: str, shms: list, idx: slice, seed: int, board_f
     # create game environments
     num = idx.stop - idx.start
     Seed = lambda x: int.from_bytes(hashlib.sha256(
-        int.to_bytes(seed, 8, 'little') + int.to_bytes(x, 4, 'little')).digest(), 'little')
+        int.to_bytes(seed, 8, 'little') + int.to_bytes(x, 8, 'little')).digest(), 'little')
     random.seed(Seed(12345))
     games = [Game(Seed(i)) for i in range(num)]
     manager = BoardManager(board_file)

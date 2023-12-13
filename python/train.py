@@ -163,8 +163,9 @@ class Main:
         vf_loss = 0.5 * vf_loss.mean()
 
         # #### Score distribution
-        raw_loss = kl_divergence(Normal(samples['raw_returns'], samples['raw_devs']), raw_dist).mean()
-        raw_loss += 5 * -(raw_dev - 1e-3).clamp(max=0).mean() # penalize negative values
+        raw_kl = kl_divergence(Normal(samples['raw_returns'], samples['raw_devs']), raw_dist)
+        raw_loss = (torch.log1p(raw_kl * 1e-3) * 1e3).mean() # avoid large values
+        raw_loss += 5 * F.softplus(-(raw_dev - 2e-3), beta=500).mean() # penalize negative values
 
         # we want to maximize $\mathcal{L}^{CLIP+VF+EB}(\theta)$
         # so we take the negative of it as the loss
