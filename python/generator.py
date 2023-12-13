@@ -199,8 +199,8 @@ class DataGenerator:
 
             for t in reversed(range(self.worker_steps)):
                 # mask if episode completed after step $t$
-                mask = done_neg[0,t]
-                last_dev *= mask # done_neg[t,0]
+                mask = done_neg[t]
+                last_dev *= mask # done_neg[t]
                 # last_value = last_value * mask
                 # last_advantage = last_advantage * mask
                 # $\delta_t = reward[t] - value[t] + last_value * gammas$

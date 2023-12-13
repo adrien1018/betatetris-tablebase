@@ -8,6 +8,16 @@ from filelock import FileLock
 
 import tetris
 
+def SpeedFromLines(x):
+    if x < 130: return 0
+    if x < 230: return 1
+    if x < 330: return 2
+    return 3
+
+def RandLinesFromSpeed(x):
+    LINE_TABLE = [0, 130, 230, 330, 430]
+    return random.randrange(LINE_TABLE[x]//2, LINE_TABLE[x+1]//2)*2
+
 class BoardManager:
     def __init__(self, board_file):
         self.eof = False
@@ -30,8 +40,7 @@ class BoardManager:
                     return None
             b, piece, level = self.data[self.data_offset]
             cells = 200 - int.from_bytes(b, 'little').bit_count()
-            LINE_TABLE = [0, 130, 230, 330, 430]
-            lines = random.randrange(LINE_TABLE[level]//2, LINE_TABLE[level+1]//2)*2
+            lines = RandLinesFromSpeed(level)
             if cells % 4 != 0: lines += 1
             self.data_offset += 1
             return tetris.Board(b), piece, lines
@@ -69,8 +78,10 @@ class Game:
     def __init__(self, seed: int):
         self.args = (0, False)
         self.env = tetris.Tetris(seed)
-        self.reset()
         self.is_normal = True
+        self.start_speed = 0
+        self.speed_cnt = np.array([0, 0, 0, 0])
+        self.reset()
 
     def step(self, action, manager=None):
         r, x, y = action // 200, action // 10 % 20, action % 10
@@ -85,30 +96,35 @@ class Game:
                     'lines': self.env.GetRunLines(),
                     'pieces': self.env.GetRunPieces()}
             if manager: manager.AddCnt(self.is_normal, info['pieces'])
+            self.speed_cnt[self.start_speed] += info['pieces']
             is_over[0] = True
             self.reset(manager)
         return self.env.GetState(), reward, is_over, info
 
     def reset(self, manager=None):
         self.reward = 0.
+        self.start_speed = np.argmin(self.speed_cnt * np.array([2., 1.5, 1., 1.]))
+        blank_lines = RandLinesFromSpeed(self.start_speed)
+
         if manager:
             data = manager.GetNewBoard()
             if data is None:
                 self.is_normal = True
-                self.env.ResetRandom()
+                self.env.ResetRandom(lines=blank_lines)
             else:
                 self.is_normal = False
                 while True:
                     self.env.Reset(data[1], random.randrange(7), lines=data[2], board=data[0])
+                    self.start_speed = SpeedFromLines(data[2])
                     if not self.env.IsOver(): break
                     data = manager.GetNewBoard()
                     if not data:
                         self.is_normal = True
-                        self.env.ResetRandom()
+                        self.env.ResetRandom(lines=blank_lines)
                         break
         else:
             self.is_normal = True
-            self.env.ResetRandom()
+            self.env.ResetRandom(lines=blank_lines)
         return self.env.GetState()
 
 def worker_process(remote, name: str, shms: list, idx: slice, seed: int, board_file: Optional[str]):
