@@ -247,3 +247,23 @@ PossibleMoves NaiveGetPossibleMoves(const std::vector<ByteBoard>& b, Level level
   }
   return ret;
 }
+
+int NumOverhang(const ByteBoard& b) {
+  int cnt = 0;
+  for (int x = 1; x < kN; x++) {
+    for (int y = 0; y < kM; y++) {
+      if (!b[x - 1][y] && b[x][y]) cnt++;
+    }
+  }
+  return cnt;
+}
+
+std::array<int, 10> ColumnHeights(const ByteBoard& b) {
+  std::array<int, 10> ret{};
+  for (int x = kN - 1; x >= 0; x--) {
+    for (int y = 0; y < kM; y++) {
+      if (b[x][y]) ret[y] = kN - x;
+    }
+  }
+  return ret;
+}

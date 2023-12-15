@@ -1,5 +1,6 @@
 #include <random>
 #include <gtest/gtest.h>
+#include "test_boards.h"
 #include "naive_functions.h"
 
 namespace {
@@ -74,6 +75,20 @@ TEST_F(BoardTest, LineClear) {
     int lines_2 = ClearLines(board_2);
     ASSERT_EQ(lines_1, lines_2);
     ASSERT_EQ(board_1, Board(board_2));
+  }
+}
+
+TEST_F(BoardTest, NumOverhang) {
+  for (auto& board : kTestBoards) {
+    auto byteboard = board.ToByteBoard();
+    ASSERT_EQ(board.NumOverhang(), NumOverhang(byteboard));
+  }
+}
+
+TEST_F(BoardTest, ColumnHeights) {
+  for (auto& board : kTestBoards) {
+    auto byteboard = board.ToByteBoard();
+    ASSERT_EQ(board.ColumnHeights(), ColumnHeights(byteboard));
   }
 }
 

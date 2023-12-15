@@ -9,6 +9,7 @@ class PythonTetris {
   PyObject_HEAD
   static constexpr double kInvalidReward_ = -0.3;
   static constexpr double kRewardMultiplier_ = 1e-5; // 10 per maxout
+  static constexpr double kBottomMultiplier_ = 1.2;
   double step_reward_ = 5e-4;
 
  private:
@@ -57,10 +58,11 @@ class PythonTetris {
   }
 
   std::pair<double, double> InputPlacement(const Position& pos) {
-    int score = tetris.InputPlacement(pos, next_piece_).first;
+    auto [score, lines] = tetris.InputPlacement(pos, next_piece_);
     if (score == -1) return {kInvalidReward_, 0.0f};
     double reward = score * kRewardMultiplier_;
     double n_reward = reward;
+    if (lines == 4 && pos.x >= 18) n_reward *= kBottomMultiplier_;
     if (!tetris.IsAdj()) {
       next_piece_ = GenNextPiece_(next_piece_);
       n_reward += step_reward_;
@@ -69,9 +71,9 @@ class PythonTetris {
   }
 
   struct State {
-    std::array<std::array<std::array<float, 10>, 20>, 2> board;
+    std::array<std::array<std::array<float, 10>, 20>, 6> board;
     std::array<float, 28> meta;
-    std::array<std::array<std::array<float, 10>, 20>, 10> moves;
+    std::array<std::array<std::array<float, 10>, 20>, 14> moves;
     std::array<float, 28> move_meta;
     std::array<int, 2> meta_int;
   };
@@ -85,10 +87,10 @@ class PythonTetris {
     {
       auto byte_board = tetris.GetBoard().ToByteBoard();
       for (int i = 0; i < 20; i++) {
-        for (int j = 0; j < 10; j++) state.moves[0][i][j] = byte_board[i][j];
-        for (int j = 0; j < 10; j++) state.moves[1][i][j] = 1;
         for (int j = 0; j < 10; j++) state.board[0][i][j] = byte_board[i][j];
         for (int j = 0; j < 10; j++) state.board[1][i][j] = 1;
+        for (int j = 0; j < 10; j++) state.moves[0][i][j] = byte_board[i][j];
+        for (int j = 0; j < 10; j++) state.moves[1][i][j] = 1;
       }
       auto& move_map = tetris.GetPossibleMoveMap();
       for (int r = 0; r < 4; r++) {
@@ -96,7 +98,14 @@ class PythonTetris {
           for (int j = 0; j < 10; j++) state.moves[2 + r][i][j] = move_map[r][i][j] ? 1 : 0;
           for (int j = 0; j < 10; j++) state.moves[6 + r][i][j] = move_map[r][i][j] == 2;
         }
+        memset(state.board.data() + (2 + r), 0, sizeof(state.board[0]));
+        memset(state.moves.data() + (10 + r), 0, sizeof(state.moves[0]));
       }
+    }
+    if (tetris.IsAdj()) {
+      auto pos = tetris.InitialMove();
+      state.board[2 + pos.r][pos.x][pos.y] = 1;
+      state.moves[10 + pos.r][pos.x][pos.y] = 1;
     }
 
     memset(state.meta.data(), 0, sizeof(state.meta));

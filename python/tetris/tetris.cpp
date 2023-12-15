@@ -131,7 +131,7 @@ PyObject* Tetris_ResetRandom(PythonTetris* self, PyObject* args, PyObject* kwds)
 }
 
 PyObject* Tetris_GetState(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
-  PythonTetris::State state;
+  PythonTetris::State state{};
   self->GetState(state);
   PyObject *r1, *r2, *r3, *r4, *r5;
   {
@@ -217,6 +217,14 @@ PyObject* Tetris_GetBoard(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
   return reinterpret_cast<PyObject*>(board);
 }
 
+PyObject* Tetris_GetLines(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
+  return PyLong_FromLong(self->tetris.GetLines());
+}
+
+PyObject* Tetris_GetPieces(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
+  return PyLong_FromLong(self->tetris.GetPieces());
+}
+
 PyObject* Tetris_GetRunScore(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
   return PyLong_FromLong(self->tetris.RunScore());
 }
@@ -244,6 +252,8 @@ PyMethodDef py_tetris_class_methods[] = {
     {"ResetRandom", (PyCFunction)Tetris_ResetRandom, METH_VARARGS | METH_KEYWORDS,
      "Reset game and assign pieces randomly"},
     {"GetBoard", (PyCFunction)Tetris_GetBoard, METH_NOARGS, "Get board object"},
+    {"GetLines", (PyCFunction)Tetris_GetLines, METH_NOARGS, "Get total lines"},
+    {"GetPieces", (PyCFunction)Tetris_GetPieces, METH_NOARGS, "Get total pieces"},
     {"GetRunScore", (PyCFunction)Tetris_GetRunScore, METH_NOARGS, "Get score of this run"},
     {"GetRunLines", (PyCFunction)Tetris_GetRunLines, METH_NOARGS, "Get lines of this run"},
     {"GetRunPieces", (PyCFunction)Tetris_GetRunPieces, METH_NOARGS, "Get pieces of this run"},

@@ -530,6 +530,20 @@ class alignas(32) Board {
     unreachable();
   }
 
+  constexpr int NumOverhang() const {
+    return 200 - (~*this & ShiftUpNoFilter(1)).Count();
+  }
+
+  constexpr std::array<int, 10> ColumnHeights() const {
+    constexpr uint64_t kMask = 0x100000; // 20-th bit
+    return {{
+      20 - ctz(b1 | kMask), 20 - ctz(b1 >> 22 | kMask), 20 - ctz(b1 >> 44 | kMask),
+      20 - ctz(b2 | kMask), 20 - ctz(b2 >> 22 | kMask), 20 - ctz(b2 >> 44 | kMask),
+      20 - ctz(b3 | kMask), 20 - ctz(b3 >> 22 | kMask), 20 - ctz(b3 >> 44 | kMask),
+      20 - ctz(b4 | kMask)
+    }};
+  }
+
   constexpr bool operator==(const Board& x) const = default;
   constexpr bool operator!=(const Board& x) const = default;
 

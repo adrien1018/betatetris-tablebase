@@ -63,13 +63,18 @@ class Tetris {
   }
 
   // (score, lines)
+  // score == -1 if invalid
   std::pair<int, int> InputPlacement(const Position& pos, int next_piece) {
     if (game_over_) throw std::logic_error("already game over");
     if (next_piece < 0 || next_piece >= (int)kPieces) throw std::range_error("Invalid piece");
     uint8_t location = move_map_[pos.r][pos.x][pos.y];
     if (!location) return {-1, 0};
     if (location == kNoAdj) {
-      auto [lines, new_board] = board_.Place(now_piece_, pos.r, pos.x, pos.y).ClearLines();
+      auto before_clear = board_.Place(now_piece_, pos.r, pos.x, pos.y);
+      // do not allow placing pieces to be cut off from the board
+      if (board_.Count() + 4 != before_clear.Count()) return {-1, 0};
+
+      auto [lines, new_board] = before_clear.ClearLines();
       int delta_score = Score(lines, GetLevel());
       board_ = new_board;
       pieces_++;
@@ -116,6 +121,10 @@ class Tetris {
   int NowPiece() const { return now_piece_; }
   int NextPiece() const { return next_piece_; }
   bool IsOver() const { return game_over_; }
+  Position InitialMove() const {
+    if (!is_adj_) throw std::logic_error("No initial move");
+    return moves_.adj[initial_move_].first;
+  }
 
   int RunPieces() const { return run_pieces_; }
   int RunLines() const { return run_lines_; }
