@@ -18,6 +18,7 @@ class DataGenerator:
         self.gamma, self.lamda = game_params[-2:]
         self.device = next(self.model.parameters()).device
         self.total_games = 0
+        self.total_long_games = 0
 
         # initialize tensors for observations
         shapes = [*[(self.envs, *i) for i in tetris.Tetris.StateShapes()],
@@ -76,6 +77,7 @@ class DataGenerator:
         ]
         log_pis = torch.zeros((self.worker_steps, self.envs), dtype = torch.float32, device = self.device)
         values = torch.zeros((self.worker_steps, 2, self.envs), dtype = torch.float32, device = self.device)
+        devs = torch.zeros((self.worker_steps, self.envs), dtype = torch.float32, device = self.device)
 
         if train:
             ret_info = {
@@ -85,6 +87,8 @@ class DataGenerator:
                 'pcs': [],
                 'maxk': [],
                 'mil_games': [],
+                'long_games': [],
+                'short_finish': [],
                 'perline': [],
             }
         else:
@@ -102,6 +106,7 @@ class DataGenerator:
                 # sample actions from $\pi_{\theta_{OLD}}$
                 pi, v = self.model(self.obs, categorical=True)
                 values[t] = v[:2] # remove stdev
+                devs[t] = v[2]
                 a = pi.sample()
                 actions[t] = a
                 log_pis[t] = pi.log_prob(a)
@@ -117,12 +122,16 @@ class DataGenerator:
                 if train:
                     self.total_games += len(info_arr)
                     for info in info_arr:
-                        tot_lines += info['lines']
-                        tot_score += info['score']
-                        ret_info['reward'].append(info['reward'])
-                        ret_info['scorek'].append(info['score'] * 1e-3)
-                        ret_info['lns'].append(info['lines'])
-                        ret_info['pcs'].append(info['pieces'])
+                        if info['is_short']:
+                            ret_info['short_finish'].append(0.0 if info['is_over'] else 1.0)
+                        else:
+                            self.total_long_games += 1
+                            tot_lines += info['lines']
+                            tot_score += info['score']
+                            ret_info['reward'].append(info['reward'])
+                            ret_info['scorek'].append(info['score'] * 1e-3)
+                            ret_info['lns'].append(info['lines'])
+                            ret_info['pcs'].append(info['pieces'])
             self.obs = obs_to_torch(self.obs_np)
 
         # reshape rewards & log rewards
@@ -130,28 +139,36 @@ class DataGenerator:
         if train:
             ret_info['maxk'].append(score_max / 1e-2)
             ret_info['mil_games'].append(self.total_games * 1e-6)
+            ret_info['long_games'].append(self.total_long_games * 1e-6)
             if tot_lines > 0:
                 ret_info['perline'].append(tot_score * 1e-3 / tot_lines)
 
             # calculate advantages
-            advantages, raw_devs = self._calc_advantages(self.is_over, self.rewards, values)
+            advantages, raw_devs, skip_mask = self._calc_advantages(self.is_over, self.rewards, values, devs)
+            values_t = values.transpose(0, 1)
+            advantages_t = advantages.transpose(0, 1)
             samples = {
                 'obs': obs,
                 'actions': actions,
                 'log_pis': log_pis,
+                'skip_mask': skip_mask,
+                'values': values_t[0],
+                'advantages': advantages_t[0],
                 'raw_devs': raw_devs,
-                'values': values.transpose(0, 1).reshape(1, 2, -1),
-                'advantages': advantages.transpose(0, 1).reshape(1, 2, -1),
+                'raw_values': values_t[1] + advantages_t[1],
             }
+            #print('raw_devs', samples['raw_devs'].flatten())
+            #print('raw_values', samples['raw_values'].flatten())
+            #print('skip_mask', samples['skip_mask'].flatten())
         else:
             samples = {
                 'obs': obs,
                 'log_pis': log_pis,
-                'values': values.transpose(0, 1).reshape(1, 2, -1),
+                'values': values_t[0],
+                'raw_values': values_t[1] + advantages_t[1],
             }
 
         # samples are currently in [time, workers] table, flatten it
-        # for values & advantages, this just flattens the first two dimensions
         for i in samples:
             if i == 'obs':
                 for j in range(len(samples[i])):
@@ -173,17 +190,21 @@ class DataGenerator:
                 del ret_info[i]
         return samples, ret_info
 
-    def _calc_advantages(self, done: np.ndarray, rewards: np.ndarray, values: torch.Tensor) -> torch.Tensor:
+    def _calc_advantages(self, done: np.ndarray, rewards: np.ndarray, values: torch.Tensor, devs: torch.Tensor) -> torch.Tensor:
         """### Calculate advantages"""
         with torch.no_grad():
-            # values: (t, 2, worker)
-            # (worker, t, 2) -> (t, 2, worker)
+            # values: (t, 2, env)
+            # devs: (t, env)
+            # (env, t, 2) -> (t, 2, env)
             rewards = torch.permute(torch.from_numpy(rewards).to(self.device), (1, 2, 0))
-            # (worker, t, 2) -> (2, t, worker)
+            # (env, t, 2) -> (2, t, env)
             done_torch = torch.permute(torch.from_numpy(done).to(self.device), (2, 1, 0))
-            # add soft over rewards
-            rewards += done_torch[1].unsqueeze(1) * values
+            #print('done', done_torch.view(2, -1))
+            #print('rewards', rewards.view(-1, 2).transpose(0, 1))
+            #print('values', values.view(-1, 2).transpose(0, 1))
+            #print('devs', devs.flatten())
             done_neg = ~done_torch[0]
+            soft_done = done_torch[1]
 
             # advantages table
             advantages = torch.zeros((self.worker_steps, 2, self.envs), dtype = torch.float32, device = self.device)
@@ -198,19 +219,22 @@ class DataGenerator:
             lamdas = torch.Tensor([self.lamda, 1.0]).unsqueeze(1).to(self.device)
 
             for t in reversed(range(self.worker_steps)):
-                # mask if episode completed after step $t$
-                mask = done_neg[t]
-                last_dev *= mask # done_neg[t]
-                # last_value = last_value * mask
-                # last_advantage = last_advantage * mask
+                done_mask = done_neg[t]
+                soft_done_mask = soft_done[t]
+                last_dev *= done_mask
+                # last_value = last_value * done_mask
+                # last_advantage = last_advantage * done_mask
                 # $\delta_t = reward[t] - value[t] + last_value * gammas$
                 # $\hat{A_t} = \delta_t + \gamma \lambda \hat{A_{t+1}} (gam * lam * last_advantage)$
-                last_advantage = rewards[t] - values[t] + gammas * (last_value + lamdas * last_advantage) * mask # done_neg[t]
+                last_advantage = rewards[t] - values[t] + gammas * (last_value + lamdas * last_advantage) * done_mask
                 # note that we are collecting in reverse order.
                 advantages[t] = last_advantage
                 raw_devs[t] = last_dev
                 last_value = values[t]
-            return advantages, raw_devs
+                # soft dones
+                last_advantage[:,soft_done_mask] = 0
+                last_dev[soft_done_mask] = devs[t,soft_done_mask]
+            return advantages, raw_devs, done_torch[1]
 
     def destroy(self):
         try:

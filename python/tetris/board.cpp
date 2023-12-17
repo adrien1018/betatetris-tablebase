@@ -49,13 +49,17 @@ int BoardInit(PythonBoard* self, PyObject* args, PyObject* kwds) {
   return 0;
 }
 
+PyObject* Board_IsClean(PythonBoard* self, PyObject* Py_UNUSED(ignored)) {
+  return PyBool_FromLong((long)self->IsClean());
+}
+
 PyObject* Board_str(PyObject* obj) {
   return PyUnicode_FromString(reinterpret_cast<PythonBoard*>(obj)->board.ToString().c_str());
 }
 
 PyMethodDef py_board_class_methods[] = {
+    {"IsClean", (PyCFunction)Board_IsClean, METH_NOARGS, "Check board cleanness"},
     {nullptr}};
-
 } // namespace
 
 PyTypeObject py_board_class = {

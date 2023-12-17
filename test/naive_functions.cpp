@@ -262,7 +262,7 @@ std::array<int, 10> ColumnHeights(const ByteBoard& b) {
   std::array<int, 10> ret{};
   for (int x = kN - 1; x >= 0; x--) {
     for (int y = 0; y < kM; y++) {
-      if (b[x][y]) ret[y] = kN - x;
+      if (!b[x][y]) ret[y] = kN - x;
     }
   }
   return ret;

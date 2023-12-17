@@ -154,6 +154,11 @@ constexpr void IntToBytes(uint16_t x, uint8_t ret[]) {
   ret[0] = x; ret[1] = x >> 8;
 }
 
+template <class T>
+constexpr T abs(T x) {
+  return x >= 0 ? x : -x;
+}
+
 // constexpr loop
 template<size_t N>
 struct TemplateNum { static const constexpr auto value = N; };

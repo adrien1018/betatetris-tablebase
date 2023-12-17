@@ -21,6 +21,7 @@ class Tetris {
   bool game_over_;
   PossibleMoves moves_;
   MoveMap move_map_;
+  int consecutive_fail_;
 
   // stats
   int run_score_;
@@ -57,6 +58,7 @@ class Tetris {
     next_piece_ = next_piece;
     game_over_ = false;
     CalculateMoves_(true);
+    consecutive_fail_ = 0;
     run_score_ = 0;
     run_lines_ = 0;
     run_pieces_ = 0;
@@ -68,11 +70,17 @@ class Tetris {
     if (game_over_) throw std::logic_error("already game over");
     if (next_piece < 0 || next_piece >= (int)kPieces) throw std::range_error("Invalid piece");
     uint8_t location = move_map_[pos.r][pos.x][pos.y];
-    if (!location) return {-1, 0};
+    if (!location) {
+      consecutive_fail_++;
+      return {-1, 0};
+    }
     if (location == kNoAdj) {
       auto before_clear = board_.Place(now_piece_, pos.r, pos.x, pos.y);
       // do not allow placing pieces to be cut off from the board
-      if (board_.Count() + 4 != before_clear.Count()) return {-1, 0};
+      if (board_.Count() + 4 != before_clear.Count()) {
+        consecutive_fail_++;
+        return {-1, 0};
+      }
 
       auto [lines, new_board] = before_clear.ClearLines();
       int delta_score = Score(lines, GetLevel());
@@ -88,6 +96,7 @@ class Tetris {
       } else {
         CalculateMoves_(true);
       }
+      consecutive_fail_ = 0;
       run_score_ += delta_score;
       run_lines_ += lines;
       run_pieces_++;
@@ -101,6 +110,7 @@ class Tetris {
       }
       is_adj_ = true;
       CalculateMoves_(false);
+      consecutive_fail_ = 0;
       return {0, 0};
     }
   }
@@ -120,7 +130,7 @@ class Tetris {
   int GetLines() const { return lines_; }
   int NowPiece() const { return now_piece_; }
   int NextPiece() const { return next_piece_; }
-  bool IsOver() const { return game_over_; }
+  bool IsOver() const { return game_over_ || consecutive_fail_ >= 3; }
   Position InitialMove() const {
     if (!is_adj_) throw std::logic_error("No initial move");
     return moves_.adj[initial_move_].first;

@@ -101,13 +101,21 @@ class Main:
                             else:
                                 mini_batch[k] = v[mini_batch_indexes]
                     loss = self._calc_loss(clip_range=self.c.clipping_range, samples=mini_batch) / loss_mul
-                    self.scaler.scale(loss).backward()
-                # compute gradients
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model_opt.parameters(), max_norm = 0.5)
-                torch.nn.utils.clip_grad_value_(self.model_opt.parameters(), 16)
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
+                    self._backward(loss)
+                self._grad_update()
+
+    #@torch.compile
+    def _backward(self, loss):
+        self.scaler.scale(loss).backward()
+
+    #@torch.compile
+    def _grad_update(self):
+        # compute gradients
+        self.scaler.unscale_(self.optimizer)
+        torch.nn.utils.clip_grad_norm_(self.model_opt.parameters(), max_norm=0.5)
+        torch.nn.utils.clip_grad_value_(self.model_opt.parameters(), 16)
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
 
     @staticmethod
     def _normalize(adv: torch.Tensor):
@@ -118,10 +126,7 @@ class Main:
     def _preprocess_samples(samples: Dict[str, torch.Tensor]):
         # $R_t$ returns sampled from $\pi_{\theta_{OLD}}$
         samples['returns'] = (samples['values'] + samples['advantages']).float()
-        samples['raw_returns'] = samples['returns'][1]
-        samples['returns'] = samples['returns'][0]
-        samples['values'] = samples['values'][0]
-        samples['advantages'] = Main._normalize(samples['advantages'][0])
+        samples['advantages'] = Main._normalize(samples['advantages'])
         samples['raw_devs'].clamp_(min=1e-5)
 
     def _calc_loss(self, samples: Dict[str, torch.Tensor], clip_range: float) -> torch.Tensor:
@@ -132,6 +137,8 @@ class Main:
         raw_dist = Normal(value[1], F.softplus(value[2], beta=1e3).clamp(min=1e-5))
         raw_dev = value[2]
         value = value[0]
+
+        skip_mask = samples['skip_mask']
 
         # #### Policy
         log_pi = pi.log_prob(samples['actions'])
@@ -147,10 +154,12 @@ class Main:
         # advantages are normalized
         policy_reward = torch.min(ratio * samples['advantages'],
                                   clipped_ratio * samples['advantages'])
+        policy_reward[skip_mask] = 0
         policy_reward = policy_reward.mean()
 
         # #### Entropy Bonus
         entropy_bonus = pi.entropy()
+        entropy_bonus[skip_mask] = 0
         entropy_bonus = entropy_bonus.mean()
 
         # #### Value
@@ -160,12 +169,16 @@ class Main:
         clipped_value += (value - samples['values']).clamp(min=-clip_range, max=clip_range)
         vf_loss = torch.max((value - samples['returns']) ** 2,
                             (clipped_value - samples['returns']) ** 2)
+        vf_loss[skip_mask] = 0
         vf_loss = 0.5 * vf_loss.mean()
 
         # #### Score distribution
-        raw_kl = kl_divergence(Normal(samples['raw_returns'], samples['raw_devs']), raw_dist)
-        raw_loss = (torch.log1p(raw_kl * 1e-3) * 1e3).mean() # avoid large values
-        raw_loss += 5 * F.softplus(-(raw_dev - 2e-3), beta=500).mean() # penalize negative values
+        raw_kl = kl_divergence(Normal(samples['raw_values'], samples['raw_devs']), raw_dist)
+        raw_loss = torch.log1p(raw_kl * 1e-3) * 1e3 # avoid large values
+        raw_loss[skip_mask] = 0
+        raw_reg = 5 * F.softplus(-(raw_dev - 2e-3), beta=500) # penalize negative values
+        raw_reg[skip_mask] = 0
+        raw_loss = raw_loss.mean() + raw_reg.mean()
 
         # we want to maximize $\mathcal{L}^{CLIP+VF+EB}(\theta)$
         # so we take the negative of it as the loss

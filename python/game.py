@@ -24,26 +24,32 @@ class BoardManager:
         self.board_file = board_file
         self.normal_cnt = 0
         self.board_cnt = 0
+        self.board_short_cnt = 0
         self._NextBatch()
 
-    def AddCnt(self, is_normal: bool, pieces: int):
+    def AddCnt(self, is_normal: bool, is_short: bool, pieces: int):
         if is_normal:
             self.normal_cnt += pieces
+        elif is_short:
+            self.board_short_cnt += pieces
         else:
             self.board_cnt += pieces
 
     def GetNewBoard(self):
-        if not self.eof and self.normal_cnt * 1.5 > self.board_cnt:
+        if self.eof: return None
+        is_board = self.board_cnt < self.normal_cnt or self.board_short_cnt < self.normal_cnt
+        if is_board:
             if self.data_offset >= len(self.data):
                 self._NextBatch()
                 if self.data_offset >= len(self.data):
                     return None
+            is_short = self.board_short_cnt < self.board_cnt
             b, piece, level = self.data[self.data_offset]
             cells = 200 - int.from_bytes(b, 'little').bit_count()
             lines = RandLinesFromSpeed(level)
             if cells % 4 != 0: lines += 1
             self.data_offset += 1
-            return tetris.Board(b), piece, lines
+            return tetris.Board(b), piece, lines, is_short
         return None
 
     def _NextBatch(self):
@@ -79,8 +85,8 @@ class Game:
         self.args = (0, False)
         self.env = tetris.Tetris(seed)
         self.is_normal = True
-        self.start_speed = 0
-        self.speed_cnt = np.array([0, 0, 0, 0])
+        self.until_clean = False
+        self.prev_soft_done = False
         self.reset()
 
     def step(self, action, manager=None):
@@ -90,41 +96,42 @@ class Game:
 
         info = None
         is_over = np.array([False, False])
-        if self.env.IsOver():
-            info = {'reward': self.reward,
+        is_over[1] = self.prev_soft_done
+        is_over[0] = is_over[1] or self.env.IsOver()
+        self.prev_soft_done = self.until_clean and self.env.GetBoard().IsClean()
+        if is_over[0]:
+            num_pieces = self.env.GetRunPieces()
+            info = {'is_short': self.until_clean,
+                    'is_over': self.env.IsOver(),
+                    'reward': self.reward,
                     'score': self.env.GetRunScore(),
                     'lines': self.env.GetRunLines(),
-                    'pieces': self.env.GetRunPieces()}
-            if manager: manager.AddCnt(self.is_normal, info['pieces'])
-            self.speed_cnt[self.start_speed] += info['pieces']
-            is_over[0] = True
+                    'pieces': num_pieces}
+            if manager:
+                manager.AddCnt(self.is_normal, self.until_clean, num_pieces)
             self.reset(manager)
         return self.env.GetState(), reward, is_over, info
 
     def reset(self, manager=None):
         self.reward = 0.
-        self.start_speed = np.argmin(self.speed_cnt / np.array([2., 1.6, 1.3, 1.]))
-        blank_lines = RandLinesFromSpeed(self.start_speed)
+        self.prev_soft_done = False
+        self.is_normal = True
+        self.until_clean = False
 
         if manager:
-            data = manager.GetNewBoard()
-            if data is None:
-                self.is_normal = True
-                self.env.ResetRandom(lines=blank_lines)
-            else:
+            while True:
+                data = manager.GetNewBoard()
+                if data is None:
+                    self.env.ResetRandom()
+                    break
+                if data[3] and data[0].IsClean(): continue
+                self.env.Reset(data[1], random.randrange(7), lines=data[2], board=data[0])
+                if self.env.IsOver(): continue
+                self.until_clean = data[3]
                 self.is_normal = False
-                while True:
-                    self.env.Reset(data[1], random.randrange(7), lines=data[2], board=data[0])
-                    self.start_speed = SpeedFromLines(data[2])
-                    if not self.env.IsOver(): break
-                    data = manager.GetNewBoard()
-                    if not data:
-                        self.is_normal = True
-                        self.env.ResetRandom(lines=blank_lines)
-                        break
+                break
         else:
-            self.is_normal = True
-            self.env.ResetRandom(lines=blank_lines)
+            self.env.ResetRandom()
         return self.env.GetState()
 
 def worker_process(remote, name: str, shms: list, idx: slice, seed: int, board_file: Optional[str]):
