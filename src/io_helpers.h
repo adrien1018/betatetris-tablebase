@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
+#include <array>
 #include <vector>
 #include <stdexcept>
 #include "constexpr_helpers.h"

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 #include <immintrin.h>
 
@@ -179,6 +180,16 @@ void For(F func, std::index_sequence<Is...>) {
 template <std::size_t N, class Func>
 void For(Func&& func) {
   For(func, std::make_index_sequence<N>());
+}
+
+// https://stackoverflow.com/questions/20843271/passing-a-non-copyable-closure-object-to-stdfunction-parameter
+template <class F>
+auto make_copyable_function(F&& f) {
+  using dF = std::decay_t<F>;
+  auto spf = std::make_shared<dF>(std::forward<F>(f));
+  return [spf](auto&&... args) -> decltype(auto) {
+    return (*spf)(decltype(args)(args)...);
+  };
 }
 
 #define DO_PIECE_CASE(func, b) \

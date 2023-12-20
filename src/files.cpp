@@ -34,6 +34,13 @@ fs::path ValueStatsPath(int pieces) {
 fs::path ProbPath(int pieces) {
   return kDataDir / "probs" / NumToStr(pieces);
 }
+fs::path MovePath(int pieces) {
+  return kDataDir / "moves" / NumToStr(pieces);
+}
+fs::path MoveRangePath(int pieces_l, int pieces_r, int group) {
+  return kDataDir / "moves" / (std::to_string(group) + '.' + NumToStr(pieces_l) + '-' + NumToStr(pieces_r));
+}
+
 fs::path SVDSamplePath(int group) {
   return kDataDir / "svd" / (std::to_string(group) + ".sample");
 }

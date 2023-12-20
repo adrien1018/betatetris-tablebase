@@ -221,6 +221,10 @@ class ClassWriter : public io_internal::ClassWriterImpl<T> {
   void Write(const std::vector<T>& items) {
     for (auto& i : items) Write(i);
   }
+
+  void Write(const T& item, size_t cnt) {
+    for (size_t i = 0; i < cnt; i++) Write(item);
+  }
 };
 
 template <class T>
@@ -373,6 +377,7 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
 
   std::unique_ptr<ZSTD_CCtx, size_t(*)(ZSTD_CCtx*)> zstd_ctx;
   std::vector<uint8_t> compress_buf;
+  int compress_level;
 
   void DoCompress() {
     inds.push_back(compress_buf.size());
@@ -380,7 +385,7 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
     size_t clear_size = ZSTD_compressBound(compress_buf.size());
     buf.resize(offset + clear_size);
     size_t nlen = ZSTD_compressCCtx(
-        zstd_ctx.get(), buf.data() + offset, clear_size, compress_buf.data(), compress_buf.size(), -4);
+        zstd_ctx.get(), buf.data() + offset, clear_size, compress_buf.data(), compress_buf.size(), compress_level);
     if (ZSTD_isError(nlen)) throw std::runtime_error("zstd compress failed");
     buf.resize(offset + nlen);
     compress_buf.clear();
@@ -392,9 +397,9 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
   using io_internal::ClassWriterImpl<T>::ByteSize;
   using io_internal::ClassWriterImpl<T>::Size;
 
-  CompressedClassWriter(const std::string& fname, size_t items_per_index = 1024) :
+  CompressedClassWriter(const std::string& fname, size_t items_per_index = 1024, int compress_level = -4) :
       io_internal::ClassWriterImpl<T>(fname, items_per_index == 0 ? 1 : items_per_index),
-      zstd_ctx(ZSTD_createCCtx(), ZSTD_freeCCtx) {
+      zstd_ctx(ZSTD_createCCtx(), ZSTD_freeCCtx), compress_level(compress_level) {
     if (!zstd_ctx) throw std::runtime_error("zstd initialize failed");
     inds.push_back(0);
   }
@@ -429,6 +434,10 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
 
   void Write(const std::vector<T>& items) {
     for (auto& i : items) Write(i);
+  }
+
+  void Write(const T& item, size_t cnt) {
+    for (size_t i = 0; i < cnt; i++) Write(item);
   }
 };
 

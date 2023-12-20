@@ -5,7 +5,8 @@
 #include <vector>
 #include <immintrin.h>
 
-class NodeEval {
+class MoveEval {
+ protected:
   static constexpr size_t kVecOutputSize = 7 * sizeof(float);
 
   static float Sum(__m256 vec) {
@@ -16,10 +17,67 @@ class NodeEval {
     return ret;
   }
  public:
-  __m256 ev_vec, var_vec;
+  __m256 ev_vec;
+
+  MoveEval() {}
+  MoveEval(__m256 ev) : ev_vec(ev) {}
+  MoveEval(const float ev[]) {
+    LoadEv(ev);
+  }
+  MoveEval(const uint8_t buf[], size_t) {
+    alignas(32) float ev[8] = {};
+    memcpy(ev, buf, kVecOutputSize);
+    ev_vec = _mm256_load_ps(ev);
+  }
+
+  static constexpr bool kIsConstSize = true;
+  static constexpr size_t NumBytes() { return kVecOutputSize; }
+
+  void GetBytes(uint8_t ret[]) const {
+    GetEv(reinterpret_cast<float*>(ret));
+  }
+
+  void GetEv(float buf[]) const {
+    alignas(32) float ret[8];
+    _mm256_store_ps(ret, ev_vec);
+    memcpy(buf, ret, kVecOutputSize);
+  }
+
+  __m256i MaxWith(const MoveEval& x) {
+    __m256 mask = _mm256_cmp_ps(ev_vec, x.ev_vec, _CMP_LT_OQ);
+    ev_vec = _mm256_blendv_ps(ev_vec, x.ev_vec, mask);
+    return _mm256_castps_si256(mask);
+  }
+
+  __m256i MaxWith(const MoveEval& x, __m256i subst, int val) {
+    __m256i mask = MaxWith(x);
+    return _mm256_blendv_epi8(subst, _mm256_set1_epi32(val), mask);
+  }
+
+  void LoadEv(const float buf[]) {
+    alignas(32) float x[8] = {};
+    memcpy(x, buf, kVecOutputSize);
+    ev_vec = _mm256_load_ps(x);
+  }
+
+  float Dot(__m256 probs) const {
+    return Sum(_mm256_mul_ps(ev_vec, probs));
+  }
+
+  MoveEval& operator+=(float x) {
+    ev_vec = _mm256_add_ps(ev_vec, _mm256_set1_ps(x));
+    return *this;
+  }
+};
+
+class NodeEval : public MoveEval {
+  using MoveEval::kVecOutputSize;
+ public:
+  using MoveEval::ev_vec;
+  __m256 var_vec;
 
   NodeEval() {}
-  NodeEval(__m256 ev, __m256 var) : ev_vec(ev), var_vec(var) {}
+  NodeEval(__m256 ev, __m256 var) : MoveEval(ev), var_vec(var) {}
   NodeEval(const float ev[], const float var[]) {
     LoadEv(ev);
     LoadVar(var);
@@ -46,32 +104,16 @@ class NodeEval {
     var_vec = _mm256_blendv_ps(var_vec, x.var_vec, mask);
   }
 
-  void GetEv(float buf[]) const {
-    alignas(32) float ret[8];
-    _mm256_store_ps(ret, ev_vec);
-    memcpy(buf, ret, kVecOutputSize);
-  }
-
   void GetVar(float buf[]) const {
     alignas(32) float ret[8];
     _mm256_store_ps(ret, var_vec);
     memcpy(buf, ret, kVecOutputSize);
   }
 
-  void LoadEv(const float buf[]) {
-    alignas(32) float x[8] = {};
-    memcpy(x, buf, kVecOutputSize);
-    ev_vec = _mm256_load_ps(x);
-  }
-
   void LoadVar(const float buf[]) {
     alignas(32) float x[8] = {};
     memcpy(x, buf, kVecOutputSize);
     var_vec = _mm256_load_ps(x);
-  }
-
-  float Dot(__m256 probs) const {
-    return Sum(_mm256_mul_ps(ev_vec, probs));
   }
 
   float DotVar(__m256 probs, float fin_ev) const {
@@ -90,4 +132,5 @@ class NodeEval {
 std::vector<NodeEval> CalculatePiece(
     int pieces, const std::vector<NodeEval>& prev, const std::vector<size_t>& offsets);
 std::vector<NodeEval> ReadValues(int pieces, size_t total_size = 0);
+std::vector<MoveEval> ReadValuesEvOnly(int pieces, size_t total_size = 0);
 void RunEvaluate(int start_pieces, const std::vector<int>& output_locations, bool sample);

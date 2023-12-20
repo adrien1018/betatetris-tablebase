@@ -10,6 +10,8 @@ std::filesystem::path PositionEdgePath(int group, int level);
 std::filesystem::path ValuePath(int pieces);
 std::filesystem::path ValueStatsPath(int pieces);
 std::filesystem::path ProbPath(int pieces);
+std::filesystem::path MovePath(int pieces);
+std::filesystem::path MoveRangePath(int pieces_l, int pieces_r, int group);
 
 std::filesystem::path SVDSamplePath(int group);
 std::filesystem::path SVDSampleCountPath(int group);

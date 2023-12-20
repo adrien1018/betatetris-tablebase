@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 #include <argparse/argparse.hpp>
 
+#include "move.h"
 #include "files.h"
 #include "config.h"
 #include "inspect.h"
@@ -108,6 +109,13 @@ int main(int argc, char** argv) {
       .scan<'i', int>()
       .default_value(4);
   };
+  auto ResumeArg = [](ArgumentParser& parser) {
+    parser.add_argument("-r", "--resume")
+      .help("Resume from a previous checkpoint")
+      .metavar("PIECES")
+      .scan<'i', int>()
+      .default_value(-1);
+  };
   auto NumSamplesArg = [](ArgumentParser& parser) {
     parser.add_argument("-n", "--num-samples-per-group").required()
       .help("Number of samples for each group")
@@ -147,15 +155,46 @@ int main(int argc, char** argv) {
   DataDirArg(evaluate);
   ParallelArg(evaluate);
   IOThreadsArg(evaluate);
-  evaluate.add_argument("-r", "--resume")
-    .help("Resume from a previous checkpoint")
-    .metavar("PIECES")
-    .scan<'i', int>()
-    .default_value(-1);
+  ResumeArg(evaluate);
   evaluate.add_argument("-c", "--checkpoints").required()
     .help("Checkpoints (in pieces) to save the evaluate result (comma-separated, support Python-like range)");
   evaluate.add_argument("-s", "--store-sample")
     .help("Store sampled values (must have sample file available)")
+    .default_value(false)
+    .implicit_value(true);
+
+  ArgumentParser move_cal("move", "", default_arguments::help);
+  move_cal.add_description("Calculate moves of every board");
+  DataDirArg(move_cal);
+  ParallelArg(move_cal);
+  IOThreadsArg(move_cal);
+  ResumeArg(move_cal);
+  move_cal.add_argument("-e", "--until")
+    .help("Calculate until this many pieces")
+    .metavar("PIECES")
+    .scan<'i', int>()
+    .default_value(0);
+
+  ArgumentParser move_merge("move-merge", "", default_arguments::help);
+  move_merge.add_description("Merge moves");
+  DataDirArg(move_merge);
+  ParallelArg(move_merge);
+  move_merge.add_argument("-s", "--start").required()
+    .help("Start pieces")
+    .metavar("PIECES")
+    .scan<'i', int>()
+    .default_value(-1);
+  move_merge.add_argument("-e", "--end").required()
+    .help("End pieces")
+    .metavar("PIECES")
+    .scan<'i', int>()
+    .default_value(-1);
+  move_merge.add_argument("-d", "--delete")
+    .help("Delete files after merge")
+    .default_value(false)
+    .implicit_value(true);
+  move_merge.add_argument("-w", "--whole")
+    .help("Whole merge")
     .default_value(false)
     .implicit_value(true);
 
@@ -248,6 +287,8 @@ int main(int argc, char** argv) {
   program.add_subparser(preprocess);
   program.add_subparser(build_edges);
   program.add_subparser(evaluate);
+  program.add_subparser(move_cal);
+  program.add_subparser(move_merge);
   program.add_subparser(sample_svd);
   program.add_subparser(svd);
   program.add_subparser(sample_train);
@@ -263,6 +304,10 @@ int main(int argc, char** argv) {
       std::cerr << build_edges;
     } else if (program.is_subcommand_used("evaluate")) {
       std::cerr << evaluate;
+    } else if (program.is_subcommand_used("move")) {
+      std::cerr << move_cal;
+    } else if (program.is_subcommand_used("move-merge")) {
+      std::cerr << move_merge;
     } else if (program.is_subcommand_used("sample_svd")) {
       std::cerr << sample_svd;
     } else if (program.is_subcommand_used("svd")) {
@@ -302,6 +347,9 @@ int main(int argc, char** argv) {
   auto GetGroup = [](const ArgumentParser& args) {
     return args.get<int>("--group");
   };
+  auto GetResume = [](const ArgumentParser& args) {
+    return args.get<int>("--resume");
+  };
   auto GetBoardID = [](const ArgumentParser& args) {
     return ParseIntList<long>(args.get<std::string>("--board-id"));
   };
@@ -336,10 +384,33 @@ int main(int argc, char** argv) {
       SetParallel(args);
       SetDataDir(args);
       SetIOThreads(args);
+      int resume = GetResume(args);
       auto checkpoints = ParseIntList<int>(args.get<std::string>("--checkpoints"));
-      int resume = args.get<int>("--resume");
       bool sample = args.get<bool>("--store-sample");
       RunEvaluate(resume, checkpoints, sample);
+    } else if (program.is_subcommand_used("move")) {
+      auto& args = program.at<ArgumentParser>("move");
+      SetParallel(args);
+      SetDataDir(args);
+      SetIOThreads(args);
+      int resume = GetResume(args);
+      int until = args.get<int>("--until");
+      RunCalculateMoves(resume, until);
+    } else if (program.is_subcommand_used("move-merge")) {
+      auto& args = program.at<ArgumentParser>("move-merge");
+      SetParallel(args);
+      SetDataDir(args);
+      int start = args.get<int>("--start");
+      int end = args.get<int>("--end");
+      bool whole = args.get<bool>("--whole");
+      bool delete_after = args.get<bool>("--delete");
+      if (whole) {
+        throw std::runtime_error("not implemented");
+      } else if (start != -1 || end != -1) {
+        MergeRanges(start, end, delete_after);
+      } else {
+        throw std::runtime_error("start / end not given");
+      }
     } else if (program.is_subcommand_used("sample_svd")) {
       auto& args = program.at<ArgumentParser>("sample_svd");
       SetParallel(args);

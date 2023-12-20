@@ -94,16 +94,6 @@ void CalculateBlock(
   }
 }
 
-// https://stackoverflow.com/questions/20843271/passing-a-non-copyable-closure-object-to-stdfunction-parameter
-template< class F >
-auto make_copyable_function(F&& f) {
-  using dF=std::decay_t<F>;
-  auto spf = std::make_shared<dF>( std::forward<F>(f) );
-  return [spf](auto&&... args)->decltype(auto) {
-    return (*spf)( decltype(args)(args)... );
-  };
-}
-
 void CalculateSameLevel(
     int group, size_t start, size_t end, const std::vector<NodeEval>& prev, int level,
     NodeEval out[]) {
@@ -227,6 +217,21 @@ std::vector<NodeEval> ReadValues(int pieces, size_t total_size) {
   if (!total_size) total_size = BoardCount(BoardPath(group));
   CompressedClassReader<NodeEval> reader(ValuePath(pieces));
   auto values = reader.ReadBatch(total_size);
+  if (values.size() != total_size) throw std::length_error("value file length incorrect");
+  return values;
+}
+
+std::vector<MoveEval> ReadValuesEvOnly(int pieces, size_t total_size) {
+  constexpr size_t kBatchSize = 131072;
+  int group = GetGroupByPieces(pieces);
+  if (!total_size) total_size = BoardCount(BoardPath(group));
+  CompressedClassReader<NodeEval> reader(ValuePath(pieces));
+  std::vector<MoveEval> values;
+  values.reserve(total_size);
+  for (size_t i = 0; i < total_size; i += kBatchSize) {
+    auto vec = reader.ReadBatch(kBatchSize);
+    for (auto& x : vec) values.emplace_back(x.ev_vec);
+  }
   if (values.size() != total_size) throw std::length_error("value file length incorrect");
   return values;
 }
