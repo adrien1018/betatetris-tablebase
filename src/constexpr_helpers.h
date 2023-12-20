@@ -4,6 +4,12 @@
 #include <type_traits>
 #include <immintrin.h>
 
+#ifdef _MSC_VER
+#define NOINLINE __declspec(noinline)
+#else
+#define NOINLINE __attribute__((noinline))
+#endif
+
 template <class T>
 constexpr T pext(T a, T mask) {
   static_assert(
@@ -174,3 +180,15 @@ template <std::size_t N, class Func>
 void For(Func&& func) {
   For(func, std::make_index_sequence<N>());
 }
+
+#define DO_PIECE_CASE(func, b) \
+  switch (piece) { \
+    case 0: return func<level, Board::NumRotations(0) PIECE_CASE_TMPL_ARGS>(b.TMap() PIECE_CASE_ARGS); \
+    case 1: return func<level, Board::NumRotations(1) PIECE_CASE_TMPL_ARGS>(b.JMap() PIECE_CASE_ARGS); \
+    case 2: return func<level, Board::NumRotations(2) PIECE_CASE_TMPL_ARGS>(b.ZMap() PIECE_CASE_ARGS); \
+    case 3: return func<level, Board::NumRotations(3) PIECE_CASE_TMPL_ARGS>(b.OMap() PIECE_CASE_ARGS); \
+    case 4: return func<level, Board::NumRotations(4) PIECE_CASE_TMPL_ARGS>(b.SMap() PIECE_CASE_ARGS); \
+    case 5: return func<level, Board::NumRotations(5) PIECE_CASE_TMPL_ARGS>(b.LMap() PIECE_CASE_ARGS); \
+    case 6: return func<level, Board::NumRotations(6) PIECE_CASE_TMPL_ARGS>(b.IMap() PIECE_CASE_ARGS); \
+  } \
+  unreachable();

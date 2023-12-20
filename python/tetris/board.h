@@ -1,7 +1,8 @@
 #pragma once
 
-#include "../../src/board.h"
+#include <algorithm>
 #include "python.h"
+#include "../../src/board.h"
 
 struct PythonBoard {
   PyObject_HEAD

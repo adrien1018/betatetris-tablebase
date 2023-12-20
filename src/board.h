@@ -6,6 +6,7 @@
 #include <array>
 #include <string>
 #include <vector>
+#include <string_view>
 
 #include "hash.h"
 #include "io_helpers.h"
@@ -197,6 +198,18 @@ class alignas(32) Board {
     }
   }
 
+  constexpr Board(std::string_view sv) :
+      b1(kBoardMask), b2(kBoardMask), b3(kBoardMask), b4(kColumnMask) {
+    int rows = (sv.size() + 1) / 11;
+    for (int i = 0; i < rows; i++) {
+      int x = 20 - rows + i;
+      for (int y = 0; y < 10; y++) {
+        char chr = sv[i * 11 + y];
+        if (chr == '1' || chr == 'X' || chr == 'O') SetCellFilled(x, y);
+      }
+    }
+  }
+
   constexpr int Count() const {
     return 200 - (popcount(b1) + popcount(b2) + popcount(b3) + popcount(b4));
   }
@@ -291,6 +304,27 @@ class alignas(32) Board {
 
   constexpr void Set(int row, int col) { SetCellEmpty(row, col); }
   constexpr void Unset(int row, int col) { SetCellFilled(row, col); }
+
+  constexpr bool IsCellSet(int row, int col) const {
+    switch (col) {
+      case 0: case 1: case 2: return b1 >> (col * 22 + row) & 1;
+      case 3: case 4: case 5: return b2 >> ((col - 3) * 22 + row) & 1;
+      case 6: case 7: case 8: return b3 >> ((col - 6) * 22 + row) & 1;
+      case 9: return b4 >> row & 1;
+      default: unreachable();
+    }
+  }
+
+  constexpr bool IsColumnRangeSet(int row_start, int row_end, int col) const {
+    uint32_t mask = (1 << row_end) - (1 << row_start);
+    switch (col) {
+      case 0: case 1: case 2: return (b1 >> (col * 22) & mask) == mask;
+      case 3: case 4: case 5: return (b2 >> ((col - 3) * 22) & mask) == mask;
+      case 6: case 7: case 8: return (b3 >> ((col - 6) * 22) & mask) == mask;
+      case 9: return (b4 & mask) == mask;
+      default: unreachable();
+    }
+  }
 
   constexpr std::pair<int, Board> ClearLines() const {
 #pragma GCC diagnostic push
@@ -542,6 +576,14 @@ class alignas(32) Board {
       20 - ctz(~b3 | kMask), 20 - ctz(~b3 >> 22 | kMask), 20 - ctz(~b3 >> 44 | kMask),
       20 - ctz(~b4 | kMask)
     }};
+  }
+
+  constexpr int Height() const {
+    uint32_t col_and = (
+        b1 & b2 & b3 & b4 &
+        b1 >> 22 & b2 >> 22 & b3 >> 22 &
+        b1 >> 44 & b2 >> 44 & b3 >> 44);
+    return 20 - ctz(~col_and);
   }
 
   constexpr bool operator==(const Board& x) const = default;

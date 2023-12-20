@@ -9,12 +9,6 @@
 #include "position.h"
 #include "constexpr_helpers.h"
 
-#ifdef _MSC_VER
-#define NOINLINE __declspec(noinline)
-#else
-#define NOINLINE __attribute__((noinline))
-#endif
-
 class PossibleMoves {
   static void UniqueVector_(std::vector<Position>& p) {
     std::sort(p.begin(), p.end());
@@ -48,6 +42,24 @@ constexpr bool IsDropFrame(int frame, Level level) {
     case kLevel19: return frame % 2 == 1;
     default: return true;
   }
+}
+
+constexpr int NumDrops(int frame, Level level) {
+  if (!IsDropFrame(frame, level)) return 0;
+  switch (level) {
+    case kLevel39: return 2;
+    default: return 1;
+  }
+}
+
+constexpr int GetFirstFrameOnRow(int row, Level level) {
+  switch (level) {
+    case kLevel18: return row * 3;
+    case kLevel19: return row * 2;
+    case kLevel29: return row;
+    case kLevel39: return (row + 1) / 2;
+  }
+  unreachable();
 }
 
 constexpr int GetLastFrameOnRow(int row, Level level) {
@@ -216,13 +228,13 @@ constexpr int Phase1TableGen(int initial_frame, int initial_rot, int initial_col
 template <Level level, int R, int adj_frame, class Taps>
 struct Phase1Table {
   static constexpr int initial_N = Phase1TableGen<level, R, Taps>(
-      0, 0, 5, std::array<TableEntry<R>, 10*R>().data());
+      0, 0, Position::Start.y, std::array<TableEntry<R>, 10*R>().data());
   TableEntry<R> initial[initial_N];
   int adj_N[initial_N];
   TableEntry<R> adj[initial_N][10 * R];
   constexpr Phase1Table() : initial{}, adj_N{}, adj{} {
     constexpr Taps taps{};
-    Phase1TableGen<level, R, Taps>(0, 0, 5, initial);
+    Phase1TableGen<level, R, Taps>(0, 0, Position::Start.y, initial);
     for (int i = 0; i < initial_N; i++) {
       int frame_start = std::max(adj_frame, taps[initial[i].num_taps]);
       adj_N[i] = Phase1TableGen<level, R, Taps>(
@@ -323,6 +335,7 @@ constexpr int TuckTypes(int R) {
   // R = 1: L R
   // R = 2: A LA RA AL AR
   // R = 4: B LB RB BL BR
+  // should also change frame_sequence.h if changed
   // it is possible to add other tuck types suck as buco-like spins
   // but we just keep it simple here
 }
@@ -336,7 +349,7 @@ struct TuckType {
 
 template <int R>
 struct TuckTypeTable {
-  TuckType table[TuckTypes(R)];
+  std::array<TuckType, TuckTypes(R)> table;
   constexpr TuckTypeTable() : table() {
     table[0] = {0, -1, 0}; // L
     table[1] = {0, 1, 0}; // R
@@ -554,16 +567,11 @@ NOINLINE PossibleMoves MoveSearch(const std::array<Board, R>& board) {
 
 template <Level level, int adj_frame, class Taps>
 PossibleMoves MoveSearch(const Board& b, int piece) {
-  switch (piece) {
-    case 0: return MoveSearch<level, Board::NumRotations(0), adj_frame, Taps>(b.TMap());
-    case 1: return MoveSearch<level, Board::NumRotations(1), adj_frame, Taps>(b.JMap());
-    case 2: return MoveSearch<level, Board::NumRotations(2), adj_frame, Taps>(b.ZMap());
-    case 3: return MoveSearch<level, Board::NumRotations(3), adj_frame, Taps>(b.OMap());
-    case 4: return MoveSearch<level, Board::NumRotations(4), adj_frame, Taps>(b.SMap());
-    case 5: return MoveSearch<level, Board::NumRotations(5), adj_frame, Taps>(b.LMap());
-    case 6: return MoveSearch<level, Board::NumRotations(6), adj_frame, Taps>(b.IMap());
-  }
-  unreachable();
+#define PIECE_CASE_TMPL_ARGS ,adj_frame,Taps
+#define PIECE_CASE_ARGS
+  DO_PIECE_CASE(MoveSearch, b);
+#undef PIECE_CASE_TMPL_ARGS
+#undef PIECE_CASE_ARGS
 }
 
 template <int adj_frame, class Taps>

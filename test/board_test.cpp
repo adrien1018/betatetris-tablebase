@@ -1,4 +1,5 @@
 #include <random>
+#include <string_view>
 #include <gtest/gtest.h>
 #include "test_boards.h"
 #include "naive_functions.h"
@@ -21,6 +22,14 @@ class BoardTest : public ::testing::Test {
   }
   void TearDown() override {}
 };
+
+TEST_F(BoardTest, StringBoard) {
+  using namespace std::literals;
+  ASSERT_EQ(Board::Ones, Board(""sv));
+  ASSERT_EQ(Board({{19, 2}, {19, 4}}), Board("..X.X....."sv));
+  ASSERT_EQ(Board({{18, 2}, {19, 4}}), Board("..O.......\n....X.....\n"sv));
+  ASSERT_EQ(Board({{18, 2}, {19, 4}}), Board("..O.......\n....X....."sv));
+}
 
 TEST_F(BoardTest, ByteBoardConvert) {
   for (int seed = 0; seed < kSeedMax; seed++) {
