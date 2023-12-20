@@ -1,10 +1,10 @@
+#include <sstream>
+#include <gtest/gtest.h>
 #include "../src/board.h"
 #include "../src/move_search.h"
 #include "test_boards.h"
 #include "naive_functions.h"
 #include "printing.h"
-#include <sstream>
-#include <gtest/gtest.h>
 
 namespace {
 
@@ -45,6 +45,24 @@ void TestSearch(const Board& b) {
   });
 }
 
+template <Level level>
+void TestSearchPosition(const TestSearchBoard& b) {
+  PossibleMoves moves;
+  if constexpr (level == kLevel18 || level == kLevel19) {
+    moves = MoveSearch<level, 18, Tap15Hz>(b.board, b.piece);
+    EXPECT_TRUE(std::any_of(moves.adj.begin(), moves.adj.end(), [&b](const auto& q) {
+            return std::find(q.second.begin(), q.second.end(), b.pos) != q.second.end();
+          })) << b.board.ToString() << "adj," << (int)level;
+  }
+  if constexpr (level == kLevel39) {
+    moves = MoveSearch<level, 18, Tap30Hz>(b.board, b.piece);
+  } else {
+    moves = MoveSearch<level, 61, Tap15Hz>(b.board, b.piece);
+  }
+  EXPECT_EQ(std::find(moves.non_adj.begin(), moves.non_adj.end(), b.pos) != moves.non_adj.end(),
+            level != kLevel39 || b.lvl_39_ok) << b.board.ToString() << "non_adj," << (int)level;
+}
+
 TEST_F(SearchTest, Test30Hz) {
   SetUp();
   for (auto& board : kTestBoards) {
@@ -72,6 +90,16 @@ TEST_F(SearchTest, Test12Hz) {
     TestSearch<kLevel19, 21, Tap12Hz>(board);
     TestSearch<kLevel29, 21, Tap12Hz>(board);
     TestSearch<kLevel39, 21, Tap12Hz>(board);
+  }
+}
+
+TEST_F(SearchTest, TestTuck) {
+  SetUp();
+  for (auto& board : kTestTuckBoards) {
+    TestSearchPosition<kLevel18>(board);
+    TestSearchPosition<kLevel19>(board);
+    TestSearchPosition<kLevel29>(board);
+    TestSearchPosition<kLevel39>(board);
   }
 }
 
