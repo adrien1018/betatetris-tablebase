@@ -203,3 +203,12 @@ auto make_copyable_function(F&& f) {
     case 6: return func<level, Board::NumRotations(6) PIECE_CASE_TMPL_ARGS>(b.IMap() PIECE_CASE_ARGS); \
   } \
   unreachable();
+
+#define DO_LEVEL_CASE(func, ...) \
+  switch (level) { \
+    case kLevel18: return func<kLevel18 LEVEL_CASE_TMPL_ARGS>(__VA_ARGS__); \
+    case kLevel19: return func<kLevel19 LEVEL_CASE_TMPL_ARGS>(__VA_ARGS__); \
+    case kLevel29: return func<kLevel29 LEVEL_CASE_TMPL_ARGS>(__VA_ARGS__); \
+    case kLevel39: return func<kLevel39 LEVEL_CASE_TMPL_ARGS>(__VA_ARGS__); \
+  } \
+  unreachable();

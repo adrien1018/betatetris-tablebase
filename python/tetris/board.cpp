@@ -26,6 +26,9 @@ int BoardInit(PythonBoard* self, PyObject* args, PyObject* kwds) {
   }
   if (!obj) {
     new(self) PythonBoard(Board::Ones);
+  } else if (PyUnicode_Check(obj)) {
+    const char* c_str = PyUnicode_AsUTF8(obj);
+    new(self) PythonBoard(std::string_view(c_str));
   } else if (PyBytes_Check(obj)) {
     if (PyBytes_Size(obj) != 25) {
       PyErr_SetString(PyExc_IndexError, "Bytes length != 25");
@@ -44,6 +47,7 @@ int BoardInit(PythonBoard* self, PyObject* args, PyObject* kwds) {
     for (auto& i : b) {
       for (auto& j : i) j = j ? 1 : 0;
     }
+    Py_DECREF(arr);
     new(self) PythonBoard(b);
   }
   return 0;

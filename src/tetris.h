@@ -3,6 +3,7 @@
 #include <cstring>
 #include "game.h"
 #include "move_search.h"
+#include "frame_sequence.h"
 
 class Tetris {
  public:
@@ -64,6 +65,10 @@ class Tetris {
     run_pieces_ = 0;
   }
 
+  bool IsAdjMove(const Position& pos) const {
+    return move_map_[pos.r][pos.x][pos.y] == kHasAdj;
+  }
+
   // (score, lines)
   // score == -1 if invalid
   std::pair<int, int> InputPlacement(const Position& pos, int next_piece) {
@@ -113,6 +118,19 @@ class Tetris {
       consecutive_fail_ = 0;
       return {0, 0};
     }
+  }
+
+  FrameSequence GetSequence(const Position& pos) const {
+    return GetFrameSequenceStart<TAP_SPEED>(board_, LevelSpeed(), now_piece_, ADJ_DELAY, pos);
+  }
+
+  std::pair<Position, FrameSequence> GetAdjPremove(const Position pos[7]) const {
+    auto [idx, seq] = GetBestAdj<TAP_SPEED>(board_, LevelSpeed(), now_piece_, moves_, ADJ_DELAY, pos);
+    return {moves_.adj[idx].first, seq};
+  }
+
+  void FinishAdjSequence(FrameSequence& seq, const Position& intermediate_pos, const Position& final_pos) const {
+    GetFrameSequenceAdj<TAP_SPEED>(seq, board_, LevelSpeed(), now_piece_, intermediate_pos, final_pos);
   }
 
   void SetNextPiece(int piece) {

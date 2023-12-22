@@ -1,5 +1,7 @@
 #include "tetris.h"
 
+#include <optional>
+
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define NO_IMPORT_ARRAY
 #define PY_ARRAY_UNIQUE_SYMBOL TETRIS_PY_ARRAY_SYMBOL_
@@ -8,6 +10,8 @@
 #include "board.h"
 
 namespace {
+
+/// -------- helpers --------
 
 int ParsePieceID(PyObject* obj) {
   if (PyUnicode_Check(obj)) {
@@ -52,6 +56,37 @@ bool CheckBoard(Board& board, PyObject* obj) {
   return true;
 }
 
+PyObject* PositionToTuple(const Position& pos) {
+  return Py_BuildValue("(iii)", pos.r, pos.x, pos.y);
+}
+
+PyObject* FrameSequenceToArray(const FrameSequence& seq) {
+  npy_intp dims[] = {(long)seq.size()};
+  PyObject* ret = PyArray_SimpleNew(1, dims, NPY_UINT8);
+  static_assert(sizeof(seq[0]) == 1);
+  memcpy(PyArray_DATA((PyArrayObject*)ret), seq.data(), seq.size());
+  return ret;
+}
+
+std::optional<FrameSequence> ArrayToFrameSequence(PyObject* obj) {
+  if (!PyArray_Check(obj)) {
+    PyErr_SetString(PyExc_IndexError, "Invalid frame sequence");
+    return std::nullopt;
+  }
+  PyArrayObject *arr = (PyArrayObject*)PyArray_FROM_OTF(obj, NPY_UINT8, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_FORCECAST);
+  if (!arr) return std::nullopt;
+  if (PyArray_NDIM(arr) != 1) {
+    PyErr_SetString(PyExc_IndexError, "Array must be 1D");
+    return std::nullopt;
+  }
+  FrameSequence seq(PyArray_DIM(arr, 0));
+  memcpy(seq.data(), PyArray_DATA(arr), seq.size());
+  Py_DECREF(arr);
+  return seq;
+}
+
+/// -------- impl --------
+
 void TetrisDealloc(PythonTetris* self) {
   self->~PythonTetris();
   Py_TYPE(self)->tp_free((PyObject*)self);
@@ -75,11 +110,11 @@ int TetrisInit(PythonTetris* self, PyObject* args, PyObject* kwds) {
 
 PyObject* Tetris_InputPlacement(PythonTetris* self, PyObject* args, PyObject* kwds) {
   static const char* kwlist[] = {"rotate", "x", "y", nullptr};
-  int rotate, x, y;
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "iii", (char**)kwlist, &rotate, &x, &y)) {
+  Position pos;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "iii", (char**)kwlist, &pos.r, &pos.x, &pos.y)) {
     return nullptr;
   }
-  auto [reward, raw_reward] = self->InputPlacement({rotate, x, y});
+  auto [reward, raw_reward] = self->InputPlacement(pos);
   PyObject* r1 = PyFloat_FromDouble(reward);
   PyObject* r2 = PyFloat_FromDouble(raw_reward);
   PyObject* ret = PyTuple_Pack(2, r1, r2);
@@ -168,6 +203,54 @@ PyObject* Tetris_GetState(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
   return ret;
 }
 
+PyObject* Tetris_GetAdjStates(PythonTetris* self, PyObject* args, PyObject* kwds) {
+  static const char* kwlist[] = {"rotate", "x", "y", nullptr};
+  Position pos;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "iii", (char**)kwlist, &pos.r, &pos.x, &pos.y)) {
+    return nullptr;
+  }
+  PythonTetris::State state[kPieces]{};
+  self->GetAdjStates(pos, state);
+  PyObject *r1, *r2, *r3, *r4, *r5;
+#define COPY_STATE(dest, i, name) \
+  for (size_t i = 0; i < kPieces; i++) { \
+    memcpy((char*)PyArray_DATA((PyArrayObject*)dest) + sizeof(state[0].name) * i, state[i].name.data(), sizeof(state[0].name)); \
+  }
+  {
+    npy_intp dims[] = {kPieces, state[0].board.size(), state[0].board[0].size(), state[0].board[0][0].size()};
+    r1 = PyArray_SimpleNew(4, dims, NPY_FLOAT32);
+    COPY_STATE(r1, i, board);
+  }
+  {
+    npy_intp dims[] = {kPieces, state[0].meta.size()};
+    r2 = PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+    COPY_STATE(r2, i, meta);
+  }
+  {
+    npy_intp dims[] = {kPieces, state[0].moves.size(), state[0].moves[0].size(), state[0].moves[0][0].size()};
+    r3 = PyArray_SimpleNew(4, dims, NPY_FLOAT32);
+    COPY_STATE(r3, i, moves);
+  }
+  {
+    npy_intp dims[] = {kPieces, state[0].move_meta.size()};
+    r4 = PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+    COPY_STATE(r4, i, move_meta);
+  }
+  {
+    npy_intp dims[] = {kPieces, state[0].meta_int.size()};
+    r5 = PyArray_SimpleNew(2, dims, NPY_INT32);
+    COPY_STATE(r5, i, meta_int);
+  }
+#undef COPY_STATE
+  PyObject* ret = PyTuple_Pack(5, r1, r2, r3, r4, r5);
+  Py_DECREF(r1);
+  Py_DECREF(r2);
+  Py_DECREF(r3);
+  Py_DECREF(r4);
+  Py_DECREF(r5);
+  return ret;
+}
+
 static PyObject* Tetris_StateShapes(void*, PyObject* Py_UNUSED(ignored)) {
   PyObject *r1, *r2, *r3, *r4, *r5;
   {
@@ -203,8 +286,65 @@ static PyObject* Tetris_StateShapes(void*, PyObject* Py_UNUSED(ignored)) {
   return ret;
 }
 
-static PyObject* Tetris_StateTypes(void*, PyObject* Py_UNUSED(ignored)) {
+PyObject* Tetris_StateTypes(void*, PyObject* Py_UNUSED(ignored)) {
   return Py_BuildValue("(sssss)", "float32", "float32", "float32", "float32", "int32");
+}
+
+PyObject* Tetris_IsAdjMove(PythonTetris* self, PyObject* args, PyObject* kwds) {
+  static const char* kwlist[] = {"rotate", "x", "y", nullptr};
+  Position pos;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "iii", (char**)kwlist, &pos.r, &pos.x, &pos.y)) {
+    return nullptr;
+  }
+  return PyBool_FromLong(self->tetris.IsAdjMove(pos));
+}
+
+PyObject* Tetris_GetSequence(PythonTetris* self, PyObject* args, PyObject* kwds) {
+  static const char* kwlist[] = {"rotate", "x", "y", nullptr};
+  Position pos;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "iii", (char**)kwlist, &pos.r, &pos.x, &pos.y)) {
+    return nullptr;
+  }
+  return FrameSequenceToArray(self->tetris.GetSequence(pos));
+}
+
+PyObject* Tetris_GetAdjPremove(PythonTetris* self, PyObject* args, PyObject* kwds) {
+  static const char* kwlist[] = {"pos_list", nullptr};
+  Position pos[7];
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "((iii)(iii)(iii)(iii)(iii)(iii)(iii))", (char**)kwlist,
+        &pos[0].r, &pos[0].x, &pos[0].y,
+        &pos[1].r, &pos[1].x, &pos[1].y,
+        &pos[2].r, &pos[2].x, &pos[2].y,
+        &pos[3].r, &pos[3].x, &pos[3].y,
+        &pos[4].r, &pos[4].x, &pos[4].y,
+        &pos[5].r, &pos[5].x, &pos[5].y,
+        &pos[6].r, &pos[6].x, &pos[6].y)) {
+    return nullptr;
+  }
+  auto [npos, seq] = self->tetris.GetAdjPremove(pos);
+  PyObject *r1 = PositionToTuple(npos), *r2 = FrameSequenceToArray(seq);
+  PyObject* ret = PyTuple_Pack(2, r1, r2);
+  Py_DECREF(r1);
+  Py_DECREF(r2);
+  return ret;
+}
+
+PyObject* Tetris_FinishAdjSequence(PythonTetris* self, PyObject* args, PyObject* kwds) {
+  static const char* kwlist[] = {"sequence", "intermediate_pos", "final_pos", nullptr};
+  Position intermediate_pos, final_pos;
+  PyObject* seq_obj;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "O(iii)(iii)", (char**)kwlist,
+        &seq_obj, &intermediate_pos.r, &intermediate_pos.x, &intermediate_pos.y,
+        &final_pos.r, &final_pos.x, &final_pos.y)) {
+    return nullptr;
+  }
+  try {
+    auto seq = ArrayToFrameSequence(seq_obj).value();
+    self->tetris.FinishAdjSequence(seq, intermediate_pos, final_pos);
+    return FrameSequenceToArray(seq);
+  } catch (std::bad_optional_access&) {
+    return nullptr;
+  }
 }
 
 PyObject* Tetris_IsOver(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
@@ -242,15 +382,25 @@ PyMethodDef py_tetris_class_methods[] = {
      "Check whether the game is over"},
     {"InputPlacement", (PyCFunction)Tetris_InputPlacement,
      METH_VARARGS | METH_KEYWORDS, "Input a placement and return the reward"},
-    {"GetState", (PyCFunction)Tetris_GetState, METH_NOARGS, "Get state tuple"},
-    {"StateShapes", (PyCFunction)Tetris_StateShapes, METH_NOARGS | METH_STATIC,
-     "Get shapes of state array (static)"},
-    {"StateTypes", (PyCFunction)Tetris_StateTypes, METH_NOARGS | METH_STATIC,
-     "Get types of state array (static)"},
     {"Reset", (PyCFunction)Tetris_Reset, METH_VARARGS | METH_KEYWORDS,
      "Reset game and assign pieces randomly"},
     {"ResetRandom", (PyCFunction)Tetris_ResetRandom, METH_VARARGS | METH_KEYWORDS,
      "Reset game and assign pieces randomly"},
+    {"GetState", (PyCFunction)Tetris_GetState, METH_NOARGS, "Get state tuple"},
+    {"StateShapes", (PyCFunction)Tetris_StateShapes, METH_NOARGS | METH_STATIC,
+     "Get shapes of state array (static)"},
+    {"GetAdjStates", (PyCFunction)Tetris_GetAdjStates, METH_VARARGS | METH_KEYWORDS,
+     "Get state tuple for every possible next piece"},
+    {"StateTypes", (PyCFunction)Tetris_StateTypes, METH_NOARGS | METH_STATIC,
+     "Get types of state array (static)"},
+    {"IsAdjMove", (PyCFunction)Tetris_IsAdjMove, METH_VARARGS | METH_KEYWORDS,
+     "Check if a move can have adjustments"},
+    {"GetSequence", (PyCFunction)Tetris_GetSequence, METH_VARARGS | METH_KEYWORDS,
+     "Get frame sequence to a particular position"},
+    {"GetAdjPremove", (PyCFunction)Tetris_GetAdjPremove, METH_VARARGS | METH_KEYWORDS,
+     "Get pre-adjustment placement and frame sequence by possible final destinations"},
+    {"FinishAdjSequence", (PyCFunction)Tetris_FinishAdjSequence, METH_VARARGS | METH_KEYWORDS,
+     "Finish a pre-adjustment sequence"},
     {"GetBoard", (PyCFunction)Tetris_GetBoard, METH_NOARGS, "Get board object"},
     {"GetLines", (PyCFunction)Tetris_GetLines, METH_NOARGS, "Get total lines"},
     {"GetPieces", (PyCFunction)Tetris_GetPieces, METH_NOARGS, "Get total pieces"},

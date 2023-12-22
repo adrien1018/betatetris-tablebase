@@ -78,7 +78,22 @@ class PythonTetris {
     std::array<int, 2> meta_int;
   };
 
-  void GetState(State& state) {
+  void GetState(State& state) const {
+    PythonTetris::GetState(tetris, state);
+  }
+
+  void GetAdjStates(const Position& pos, State states[kPieces]) const {
+    if (tetris.IsAdj()) throw std::logic_error("should only called on non adj phase");
+    Tetris n_tetris = tetris;
+    n_tetris.InputPlacement(pos, 0);
+    if (!n_tetris.IsAdj()) throw std::logic_error("not an adj placement");
+    for (size_t i = 0; i < kPieces; i++) {
+      n_tetris.SetNextPiece(i);
+      PythonTetris::GetState(n_tetris, states[i]);
+    }
+  }
+
+  static void GetState(const Tetris& tetris, State& state) {
     // board: shape (2, 20, 10) [board, one]
     // meta: shape (28,) [group(5), now_piece(7), next_piece(7), is_adj(1), hz(4), adj(4)]
     // meta_int: shape (2,) [entry, now_piece]

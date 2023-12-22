@@ -576,13 +576,9 @@ PossibleMoves MoveSearch(const Board& b, int piece) {
 
 template <int adj_frame, class Taps>
 PossibleMoves MoveSearch(const Board& b, Level level, int piece) {
-  switch (level) {
-    case kLevel18: return MoveSearch<kLevel18, adj_frame, Taps>(b, piece);
-    case kLevel19: return MoveSearch<kLevel19, adj_frame, Taps>(b, piece);
-    case kLevel29: return MoveSearch<kLevel29, adj_frame, Taps>(b, piece);
-    case kLevel39: return MoveSearch<kLevel39, adj_frame, Taps>(b, piece);
-  }
-  unreachable();
+#define LEVEL_CASE_TMPL_ARGS ,adj_frame,Taps
+  DO_LEVEL_CASE(MoveSearch, b, piece);
+#undef LEVEL_CASE_TMPL_ARGS
 }
 
 using Tap30Hz = move_search::TapTable<0, 2, 2, 2, 2, 2, 2, 2, 2, 2>;
