@@ -123,6 +123,18 @@ PyObject* Tetris_InputPlacement(PythonTetris* self, PyObject* args, PyObject* kw
   return ret;
 }
 
+PyObject* Tetris_SetNextPiece(PythonTetris* self, PyObject* args, PyObject* kwds) {
+  static const char* kwlist[] = {"piece", nullptr};
+  PyObject* piece_obj;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &piece_obj)) {
+    return nullptr;
+  }
+  int piece = ParsePieceID(piece_obj);
+  if (piece < 0) return nullptr;
+  self->tetris.SetNextPiece(piece);
+  Py_RETURN_NONE;
+}
+
 PyObject* Tetris_Reset(PythonTetris* self, PyObject* args, PyObject* kwds) {
   static const char* kwlist[] = {
     "now_piece", "next_piece", "lines", "board",
@@ -380,8 +392,10 @@ PyObject* Tetris_GetRunPieces(PythonTetris* self, PyObject* Py_UNUSED(ignored)) 
 PyMethodDef py_tetris_class_methods[] = {
     {"IsOver", (PyCFunction)Tetris_IsOver, METH_NOARGS,
      "Check whether the game is over"},
-    {"InputPlacement", (PyCFunction)Tetris_InputPlacement,
-     METH_VARARGS | METH_KEYWORDS, "Input a placement and return the reward"},
+    {"InputPlacement", (PyCFunction)Tetris_InputPlacement, METH_VARARGS | METH_KEYWORDS,
+     "Input a placement and return the reward"},
+    {"SetNextPiece", (PyCFunction)Tetris_SetNextPiece, METH_VARARGS | METH_KEYWORDS,
+     "Set the next piece"},
     {"Reset", (PyCFunction)Tetris_Reset, METH_VARARGS | METH_KEYWORDS,
      "Reset game and assign pieces randomly"},
     {"ResetRandom", (PyCFunction)Tetris_ResetRandom, METH_VARARGS | METH_KEYWORDS,

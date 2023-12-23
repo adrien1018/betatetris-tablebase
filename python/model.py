@@ -125,8 +125,8 @@ class Model(nn.Module):
         board, board_meta, moves, moves_meta, meta_int = obs
         batch = board.shape[0]
         pi = None
-        v = torch.zeros((1, batch), dtype=torch.float32)
-        evdev = torch.zeros((2, batch), dtype=torch.float32)
+        v = torch.zeros((1, batch), dtype=torch.float32, device=board.device)
+        evdev = torch.zeros((2, batch), dtype=torch.float32, device=board.device)
 
         invalid = moves[:,2:6].view(batch, -1) == 0
         x = self.board_embed(board, board_meta)
