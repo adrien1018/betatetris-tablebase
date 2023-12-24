@@ -71,7 +71,6 @@ class Main:
 
     def set_weight_params(self):
         self.cur_entropy_weight = self.c.entropy_weight()
-        self.cur_raw_weight = self.c.raw_weight()
         self.cur_vf_weight = self.c.vf_weight()
 
     def destroy(self):
@@ -127,15 +126,12 @@ class Main:
         # $R_t$ returns sampled from $\pi_{\theta_{OLD}}$
         samples['returns'] = (samples['values'] + samples['advantages']).float()
         samples['advantages'] = Main._normalize(samples['advantages'])
-        samples['raw_devs'].clamp_(min=1e-5)
 
     def _calc_loss(self, samples: Dict[str, torch.Tensor], clip_range: float) -> torch.Tensor:
         """## PPO Loss"""
         # Sampled observations are fed into the model to get $\pi_\theta(a_t|s_t)$ and $V^{\pi_\theta}(s_t)$;
         pi, value = self.model_opt(samples['obs'])
         pi = Categorical(logits=pi)
-        raw_dist = Normal(value[1], F.softplus(value[2], beta=1e3).clamp(min=1e-5))
-        raw_dev = value[2]
         value = value[0]
 
         skip_mask = samples['skip_mask']
@@ -172,25 +168,15 @@ class Main:
         vf_loss[skip_mask] = 0
         vf_loss = 0.5 * vf_loss.mean()
 
-        # #### Score distribution
-        raw_kl = kl_divergence(Normal(samples['raw_values'], samples['raw_devs']), raw_dist)
-        raw_loss = torch.log1p(raw_kl * 1e-3) * 1e3 # avoid large values
-        raw_loss[skip_mask] = 0
-        raw_reg = 5 * F.softplus(-(raw_dev - 2e-3), beta=500) # penalize negative values
-        raw_reg[skip_mask] = 0
-        raw_loss = raw_loss.mean() + raw_reg.mean()
-
         # we want to maximize $\mathcal{L}^{CLIP+VF+EB}(\theta)$
         # so we take the negative of it as the loss
-        loss = -(policy_reward - self.cur_vf_weight * vf_loss - self.cur_raw_weight * raw_loss + \
-                self.cur_entropy_weight * entropy_bonus)
+        loss = -(policy_reward - self.cur_vf_weight * vf_loss + self.cur_entropy_weight * entropy_bonus)
 
         # for monitoring
         approx_kl_divergence = .5 * ((samples['log_pis'] - log_pi) ** 2).mean()
         clip_fraction = (abs((ratio - 1.0)) > clip_range).to(torch.float).mean()
         tracker.add({'policy_reward': policy_reward,
                      'vf_loss': vf_loss ** 0.5,
-                     'raw_loss': raw_loss,
                      'entropy_bonus': entropy_bonus,
                      'kl_div': approx_kl_divergence,
                      'clip_fraction': clip_fraction})

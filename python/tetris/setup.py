@@ -9,10 +9,10 @@ sources = ['board.cpp', 'tetris.cpp', 'module.cpp']
 class build_ext_ex(build_ext):
     extra_compile_args = {
         'tetris': {
-            'unix': ['-std=c++20', '-DLINE_CAP=430', '-DADJ_DELAY=18', '-DTAP_SPEED=Tap30Hz', '-mbmi2'],
+            'unix': ['-std=c++20', '-DLINE_CAP=1000', '-DADJ_DELAY=61', '-DTAP_SPEED=Tap20Hz', '-mbmi2'],
             #'unix': ['-std=c++20', '-DLINE_CAP=430', '-DADJ_DELAY=18', '-DTAP_SPEED=Tap30Hz', '-mbmi2', '-O1'],
             #'unix': ['-std=c++20', '-DLINE_CAP=430', '-DADJ_DELAY=18', '-DTAP_SPEED=Tap30Hz', '-mbmi2', '-fsanitize=address', '-fsanitize=undefined', '-O1'],
-            'msvc': ['/std:c++20', '/DLINE_CAP=430', '/DADJ_DELAY=18', '/DTAP_SPEED=Tap30Hz'],
+            'msvc': ['/std:c++20', '/DLINE_CAP=1000', '/DADJ_DELAY=61', '/DTAP_SPEED=Tap20Hz'],
         }
     }
 

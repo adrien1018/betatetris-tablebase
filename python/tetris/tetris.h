@@ -8,9 +8,7 @@ class PythonTetris {
  public:
   PyObject_HEAD
   static constexpr double kInvalidReward_ = -0.3;
-  static constexpr double kRewardMultiplier_ = 1e-5; // 10 per maxout
-  static constexpr double kBottomMultiplier_ = 1.2;
-  double step_reward_ = 5e-4;
+  double step_reward_ = 1e-3;
 
  private:
   static constexpr int kTransitionProb_[kPieces][kPieces] = {
@@ -59,15 +57,14 @@ class PythonTetris {
 
   std::pair<double, double> InputPlacement(const Position& pos) {
     auto [score, lines] = tetris.InputPlacement(pos, next_piece_);
-    if (score == -1) return {kInvalidReward_, 0.0f};
-    double reward = score * kRewardMultiplier_;
-    double n_reward = reward;
-    if (lines == 4 && pos.x >= 18) n_reward *= kBottomMultiplier_;
+    if (score == -1) return {kInvalidReward_, 0.0};
+    double n_reward = lines ? 1e-2 : 0.0;
+    if (pos.x < 17) n_reward *= (double)pos.x / 17;
     if (!tetris.IsAdj()) {
       next_piece_ = GenNextPiece_(next_piece_);
       n_reward += step_reward_;
     }
-    return {n_reward, reward};
+    return {n_reward, 0.0};
   }
 
   struct State {
@@ -138,13 +135,7 @@ class PythonTetris {
     state.meta_int[1] = tetris.NowPiece();
 
     memset(state.move_meta.data(), 0, sizeof(state.move_meta));
-    int to_transition = 0;
-    switch (tetris.LevelSpeed()) {
-      case kLevel18: state.move_meta[0] = 1; to_transition = std::min(130, kLineCap) - lines; break;
-      case kLevel19: state.move_meta[1] = 1; to_transition = std::min(230, kLineCap) - lines; break;
-      case kLevel29: state.move_meta[2] = 1; to_transition = std::min(330, kLineCap) - lines; break;
-      case kLevel39: state.move_meta[3] = 1; to_transition = kLineCap - lines; break;
-    }
+    int to_transition = kLineCap - lines;
     if (to_transition <= 10) { // 4..13
       state.move_meta[4 + (to_transition - 1)] = 1;
     } else if (to_transition <= 22) { // 14..17

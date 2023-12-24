@@ -96,7 +96,7 @@ class Tetris {
       initial_move_ = 0;
       now_piece_ = next_piece_;
       next_piece_ = next_piece;
-      if (lines_ >= kLineCap) {
+      if (lines_ >= kLineCap || lines > 1) {
         game_over_ = true;
       } else {
         CalculateMoves_(true);
@@ -142,7 +142,7 @@ class Tetris {
   const Board& GetBoard() const { return board_; }
 
   int GetLevel() const { return GetLevelByLines(lines_); }
-  Level LevelSpeed() const { return GetLevelSpeed(GetLevel()); }
+  constexpr Level LevelSpeed() const { return kLevel29; }
   bool IsAdj() const { return is_adj_; }
   int GetPieces() const { return pieces_; }
   int GetLines() const { return lines_; }

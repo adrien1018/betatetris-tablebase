@@ -7,8 +7,8 @@ from labml.configs import BaseConfigs, FloatDynamicHyperParam
 class Configs(BaseConfigs):
     # #### Configurations
     ## NN
-    start_blocks: int = 4
-    end_blocks: int = 2
+    start_blocks: int = 1
+    end_blocks: int = 4
     channels: int = 192
 
     def model_args(self):
@@ -17,31 +17,29 @@ class Configs(BaseConfigs):
     ## training
     lr: float = FloatDynamicHyperParam(1e-4, range_ = (0, 1e-3))
     # $\gamma$ and $\lambda$ for advantage calculation
-    gamma: float = FloatDynamicHyperParam(0.99 ** 0.5, range_ = (0.95, 1))
-    lamda: float = FloatDynamicHyperParam(0.92, range_ = (0.8, 1))
+    gamma: float = FloatDynamicHyperParam(0.992 ** 0.5, range_ = (0.95, 1))
+    lamda: float = FloatDynamicHyperParam(0.93, range_ = (0.8, 1))
     # number of updates
     updates: int = 400000
     # number of epochs to train the model with sampled data
     epochs: int = 1
     # number of worker processes
     n_workers: int = 2
-    env_per_worker: int = 128
+    env_per_worker: int = 48
     # number of steps to run on each process for a single update
-    worker_steps: int = 128
+    worker_steps: int = 256
     # size of mini batches
     n_update_per_epoch: int = 32
     # calculate loss in batches of mini_batch_size
-    mini_batch_size: int = 1024
+    mini_batch_size: int = 768
 
     ## loss calculation
     clipping_range: float = 0.2
     vf_weight: float = FloatDynamicHyperParam(0.5, range_ = (0, 1))
-    raw_weight: float = FloatDynamicHyperParam(3e-4, range_ = (0, 0.1))
-    entropy_weight: float = FloatDynamicHyperParam(2.2e-2, range_ = (0, 5e-2))
+    entropy_weight: float = FloatDynamicHyperParam(2e-2, range_ = (0, 5e-2))
     reg_l2: float = FloatDynamicHyperParam(0., range_ = (0, 5e-5))
 
     save_interval: int = 500
-    board_file: Optional[str] = None
 
 
 def LoadConfig(with_experiment = True):
@@ -59,8 +57,6 @@ def LoadConfig(with_experiment = True):
         if ptype == FloatDynamicHyperParam:
             ptype = float
             dynamic_keys.add(key)
-        elif key == 'board_file':
-            ptype = str
         parser.add_argument('--' + key.replace('_', '-'), type = ptype)
 
     args, others = parser.parse_known_args()

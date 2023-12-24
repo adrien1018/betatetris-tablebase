@@ -44,29 +44,6 @@ class InitialEmbed(nn.Module):
         return self.finish(x)
 
 
-class EvDev(nn.Module):
-    def __init__(self, in_feat, ev_rank, dev_rank):
-        super().__init__()
-        self.linear_ev = nn.Linear(in_feat, ev_rank)
-        self.linear_dev = nn.Linear(in_feat, dev_rank)
-        ev_mat = torch.tensor(kEvMatrix * 1e-5)[:,:ev_rank]
-        dev_mat = torch.tensor(kDevMatrix * 1e-5)[:,:dev_rank]
-        self.register_buffer(name='ev_mat', tensor=ev_mat)
-        self.register_buffer(name='dev_mat', tensor=dev_mat)
-
-    @autocast(device_type=device, enabled=False)
-    def evdev_coeff(self, obs):
-        obs = obs.float()
-        return self.linear_ev(obs), self.linear_dev(obs)
-
-    @autocast(device_type=device, enabled=False)
-    def forward(self, obs, idx):
-        obs = obs.float()
-        ev = (self.linear_ev(obs) * self.ev_mat[idx]).sum(axis=1)
-        dev = (self.linear_dev(obs) * self.dev_mat[idx]).sum(axis=1)
-        return torch.stack([ev, dev])
-
-
 class PiValueHead(nn.Module):
     def __init__(self, in_feat):
         super().__init__()
@@ -93,14 +70,6 @@ class Model(nn.Module):
             nn.ReLU(True),
             nn.Linear(8 * kH * kW, 4 * kH * kW)
         )
-        self.evdev_head = nn.Sequential(
-            nn.Conv2d(channels, 2, 1),
-            nn.BatchNorm2d(2),
-            nn.Flatten(),
-            nn.ReLU(True),
-            nn.Linear(2 * kH * kW, 512),
-            nn.ReLU(True),
-        )
         self.value_head = nn.Sequential(
             nn.Conv2d(channels, 1, 1),
             nn.BatchNorm2d(1),
@@ -109,19 +78,10 @@ class Model(nn.Module):
             nn.Linear(1 * kH * kW, 256),
             nn.ReLU(True),
         )
-        self.evdev_final = EvDev(512, 40, 32)
         self.pi_value_final = PiValueHead(256)
 
     @autocast(device_type=device)
-    def evdev_coeff(self, board, board_meta):
-        batch = board.shape[0]
-        x = self.board_embed(board, board_meta)
-        x = self.main_start(x)
-        x = self.evdev_head(x)
-        return self.evdev_final.evdev_coeff(x)
-
-    @autocast(device_type=device)
-    def forward(self, obs, categorical=False, pi_only=False, evdev_only=False):
+    def forward(self, obs, categorical=False):
         board, board_meta, moves, moves_meta, meta_int = obs
         batch = board.shape[0]
         pi = None
@@ -131,16 +91,13 @@ class Model(nn.Module):
         invalid = moves[:,2:6].view(batch, -1) == 0
         x = self.board_embed(board, board_meta)
         x = self.main_start(x)
-        if not pi_only:
-            evdev = self.evdev_final(self.evdev_head(x), meta_int[:,0].type(torch.LongTensor))
-        if not evdev_only:
-            x = x + self.moves_embed(moves, moves_meta)
-            x = self.main_end(x)
-            pi, v = self.pi_value_final(
-                    self.pi_logits_head(x),
-                    self.value_head(x),
-                    invalid)
-            if categorical: pi = Categorical(logits=pi)
+        x = x + self.moves_embed(moves, moves_meta)
+        x = self.main_end(x)
+        pi, v = self.pi_value_final(
+                self.pi_logits_head(x),
+                self.value_head(x),
+                invalid)
+        if categorical: pi = Categorical(logits=pi)
         return pi, torch.concat([v, evdev])
 
 def obs_to_torch(obs, device=None):
