@@ -413,7 +413,7 @@ int main(int argc, char** argv) {
       bool whole = args.get<bool>("--whole");
       bool delete_after = args.get<bool>("--delete");
       if (whole) {
-        throw std::runtime_error("not implemented");
+        MergeFullRanges();
       } else if (start != -1 || end != -1) {
         MergeRanges(start, end, delete_after);
       } else {
@@ -492,7 +492,7 @@ int main(int argc, char** argv) {
       return 1;
     }
   } catch (std::logic_error& e) {
-    std::cerr << e.what() << std::endl;
+    spdlog::error("Error running command: {}", e.what());
     return 1;
   }
 }

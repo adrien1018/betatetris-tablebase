@@ -1,6 +1,8 @@
 #include "files.h"
 
+#include <regex>
 #include <string>
+#include <algorithm>
 #include <filesystem>
 #include "board.h"
 #include "config.h"
@@ -34,11 +36,28 @@ fs::path ValueStatsPath(int pieces) {
 fs::path ProbPath(int pieces) {
   return kDataDir / "probs" / NumToStr(pieces);
 }
-fs::path MovePath(int pieces) {
+fs::path MoveIndexPath(int pieces) {
   return kDataDir / "moves" / NumToStr(pieces);
 }
 fs::path MoveRangePath(int pieces_l, int pieces_r, int group) {
   return kDataDir / "moves" / (std::to_string(group) + '.' + NumToStr(pieces_l) + '-' + NumToStr(pieces_r));
+}
+std::vector<std::pair<int, int>> GetAvailableMoveRanges() {
+  fs::path path = kDataDir / "moves";
+  std::regex pattern("[0-4].([0-9]+)-([0-9]+)");
+  std::vector<std::pair<int, int>> ret;
+  for (auto const& dir_entry : std::filesystem::directory_iterator{path}) {
+    std::cmatch match;
+    if (std::regex_match(dir_entry.path().filename().c_str(), match, pattern)) {
+      ret.push_back({std::stoi(match[1]), std::stoi(match[2])});
+    }
+  }
+  std::sort(ret.begin(), ret.end());
+  ret.resize(std::unique(ret.begin(), ret.end()) - ret.begin());
+  return ret;
+}
+fs::path MovePath(int group) {
+  return kDataDir / "moves" / (std::to_string(group) + ".all");
 }
 
 fs::path SVDSamplePath(int group) {

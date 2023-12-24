@@ -63,6 +63,11 @@ struct SimpleIOArray : public std::array<T, sz> {
   }
 };
 
+template <class T, size_t sz>
+constexpr bool operator==(const SimpleIOArray<T, sz>& a, const SimpleIOArray<T, sz>& b) {
+  return std::equal(a.begin(), a.end(), b.begin());
+}
+
 template <class T> struct BasicIOType {
   static constexpr bool kIsConstSize = true;
   static constexpr size_t NumBytes() { return sizeof(T); }

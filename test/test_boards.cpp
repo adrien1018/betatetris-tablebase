@@ -177,7 +177,7 @@ using namespace std::literals;
 
 const std::array<TestSearchBoard, 24> kTestTuckBoards = {{
   {Board("....XXX...\n"
-         ".....X....sv"), 0, {2, 19, 7}, false}, // L
+         ".....X...."sv), 0, {2, 19, 7}, false}, // L
   {Board("....XXX...\n"
          ".....X....\n"
          "XXXXXXXXXX"sv), 0, {2, 18, 7}, true}, // L

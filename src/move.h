@@ -2,16 +2,26 @@
 
 #include <vector>
 #include <stdexcept>
+#include "game.h"
+#include "board.h"
+#include "position.h"
 #include "io_helpers.h"
 
 // store range in uint8_t
-static_assert(LINE_CAP <= 255 * 2);
+static_assert(kLineCap <= 255 * 2);
 
 using NodeMoveIndex = SimpleIOArray<uint8_t, 7>;
 
 struct MoveIndexRange {
   uint8_t start, end;
   NodeMoveIndex idx;
+  constexpr auto operator<=>(const MoveIndexRange&) const = default;
+};
+
+struct MovePositionRange {
+  uint8_t start, end;
+  std::array<Position, 7> pos;
+  constexpr auto operator<=>(const MovePositionRange&) const = default;
 };
 
 struct NodeMoveIndexRange {
@@ -44,7 +54,7 @@ struct NodeMoveIndexRange {
   NodeMoveIndexRange& operator<<=(const NodeMoveIndexRange& x) {
     size_t v = 0;
     if (ranges.size() && x.ranges.size()) {
-      if (ranges.back().end != x.ranges[0].start) throw std::logic_error("not subsequent");
+      if (ranges.back().end != x.ranges[0].start) throw std::logic_error("not subsequent: " + std::to_string(ranges.back().end) + "," + std::to_string(x.ranges[0].start));
       if (ranges.back().idx == x.ranges[0].idx) {
         ranges.back().end = x.ranges[0].end;
         v++;
@@ -65,5 +75,54 @@ struct NodeMoveIndexRange {
   }
 };
 
+struct NodeMovePositionRange {
+  static constexpr int kElementSize = 16;
+
+  std::vector<MovePositionRange> ranges;
+
+  NodeMovePositionRange() {}
+  NodeMovePositionRange(const uint8_t buf[], size_t sz) {
+    if (sz % kElementSize != 0) throw std::length_error("invalid size");
+    ranges.resize(sz / kElementSize);
+    for (size_t i = 0; i < ranges.size(); i++) {
+      ranges[i].start = buf[i*kElementSize];
+      ranges[i].end = buf[i*kElementSize+1];
+      for (size_t j = 0; j < kPieces; j++) {
+        new(&ranges[i].pos[j]) Position(buf + (i*kElementSize + 2 + j*2), 2);
+      }
+    }
+  }
+
+  NodeMovePositionRange& operator<<=(const MovePositionRange& x) {
+    if (ranges.empty()) {
+      ranges.push_back(x);
+    } else if (ranges.back().end != x.start) {
+      throw std::logic_error("not subsequent: " + std::to_string(ranges.back().end) + "," + std::to_string(x.start));
+    } else if (ranges.back().pos != x.pos) {
+      ranges.push_back(x);
+    } else {
+      ranges.back().end = x.end;
+    }
+    return *this;
+  }
+
+  static constexpr bool kIsConstSize = false;
+  static constexpr size_t kSizeNumberBytes = 2;
+  size_t NumBytes() const {
+    return kElementSize * ranges.size();
+  }
+
+  void GetBytes(uint8_t ret[]) const {
+    for (size_t i = 0; i < ranges.size(); i++) {
+      ret[i*kElementSize] = ranges[i].start;
+      ret[i*kElementSize+1] = ranges[i].end;
+      for (size_t j = 0; j < kPieces; j++) {
+        ranges[i].pos[j].GetBytes(ret + (i*kElementSize + 2 + j*2));
+      }
+    }
+  }
+};
+
 void RunCalculateMoves(int start_pieces, int end_pieces);
 void MergeRanges(int pieces_l, int pieces_r, bool delete_after);
+void MergeFullRanges();

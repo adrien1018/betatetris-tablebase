@@ -170,7 +170,7 @@ std::vector<MoveEval> CalculatePieceMoves(
     int pieces, const std::vector<MoveEval>& prev, const std::vector<size_t>& offsets) {
   int group = GetGroupByPieces(pieces);
   std::vector<MoveEval> ret(offsets.back());
-  CompressedClassWriter<NodeMoveIndex> writer(MovePath(pieces), 4096 * kPieces);
+  CompressedClassWriter<NodeMoveIndex> writer(MoveIndexPath(pieces), 4096 * kPieces);
 
   spdlog::info("Start calculate piece {}", pieces);
   stats.Clear();
@@ -219,7 +219,7 @@ void MergeRanges(int group, int pieces_l, int pieces_r, const std::vector<size_t
   while (GetGroupByPieces(pieces_l) != group) pieces_l++;
   std::vector<CompressedClassReader<NodeMoveIndex>> readers;
   for (int pieces = pieces_l; pieces < pieces_r; pieces += kGroups) {
-    readers.emplace_back(MovePath(pieces));
+    readers.emplace_back(MoveIndexPath(pieces));
   }
   if (readers.empty()) return;
   CompressedClassWriter<NodeMoveIndexRange> writer(MoveRangePath(orig_pieces_l, pieces_r, group), 4096 * kPieces, -2);
@@ -244,10 +244,51 @@ void MergeRanges(int group, int pieces_l, int pieces_r, const std::vector<size_t
   if (delete_after) {
     readers.clear();
     for (int pieces = pieces_l; pieces < pieces_r; pieces += kGroups) {
-      std::filesystem::remove(MovePath(pieces));
-      std::filesystem::remove(std::string(MovePath(pieces)) + ".index");
+      std::filesystem::remove(MoveIndexPath(pieces));
+      std::filesystem::remove(std::string(MoveIndexPath(pieces)) + ".index");
     }
   }
+}
+
+void MergeFullRanges(int group, const std::vector<int>& sections) {
+  spdlog::info("Merging group {}", group);
+  std::vector<CompressedClassReader<PositionNodeEdges>> pos_readers;
+  std::vector<CompressedClassReader<NodeMoveIndexRange>> readers;
+  CompressedClassWriter<NodeMovePositionRange> writer(MovePath(group), 256 * kPieces, -2);
+  for (int i = 0; i < kLevels; i++) {
+    pos_readers.emplace_back(PositionEdgePath(group, i));
+  }
+  for (size_t i = 0; i < sections.size() - 1; i++) {
+    readers.emplace_back(MoveRangePath(sections[i], sections[i+1], group));
+  }
+  PositionNodeEdges ed[kLevels];
+  size_t n_boards = GetBoardCountOffset(group).back();
+  for (size_t i = 0; i < n_boards * kPieces; i++) {
+    NodeMovePositionRange range;
+    for (int lvl = 0; lvl < kLevels; lvl++) ed[lvl] = pos_readers[lvl].ReadOne();
+    for (auto& move_reader : readers) {
+      for (auto& move : move_reader.ReadOne().ranges) {
+        // exploit the fact that transitions are all at even number of lines
+        static_assert(std::all_of(kLevelSpeedLines, kLevelSpeedLines + kLevels, [](int x){ return x % 2 == 0; }));
+        Level start_level = GetLevelSpeedByLines(move.start * 2);
+        Level end_level = GetLevelSpeedByLines(move.end * 2 - 1);
+        for (int lvl = static_cast<int>(start_level); lvl <= static_cast<int>(end_level); lvl++) {
+          uint8_t start_idx = std::max(kLevelSpeedLines[lvl] / 2, (int)move.start);
+          uint8_t end_idx = move.end;
+          if (lvl != kLevels - 1) end_idx = std::min(kLevelSpeedLines[lvl + 1] / 2, (int)end_idx);
+          MovePositionRange item{start_idx, end_idx, {}};
+          if (ed[lvl].nexts.size()) {
+            for (size_t j = 0; j < kPieces; j++) item.pos[j] = ed[lvl].nexts[move.idx[j]];
+          } else {
+            for (size_t j = 0; j < kPieces; j++) item.pos[j] = Position::Invalid;
+          }
+          range <<= item;
+        }
+      }
+    }
+    writer.Write(range);
+  }
+  spdlog::info("Group {} merged", group);
 }
 
 } // namespace
@@ -285,4 +326,26 @@ void MergeRanges(int pieces_l, int pieces_r, bool delete_after) {
       MergeRanges(group, pieces_l, pieces_r, GetBoardCountOffset(group), delete_after);
     }
   }).wait();
+}
+
+void MergeFullRanges() {
+  auto ranges = GetAvailableMoveRanges();
+  if (ranges.empty()) throw std::runtime_error("No ranges available");
+  std::vector<int> sections;
+  sections.push_back(ranges[0].first);
+  sections.push_back(ranges[0].second);
+  for (size_t i = 1; i < ranges.size(); i++) {
+    if (ranges[i - 1].second != ranges[i].first) {
+      throw std::runtime_error("Ranges not consecutive or mutually exclusive");
+    }
+    sections.push_back(ranges[i].second);
+  }
+  spdlog::info("Start merge ranges {}", sections);
+  int threads = std::min(kParallel, kGroups);
+  BS::thread_pool pool(threads);
+  pool.parallelize_loop(0, kGroups, [&](int l, int r){
+    for (int group = l; group < r; group++) {
+      MergeFullRanges(group, sections);
+    }
+  }).get();
 }

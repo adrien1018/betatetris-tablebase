@@ -25,9 +25,12 @@ struct Position {
   constexpr Position(const uint8_t data[], size_t) : r(data[0] >> 5), x(data[0] & 31), y(data[1]) {}
 
   static const Position Start;
+  static const Position Invalid;
 };
 
 inline constexpr Position Position::Start = Position(0, 0, 5);
+// all pieces has cell to the left when r=0
+inline constexpr Position Position::Invalid = Position(0, 0, 0);
 
 namespace std {
 
