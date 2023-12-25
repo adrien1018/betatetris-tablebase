@@ -21,6 +21,9 @@ std::string NumToStr(int num, size_t lpad = 4) {
 fs::path BoardPath(int group) {
   return kDataDir / "boards" / std::to_string(group);
 }
+fs::path BoardMapPath(int group) {
+  return kDataDir / "boards" / (std::to_string(group) + ".map");
+}
 fs::path EvaluateEdgePath(int group, int level) {
   return kDataDir / "edges" / (std::to_string(group) + ".l" + std::to_string(level) + ".eval");
 }

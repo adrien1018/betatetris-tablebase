@@ -640,4 +640,15 @@ struct hash<Board> {
   }
 };
 
+template<>
+struct hash<CompactBoard> {
+  constexpr size_t operator()(const CompactBoard& b) const {
+    uint64_t x[4] = {BytesToInt<uint64_t>(b.data()),
+                     BytesToInt<uint64_t>(b.data() + 8),
+                     BytesToInt<uint64_t>(b.data() + 16),
+                     b[24]};
+    return Hash(Hash(x[0], x[2]), Hash(x[1], x[3]));
+  }
+};
+
 } // namespace std

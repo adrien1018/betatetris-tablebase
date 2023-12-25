@@ -141,6 +141,11 @@ int main(int argc, char** argv) {
   preprocess.add_argument("board_file")
     .help("Board file");
 
+  ArgumentParser board_map("board-map", "", default_arguments::help);
+  board_map.add_description("Generate board map");
+  DataDirArg(board_map);
+  ParallelArg(board_map);
+
   ArgumentParser build_edges("build-edges", "", default_arguments::help);
   build_edges.add_description("Build edges from boards");
   DataDirArg(build_edges);
@@ -293,6 +298,7 @@ int main(int argc, char** argv) {
   inspect.add_subparser(inspect_value);
 
   program.add_subparser(preprocess);
+  program.add_subparser(board_map);
   program.add_subparser(build_edges);
   program.add_subparser(evaluate);
   program.add_subparser(move_cal);
@@ -308,6 +314,8 @@ int main(int argc, char** argv) {
     std::cerr << err.what() << std::endl;
     if (program.is_subcommand_used("preprocess")) {
       std::cerr << preprocess;
+    } else if (program.is_subcommand_used("board-map")) {
+      std::cerr << board_map;
     } else if (program.is_subcommand_used("build-edges")) {
       std::cerr << build_edges;
     } else if (program.is_subcommand_used("evaluate")) {
@@ -381,6 +389,11 @@ int main(int argc, char** argv) {
       SetDataDir(args);
       std::filesystem::path board_file = args.get<std::string>("board_file");
       SplitBoards(board_file);
+    } else if (program.is_subcommand_used("board-map")) {
+      auto& args = program.at<ArgumentParser>("board-map");
+      SetParallel(args);
+      SetDataDir(args);
+      WriteBoardMap();
     } else if (program.is_subcommand_used("build-edges")) {
       auto& args = program.at<ArgumentParser>("build-edges");
       SetParallel(args);

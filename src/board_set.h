@@ -32,6 +32,7 @@ template <class Func> void ProcessBoards(int group, Func&& f) {
 }
 
 BoardMap GetBoardMap(int group);
+void WriteBoardMap();
 
 void BuildEdges(const std::vector<int>& groups);
 

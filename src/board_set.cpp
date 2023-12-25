@@ -14,12 +14,30 @@
 
 #include "edge.h"
 #include "config.h"
+#include "io_hash.h"
 #include "move_search.h"
 #include "thread_queue.h"
 
 namespace {
 
 constexpr size_t kBlock = 65536;
+
+void WriteBoardMap(int group) {
+  size_t num_boards = BoardCount(BoardPath(group));
+  spdlog::info("Start reading boards of group {}", group);
+  if (num_boards >= (1ll << 32)) throw std::range_error("Too many boards");
+  std::vector<std::pair<CompactBoard, BasicIOType<uint32_t>>> vec;
+  vec.reserve(num_boards);
+  uint32_t i = 0;
+  ProcessBoards(group, [&i,&vec](Board&& b) {
+    vec.emplace_back(b.ToBytes(), i++);
+  });
+  int pow = 31 - clz<uint32_t>(num_boards);
+  pow = std::max(5, pow - 4); // ~32 boards / bucket
+  spdlog::info("Writing board map for group {}", group);
+  WriteHashMap(BoardMapPath(group), std::move(vec), 1 << pow);
+  spdlog::info("Board map writing done");
+}
 
 } // namespace
 
@@ -67,6 +85,14 @@ BoardMap GetBoardMap(int group) {
   size_t i = 0;
   ProcessBoards(group, [&](Board&& b) { ret[b] = i++; });
   return ret;
+}
+
+void WriteBoardMap() {
+  int threads = std::min(kParallel, kGroups);
+  BS::thread_pool pool(threads);
+  pool.parallelize_loop(0, kGroups, [&](int l, int r){
+    for (int group = l; group < r; group++) WriteBoardMap(group);
+  }).get();
 }
 
 namespace {

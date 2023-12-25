@@ -6,6 +6,7 @@
 
 // group = 0,1,2,3,4 (count/2%5)
 std::filesystem::path BoardPath(int group);
+std::filesystem::path BoardMapPath(int group);
 std::filesystem::path EvaluateEdgePath(int group, int level);
 std::filesystem::path PositionEdgePath(int group, int level);
 std::filesystem::path ValuePath(int pieces);
