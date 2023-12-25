@@ -1,8 +1,12 @@
 #include <array>
 #include <random>
 #include <filesystem>
+#include <unordered_set>
 #include <gtest/gtest.h>
 #include "../src/io.h"
+#include "../src/hash.h"
+#include "../src/io_hash.h"
+#include "../src/io_helpers.h"
 
 namespace {
 
@@ -43,7 +47,25 @@ struct VarSizeStruct {
     arr.resize(sz);
     memcpy(arr.data(), data, sz);
   }
+  template <class Rand>
+  VarSizeStruct(Rand& gen, size_t min_sz, size_t max_sz, bool mod) {
+    arr.resize(mrand(min_sz, max_sz)(gen));
+    for (auto& i : arr) i = mod ? (gen() % 16) : gen();
+  }
 };
+
+} // namespace
+
+template <>
+struct std::hash<VarSizeStruct> {
+  size_t operator()(const VarSizeStruct& x) const {
+    size_t a = 1;
+    for (auto& i : x.arr) a = Hash(i, a);
+    return a;
+  }
+};
+
+namespace {
 
 const std::string kTestFile = "./io-test-file";
 const std::string kTestIndexFile = kTestFile + ".index";
@@ -94,17 +116,31 @@ class IOTestVarSize : public IOTest {
   std::vector<VarSizeStruct> vec;
   void SetUp(size_t len, size_t items_per_index, bool compressed = false, size_t max_elem = 255) {
     gen.seed(0);
-    vec.resize(len);
-    for (auto& i : vec) {
-      i.arr.resize(mrand(0, max_elem)(gen));
-      for (auto& j : i.arr) j = gen() % 16;
-    }
+    vec.clear();
+    for (size_t i = 0; i < len; i++) vec.emplace_back(gen, 0, max_elem, true);
     if (compressed) {
       CompressedClassWriter<VarSizeStruct> writer(kTestFile, items_per_index);
       writer.Write(vec);
     } else {
       ClassWriter<VarSizeStruct> writer(kTestFile, items_per_index);
       writer.Write(vec);
+    }
+  }
+};
+
+class IOHashTest : public IOTest {
+ protected:
+  std::vector<std::pair<VarSizeStruct, BasicIOType<uint32_t>>> vec;
+  void SetUp(size_t len, size_t max_elem = 20) {
+    std::unordered_set<VarSizeStruct> vs;
+    gen.seed(0);
+    vec.resize(len);
+    for (auto& i : vec) {
+      while (true) {
+        i.first = VarSizeStruct(gen, 5, std::max(5, (int)max_elem), false);
+        if (!vs.count(i.first)) break;
+      }
+      i.second = gen();
     }
   }
 };
@@ -210,6 +246,25 @@ TEST_F(IOTestVarSize, SizeError) {
   EXPECT_THROW({
     SetUp(1000, 256, false, 1024);
   }, std::out_of_range);
+}
+
+TEST_F(IOHashTest, HashRW) {
+  SetUp(100000);
+  std::unordered_map<VarSizeStruct, uint32_t> mp;
+  for (auto& i : vec) mp.insert(i);
+  for (size_t num_buckets : {10000, 1000000}) {
+    WriteHashMap(kTestFile, std::vector(vec), num_buckets);
+    HashMapReader<VarSizeStruct, BasicIOType<uint32_t>> reader(kTestFile);
+    for (size_t i = 0; i < 10000; i++) {
+      VarSizeStruct key = gen() % 2 ? vec[mrand(0, vec.size() - 1)(gen)].first : VarSizeStruct(gen, 5, 20, false);
+      auto it = mp.find(key);
+      if (it == mp.end()) {
+        ASSERT_FALSE(reader[key].has_value());
+      } else {
+        ASSERT_EQ(it->second, reader[key].value());
+      }
+    }
+  }
 }
 
 } // namespace

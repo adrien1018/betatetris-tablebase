@@ -13,6 +13,33 @@
 namespace io_internal {
 
 template <class T>
+inline void WriteToBuf(std::vector<uint8_t>& buf, const T& val) {
+  size_t old_sz = buf.size();
+  if constexpr (T::kIsConstSize) {
+    buf.resize(old_sz + T::NumBytes());
+    val.GetBytes(buf.data() + old_sz);
+  } else {
+    size_t sz = val.NumBytes();
+    buf.resize(old_sz + T::kSizeNumberBytes + sz);
+    uint8_t sz_buf[8] = {};
+    IntToBytes<uint64_t>(sz, sz_buf);
+    memcpy(buf.data() + old_sz, sz_buf, T::kSizeNumberBytes);
+    val.GetBytes(buf.data() + old_sz + T::kSizeNumberBytes);
+  }
+}
+
+template <class T>
+inline std::pair<size_t, size_t> GetNextSize(const uint8_t* buf) {
+  if constexpr (T::kIsConstSize) {
+    return {T::NumBytes(), 0};
+  } else {
+    uint8_t sz_buf[8] = {};
+    memcpy(sz_buf, buf, T::kSizeNumberBytes);
+    return {BytesToInt<uint64_t>(sz_buf), T::kSizeNumberBytes};
+  }
+}
+
+template <class T>
 struct ClassIOAttr {
   static constexpr bool kIsConstSize = T::kIsConstSize;
   static constexpr size_t kSizeNumberBytes = [](){
@@ -207,14 +234,7 @@ class ClassWriter : public io_internal::ClassWriterImpl<T> {
     if (!kIsConstSize && kSizeNumberBytes < 8 && sz >= (1ll << (8 * kSizeNumberBytes))) {
       throw std::out_of_range("output size too large");
     }
-    size_t old_sz = buf.size();
-    buf.resize(old_sz + sz + kSizeNumberBytes);
-    if constexpr (!kIsConstSize) {
-      uint8_t sz_buf[8] = {};
-      IntToBytes<uint64_t>(sz, sz_buf);
-      memcpy(buf.data() + old_sz, sz_buf, kSizeNumberBytes);
-    }
-    item.GetBytes(buf.data() + old_sz + kSizeNumberBytes);
+    io_internal::WriteToBuf(buf, item);
     if (buf.size() >= kBufferSize) Flush();
   }
 
@@ -250,9 +270,7 @@ class ClassReader : public io_internal::ClassReaderImpl<T> {
       eof = true;
       throw ReadError("no more elements");
     }
-    uint8_t sz_buf[8] = {};
-    memcpy(sz_buf, buf.data() + current_offset, kSizeNumberBytes);
-    return BytesToInt<uint64_t>(sz_buf);
+    return io_internal::GetNextSize<T>(buf.data() + current_offset).first;
   }
 
   void ParseBufSize(size_t& buf_size) {
@@ -418,14 +436,7 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
     if (!kIsConstSize && kSizeNumberBytes < 8 && sz >= (1ll << (8 * kSizeNumberBytes))) {
       throw std::out_of_range("output size too large");
     }
-    size_t old_sz = compress_buf.size();
-    compress_buf.resize(old_sz + sz + kSizeNumberBytes);
-    if constexpr (!kIsConstSize) {
-      uint8_t sz_buf[8] = {};
-      IntToBytes<uint64_t>(sz, sz_buf);
-      memcpy(compress_buf.data() + old_sz, sz_buf, kSizeNumberBytes);
-    }
-    item.GetBytes(compress_buf.data() + old_sz + kSizeNumberBytes);
+    io_internal::WriteToBuf(compress_buf, item);
     if (current % items_per_index == 0) {
       DoCompress();
       if (inds.size() >= kIndexBufferSize) FlushIndex();
@@ -534,10 +545,7 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
         throw ReadError("no more elements");
       }
     }
-    if constexpr (kIsConstSize) return T::NumBytes();
-    uint8_t sz_buf[8] = {};
-    memcpy(sz_buf, block_buf.data() + block_offset, kSizeNumberBytes);
-    return BytesToInt<uint64_t>(sz_buf);
+    return io_internal::GetNextSize<T>(block_buf.data() + block_offset).first;
   }
 
   void ParseBufSize(size_t& buf_size, size_t& ind_buf_size) {
