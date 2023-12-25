@@ -13,6 +13,12 @@ class NodeEvalTest : public ::testing::Test {
   void TearDown() override {}
 };
 
+class MoveEvalTest : public ::testing::Test {
+ protected:
+  void SetUp() {}
+  void TearDown() override {}
+};
+
 TEST_F(NodeEvalTest, Serialize) {
   std::mt19937_64 gen;
   for (size_t i = 0; i < 100; i++) {
@@ -83,6 +89,58 @@ TEST_F(NodeEvalTest, EvVar2) {
   float res_var = v.DotVar(probs, res_ev);
   ASSERT_EQ(res_ev, 1.5);
   ASSERT_EQ(res_var, float(4 * 4 - 1) / 12);
+}
+
+TEST_F(MoveEvalTest, MaxWith) {
+  Vec ev1 = {{0, 1, 0, 1, 0, 0, 0}};
+  Vec ev2 = {{1, 0, 1, 0, 1, 1, 1}};
+  Vec correct_ev = {{1, 1, 1, 1, 1, 1, 1}};
+  auto AssertCorrect = [&](const MoveEval& v) {
+    Vec out;
+    v.GetEv(out.data());
+    ASSERT_EQ(out, correct_ev);
+  };
+  {
+    MoveEval v1(ev1.data());
+    MoveEval v2(ev2.data());
+    v1.MaxWith(v2);
+    AssertCorrect(v1);
+  }
+  {
+    MoveEval v1(ev1.data());
+    MoveEval v2(ev2.data());
+    v2.MaxWith(v1);
+    AssertCorrect(v2);
+  }
+}
+
+TEST_F(MoveEvalTest, MaxWithMask) {
+  Vec ev1 = {{0, 1, 0, 1, 0, 0, 0}};
+  Vec ev2 = {{1, 0, 1, 0, 1, 1, 1}};
+  Vec correct_ev = {{1, 1, 1, 1, 1, 1, 1}};
+  auto AssertCorrect = [&](const MoveEval& v) {
+    Vec out;
+    v.GetEv(out.data());
+    ASSERT_EQ(out, correct_ev);
+  };
+  {
+    MoveEval v1(ev1.data());
+    MoveEval v2(ev2.data());
+    alignas(32) std::array<int, 8> res{};
+    std::array<int, 8> expected = {{-1, 0, -1, 0, -1, -1, -1}};
+     _mm256_store_si256(reinterpret_cast<__m256i*>(res.data()), v1.MaxWithMask(v2));
+    AssertCorrect(v1);
+    ASSERT_EQ(expected, res);
+  }
+  {
+    MoveEval v1(ev1.data());
+    MoveEval v2(ev2.data());
+    alignas(32) std::array<int, 8> res{};
+    std::array<int, 8> expected = {{2, 1, 2, 1, 2, 2, 2, 1}};
+     _mm256_store_si256(reinterpret_cast<__m256i*>(res.data()), v1.MaxWithMask(v2, _mm256_set1_epi32(1), 2));
+    AssertCorrect(v1);
+    ASSERT_EQ(expected, res);
+  }
 }
 
 } // namespace

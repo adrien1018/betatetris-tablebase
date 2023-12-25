@@ -39,11 +39,12 @@ inline void NodeMoveIndexFromVec(NodeMoveIndex& ret, __m256i v) {
   for (size_t i = 0; i < kPieces; i++) ret[i] = idx[i];
 }
 
+template <bool calculate_moves>
 void CalculateBlock(
     const EvaluateNodeEdgesFast* edges, size_t edges_size,
     const std::vector<MoveEval>& prev,
     int level,
-    MoveEval out[], NodeMoveIndex out_idx[]) {
+    MoveEval out[], NodeMoveIndex out_idx[] = nullptr) {
   if (!edges_size) return;
   if (edges_size % kPieces != 0) throw std::logic_error("unexpected: not multiples of 7");
   size_t boards = edges_size / kPieces;
@@ -68,47 +69,73 @@ void CalculateBlock(
         if (cur_ev > mx_ev) mx_ev = cur_ev, res_idx = new_idx;
       };
       for (size_t i = 0; i < item.non_adj_size; i++) {
-        Update(local_val[item.non_adj[i]], _mm256_set1_epi32(item.non_adj[i]));
+        if constexpr (calculate_moves) {
+          Update(local_val[item.non_adj[i]], _mm256_set1_epi32(item.non_adj[i]));
+        } else {
+          mx_ev = std::max(mx_ev, local_val[item.non_adj[i]].Dot(probs));
+        }
       }
       if (item.use_subset) {
         for (size_t i = 0; i < item.subset_idx_prev_size; i++) {
           auto& [idx, prev] = item.subset_idx_prev[i];
           adj_val[i] = local_val[idx];
-          if (prev != 255) adj_idx[i] = adj_val[i].MaxWith(adj_val[prev], adj_idx[i], idx);
+          if (prev != 255) {
+            if constexpr (calculate_moves) {
+              adj_idx[i] = adj_val[i].MaxWithMask(adj_val[prev], adj_idx[i], idx);
+            } else {
+              adj_val[i].MaxWith(adj_val[prev]);
+            }
+          }
         }
         for (size_t i = 0; i < item.adj_subset_size; i++) {
           auto idx = item.adj_subset[i];
-          Update(adj_val[idx], adj_idx[idx]);
+          if constexpr (calculate_moves) {
+            Update(adj_val[idx], adj_idx[idx]);
+          } else {
+            mx_ev = std::max(mx_ev, adj_val[idx].Dot(probs));
+          }
         }
       } else {
         for (size_t i = 0; i < item.adj_lst_size; i++) {
           size_t start = item.adj_lst[i], end = item.adj_lst[i+1];
           MoveEval cur = local_val[item.adj[start]];
-          __m256i cur_idx = _mm256_setzero_si256();
-          for (size_t j = start + 1; j < end; j++) {
-            cur_idx = cur.MaxWith(local_val[item.adj[j]], cur_idx, item.adj[j]);
+          if constexpr (calculate_moves) {
+            __m256i cur_idx = _mm256_setzero_si256();
+            for (size_t j = start + 1; j < end; j++) {
+              cur_idx = cur.MaxWithMask(local_val[item.adj[j]], cur_idx, item.adj[j]);
+            }
+            Update(cur, cur_idx);
+          } else {
+            for (size_t j = start + 1; j < end; j++) cur.MaxWith(local_val[item.adj[j]]);
+            mx_ev = std::max(mx_ev, cur.Dot(probs));
           }
-          Update(cur, cur_idx);
         }
       }
       ev[piece] = mx_ev;
-      NodeMoveIndexFromVec(out_idx[b * kPieces + piece], res_idx);
+      if constexpr (calculate_moves) {
+        NodeMoveIndexFromVec(out_idx[b * kPieces + piece], res_idx);
+      }
       stats.Update(mx_ev);
     }
     out[b].LoadEv(ev);
   }
 }
 
-void CalculateSameLevel(
-    int group, size_t start, size_t end, const std::vector<MoveEval>& prev, int level,
-    MoveEval out[], CompressedClassWriter<NodeMoveIndex>& idx_writer) {
+template <bool calculate_moves>
+void CalculateSameLines(
+    int group, size_t start, size_t end, const std::vector<MoveEval>& prev, int lines,
+    MoveEval out[], CompressedClassWriter<NodeMoveIndex>* idx_writer_ptr = nullptr) {
   constexpr size_t kBatchSize = 1024;
   constexpr size_t kBlockSize = 524288;
 
+  int level = GetLevelByLines(lines);
   auto fname = EvaluateEdgePath(group, GetLevelSpeed(level));
   using Result = std::pair<size_t, size_t>;
 
-  std::vector<NodeMoveIndex> out_idx((end - start) * kPieces);
+  std::vector<NodeMoveIndex> out_idx;
+  if constexpr (calculate_moves) {
+    out_idx.resize((end - start) * kPieces);
+  }
 
   BS::thread_pool io_pool(kIOThreads);
   auto thread_queue = MakeThreadQueue<Result>(kParallel,
@@ -138,7 +165,8 @@ void CalculateSameLevel(
           works.push_back(make_copyable_function([
                 edges=std::move(edges),&works,&unfinished,&cv,&mtx,num_to_read,start,batch_l,batch_r,&prev,level,out,&out_idx
           ]() {
-            CalculateBlock(edges.get(), num_to_read, prev, level, out + batch_l, out_idx.data() + (batch_l - start) * kPieces);
+            auto out_ptr = calculate_moves ? out_idx.data() + (batch_l - start) * kPieces : nullptr;
+            CalculateBlock<calculate_moves>(edges.get(), num_to_read, prev, level, out + batch_l, out_ptr);
             return std::make_pair(batch_l, batch_r);
           }));
         }
@@ -163,19 +191,25 @@ void CalculateSameLevel(
   }
   io_pool.wait_for_tasks();
   thread_queue.WaitAll();
-  idx_writer.Write(out_idx);
+  if constexpr (calculate_moves) {
+    idx_writer_ptr->Write(out_idx);
+  }
 }
 
+template <bool calculate_moves>
 std::vector<MoveEval> CalculatePieceMoves(
     int pieces, const std::vector<MoveEval>& prev, const std::vector<size_t>& offsets) {
   int group = GetGroupByPieces(pieces);
   std::vector<MoveEval> ret(offsets.back());
-  CompressedClassWriter<NodeMoveIndex> writer(MoveIndexPath(pieces), 4096 * kPieces);
+  std::unique_ptr<CompressedClassWriter<NodeMoveIndex>> writer;
+  if constexpr (calculate_moves) {
+    writer.reset(new CompressedClassWriter<NodeMoveIndex>(MoveIndexPath(pieces), 4096 * kPieces));
+  }
 
   spdlog::info("Start calculate piece {}", pieces);
   stats.Clear();
   size_t start = 0, last = offsets.back();
-  int cur_level = 0; // 0 -> uninitialized
+  int cur_lines = -1; // -1 -> uninitialized
   for (size_t i = 0; i < offsets.size() - 1; i++) {
     int cells = pieces * 4 - int(i * 10 + group * 2);
     if (cells < 0) {
@@ -187,25 +221,28 @@ std::vector<MoveEval> CalculatePieceMoves(
     if (lines >= kLineCap) {
       // lines will decrease as i increase, so this only happen at the start of the loop
       memset(ret.data() + start, 0x0, (offsets[i + 1] - start) * sizeof(MoveEval));
-      writer.Write(NodeMoveIndex{}, (offsets[i + 1] - start) * kPieces);
+      if constexpr (calculate_moves) {
+        writer->Write(NodeMoveIndex{}, (offsets[i + 1] - start) * kPieces);
+      }
       start = offsets[i + 1];
       continue;
     }
-    int level = GetLevelByLines(lines);
-    if (cur_level != 0) {
-      spdlog::debug("Calculate group {} lvl {}: {} - {}", group, cur_level, start, offsets[i]);
-      CalculateSameLevel(group, start, offsets[i], prev, cur_level, ret.data(), writer);
+    if (cur_lines != -1) {
+      spdlog::debug("Calculate group {} lines {}: {} - {}", group, cur_lines, start, offsets[i]);
+      CalculateSameLines<calculate_moves>(group, start, offsets[i], prev, cur_lines, ret.data(), writer.get());
       start = offsets[i];
     }
-    cur_level = level;
+    cur_lines = lines;
   }
-  if (cur_level != 0) {
-    spdlog::debug("Calculate group {} lvl {}: {} - {}", group, cur_level, start, last);
-    CalculateSameLevel(group, start, last, prev, cur_level, ret.data(), writer);
+  if (cur_lines != -1) {
+    spdlog::debug("Calculate group {} lines {}: {} - {}", group, cur_lines, start, last);
+    CalculateSameLines<calculate_moves>(group, start, last, prev, cur_lines, ret.data(), writer.get());
   }
   if (last < offsets.back()) {
     memset(ret.data() + last, 0x0, (offsets.back() - last) * sizeof(MoveEval));
-    writer.Write(NodeMoveIndex{}, (offsets.back() - last) * kPieces);
+    if constexpr (calculate_moves) {
+      writer->Write(NodeMoveIndex{}, (offsets.back() - last) * kPieces);
+    }
   }
   std::vector<float> ev(7);
   ret[0].GetEv(ev.data());
@@ -291,12 +328,7 @@ void MergeFullRanges(int group, const std::vector<int>& sections) {
   spdlog::info("Group {} merged", group);
 }
 
-} // namespace
-
-void RunCalculateMoves(int start_pieces, int end_pieces) {
-  std::vector<size_t> offsets[kGroups];
-  for (int i = 0; i < kGroups; i++) offsets[i] = GetBoardCountOffset(i);
-
+std::vector<MoveEval> LoadValues(int start_pieces, const std::vector<size_t> offsets[]) {
   std::vector<MoveEval> values;
   if (start_pieces == -1) {
     size_t max_cells = 0;
@@ -312,9 +344,18 @@ void RunCalculateMoves(int start_pieces, int end_pieces) {
     values = ReadValuesEvOnly(start_pieces, offsets[start_group].back());
     if (values.size() != offsets[start_group].back()) throw std::length_error("initial value file incorrect");
   }
+  return values;
+}
 
+} // namespace
+
+void RunCalculateMoves(int start_pieces, int end_pieces) {
+  std::vector<size_t> offsets[kGroups];
+  for (int i = 0; i < kGroups; i++) offsets[i] = GetBoardCountOffset(i);
+
+  std::vector<MoveEval> values = LoadValues(start_pieces, offsets);
   for (int pieces = start_pieces - 1; pieces >= end_pieces; pieces--) {
-    values = CalculatePieceMoves(pieces, values, offsets[GetGroupByPieces(pieces)]);
+    values = CalculatePieceMoves<true>(pieces, values, offsets[GetGroupByPieces(pieces)]);
   }
 }
 

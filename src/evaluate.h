@@ -43,14 +43,18 @@ class MoveEval {
     memcpy(buf, ret, kVecOutputSize);
   }
 
-  __m256i MaxWith(const MoveEval& x) {
+  void MaxWith(const MoveEval& x) {
+    ev_vec = _mm256_max_ps(ev_vec, x.ev_vec);
+  }
+
+  __m256i MaxWithMask(const MoveEval& x) {
     __m256 mask = _mm256_cmp_ps(ev_vec, x.ev_vec, _CMP_LT_OQ);
     ev_vec = _mm256_blendv_ps(ev_vec, x.ev_vec, mask);
     return _mm256_castps_si256(mask);
   }
 
-  __m256i MaxWith(const MoveEval& x, __m256i subst, int val) {
-    __m256i mask = MaxWith(x);
+  __m256i MaxWithMask(const MoveEval& x, __m256i subst, int val) {
+    __m256i mask = MaxWithMask(x);
     return _mm256_blendv_epi8(subst, _mm256_set1_epi32(val), mask);
   }
 
