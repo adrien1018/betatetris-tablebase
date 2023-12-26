@@ -85,8 +85,13 @@ FetchContent_Declare(
   hopscotch_map
   URL "https://github.com/Tessil/hopscotch-map/archive/refs/tags/v2.3.1.zip"
 )
+set(BOOST_INCLUDE_LIBRARIES system asio)
+FetchContent_Declare(
+  boost
+  URL "https://github.com/boostorg/boost/releases/download/boost-1.84.0/boost-1.84.0.tar.gz"
+)
 
-FetchContent_MakeAvailable_Exclude(argparse spdlog eigen sparse_map hopscotch_map)
+FetchContent_MakeAvailable_Exclude(argparse spdlog eigen sparse_map hopscotch_map boost)
 
 #add_executable(mytest test.cpp)
 add_executable(random_boards scripts/random_boards.cpp)
@@ -95,7 +100,7 @@ file(GLOB MAIN_SRC "src/*.cpp")
 add_executable(main ${MAIN_SRC})
 
 target_compile_definitions(main PRIVATE -DTAP_SPEED=${TAP_SPEED} -DADJ_DELAY=${ADJ_DELAY} -DLINE_CAP=${LINE_CAP})
-target_link_libraries(main argparse::argparse spdlog::spdlog zstd eigen tsl::sparse_map tsl::hopscotch_map)
+target_link_libraries(main argparse::argparse spdlog::spdlog zstd eigen tsl::sparse_map tsl::hopscotch_map Boost::asio)
 #target_link_libraries(mytest eigen)
 
 if(BUILD_TESTS)

@@ -1,3 +1,4 @@
+#include <cxxabi.h>
 #include <thread>
 #include <iostream>
 #include <spdlog/spdlog.h>
@@ -6,6 +7,7 @@
 #include "move.h"
 #include "files.h"
 #include "config.h"
+#include "server.h"
 #include "inspect.h"
 #include "evaluate.h"
 #include "board_set.h"
@@ -287,6 +289,17 @@ int main(int argc, char** argv) {
   PowArg(sample_train);
   SeedArg(sample_train);
 
+  ArgumentParser fceux_server("fceux-server", "", default_arguments::help);
+  fceux_server.add_description("Server for FCEUX");
+  fceux_server.add_argument("-b", "--bind")
+    .help("Server bind address")
+    .default_value("127.0.0.1");
+  fceux_server.add_argument("-p", "--port")
+    .help("Server listen port")
+    .scan<'i', int>()
+    .default_value(3456);
+  DataDirArg(fceux_server);
+
   ArgumentParser inspect("inspect", "", default_arguments::help);
   inspect.add_description("Inspect files");
 
@@ -343,6 +356,7 @@ int main(int argc, char** argv) {
   program.add_subparser(sample_svd);
   program.add_subparser(svd);
   program.add_subparser(sample_train);
+  program.add_subparser(fceux_server);
   program.add_subparser(inspect);
 
   try {
@@ -371,6 +385,8 @@ int main(int argc, char** argv) {
       std::cerr << svd;
     } else if (program.is_subcommand_used("sample-train")) {
       std::cerr << sample_train;
+    } else if (program.is_subcommand_used("fceux-server")) {
+      std::cerr << fceux_server;
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
       if (subparser.is_subcommand_used("board-id")) {
@@ -534,6 +550,12 @@ int main(int argc, char** argv) {
       long seed = GetSeed(args);
       std::filesystem::path output = args.get<std::string>("--output");
       SampleTrainingBoards(pieces, num_samples, zero_ratio, zero_high_ratio, smooth_pow, seed, output);
+    } else if (program.is_subcommand_used("fceux-server")) {
+      auto& args = program.at<ArgumentParser>("fceux-server");
+      SetDataDir(args);
+      int port = args.get<int>("--port");
+      std::string addr = args.get<std::string>("--bind");
+      StartServer(addr, port);
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
       if (subparser.is_subcommand_used("board-id")) {
@@ -575,8 +597,11 @@ int main(int argc, char** argv) {
       std::cerr << program;
       return 1;
     }
-  } catch (std::logic_error& e) {
-    spdlog::error("Error running command: {}", e.what());
+  } catch (std::exception& e) {
+    int status;
+    char* type = abi::__cxa_demangle(abi::__cxa_current_exception_type()->name(), 0, 0, &status);
+    spdlog::error("Error running command: {}({})", type, e.what());
+    if (type) free(type);
     return 1;
   }
 }

@@ -65,6 +65,9 @@ class Tetris {
     run_pieces_ = 0;
   }
 
+  bool IsNoAdjMove(const Position& pos) const {
+    return move_map_[pos.r][pos.x][pos.y] == kNoAdj;
+  }
   bool IsAdjMove(const Position& pos) const {
     return move_map_[pos.r][pos.x][pos.y] == kHasAdj;
   }
