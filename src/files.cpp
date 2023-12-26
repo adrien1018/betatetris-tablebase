@@ -62,6 +62,15 @@ std::vector<std::pair<int, int>> GetAvailableMoveRanges() {
 fs::path MovePath(int group) {
   return kDataDir / "moves" / (std::to_string(group) + ".all");
 }
+fs::path ThresholdOnePath(const std::string& name, int pieces) {
+  return kDataDir / "threshold" / name / NumToStr(pieces);
+}
+fs::path ThresholdRangePath(const std::string& name, int pieces_l, int pieces_r, int group) {
+  return kDataDir / "threshold" / name / (std::to_string(group) + '.' + NumToStr(pieces_l) + '-' + NumToStr(pieces_r));
+}
+fs::path ThresholdPath(const std::string& name, int group) {
+  return kDataDir / "threshold" / name / (std::to_string(group) + ".all");
+}
 
 fs::path SVDSamplePath(int group) {
   return kDataDir / "svd" / (std::to_string(group) + ".sample");

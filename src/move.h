@@ -51,19 +51,6 @@ struct NodeMoveIndexRange {
     memcpy(ranges.data(), buf, sz);
   }
 
-  NodeMoveIndexRange& operator<<=(const NodeMoveIndexRange& x) {
-    size_t v = 0;
-    if (ranges.size() && x.ranges.size()) {
-      if (ranges.back().end != x.ranges[0].start) throw std::logic_error("not subsequent: " + std::to_string(ranges.back().end) + "," + std::to_string(x.ranges[0].start));
-      if (ranges.back().idx == x.ranges[0].idx) {
-        ranges.back().end = x.ranges[0].end;
-        v++;
-      }
-    }
-    for (; v < x.ranges.size(); v++) ranges.push_back(x.ranges[v]);
-    return *this;
-  }
-
   static constexpr bool kIsConstSize = false;
   static constexpr size_t kSizeNumberBytes = 2;
   size_t NumBytes() const {
@@ -123,6 +110,46 @@ struct NodeMovePositionRange {
   }
 };
 
+struct NodePartialThreshold {
+  uint8_t start;
+  std::vector<uint8_t> levels;
+
+  NodePartialThreshold() {}
+  template <class Iter>
+  NodePartialThreshold(Iter begin, Iter end, uint8_t start) : start(start) {
+    size_t sz = std::distance(begin, end);
+    if (sz == 0) return;
+    if (sz + start >= 256) throw std::length_error("range too large");
+    levels.resize(sz);
+    std::copy(begin, end, levels.begin());
+  }
+
+  NodePartialThreshold(const uint8_t buf[], size_t sz) {
+    levels.resize(sz - 1);
+    start = buf[0];
+    memcpy(levels.data(), buf + 1, levels.size());
+  }
+
+  static constexpr bool kIsConstSize = false;
+  static constexpr size_t kSizeNumberBytes = 1;
+  size_t NumBytes() const {
+    return levels.size() + 1;
+  }
+
+  void GetBytes(uint8_t ret[]) const {
+    ret[0] = start;
+    memcpy(ret + 1, levels.data(), levels.size());
+  }
+};
+
+using NodeThreshold = SimpleIOArray<uint8_t, (kLineCap + 1) / 2>;
+
 void RunCalculateMoves(int start_pieces, int end_pieces);
 void MergeRanges(int pieces_l, int pieces_r, bool delete_after);
 void MergeFullRanges();
+
+void RunCalculateThreshold(
+    int start_pieces, int end_pieces,
+    const std::string& name, const std::string& threshold_path,
+    float start_ratio, float end_ratio, uint8_t buckets);
+void MergeThresholdRanges(const std::string& name, int pieces_l, int pieces_r, bool delete_after);

@@ -250,17 +250,20 @@ std::vector<MoveEval> CalculatePieceMoves(
   return ret;
 }
 
-void MergeRanges(int group, int pieces_l, int pieces_r, const std::vector<size_t>& offset, bool delete_after) {
+template <class OneClass, class PartialClass, class OneFilenameFunc, class PartialFilenameFunc>
+void MergeRanges(int group, int pieces_l, int pieces_r, const std::vector<size_t>& offset, bool delete_after,
+                 OneFilenameFunc&& one_filename_func, PartialFilenameFunc&& partial_filename_func, size_t index_size) {
+  spdlog::info("Merging group {}: {} - {}", group, pieces_l, pieces_r);
   int orig_pieces_l = pieces_l;
-  spdlog::info("Merging group {}", group);
   while (GetGroupByPieces(pieces_l) != group) pieces_l++;
-  std::vector<CompressedClassReader<NodeMoveIndex>> readers;
+  std::vector<CompressedClassReader<OneClass>> readers;
   for (int pieces = pieces_l; pieces < pieces_r; pieces += kGroups) {
-    readers.emplace_back(MoveIndexPath(pieces));
+    readers.emplace_back(one_filename_func(pieces));
   }
   if (readers.empty()) return;
-  CompressedClassWriter<NodeMoveIndexRange> writer(MoveRangePath(orig_pieces_l, pieces_r, group), 4096 * kPieces, -2);
-  std::vector<NodeMoveIndex> buf(readers.size());
+  CompressedClassWriter<PartialClass> writer(
+      partial_filename_func(orig_pieces_l, pieces_r, group), index_size, -2);
+  std::vector<OneClass> buf(readers.size());
   for (size_t i = 0; i < offset.size() - 1; i++) {
     int start_cells = pieces_l * 4 - int(i * 10 + group * 2);
     if (start_cells % 10 != 0) throw std::logic_error("unexpected");
@@ -274,7 +277,7 @@ void MergeRanges(int group, int pieces_l, int pieces_r, const std::vector<size_t
     }
     for (size_t x = 0; x < (offset[i + 1] - offset[i]) * kPieces; x++) {
       for (size_t j = 0; j < readers.size(); j++) readers[j].ReadOne(&buf[j]);
-      writer.Write(NodeMoveIndexRange(buf.begin() + begin, buf.begin() + end, start_lines_idx));
+      writer.Write(PartialClass(buf.begin() + begin, buf.begin() + end, start_lines_idx));
     }
   }
   spdlog::info("Group {} merged", group);
@@ -288,7 +291,6 @@ void MergeRanges(int group, int pieces_l, int pieces_r, const std::vector<size_t
 }
 
 void MergeFullRanges(int group, const std::vector<int>& sections) {
-  spdlog::info("Merging group {}", group);
   std::vector<CompressedClassReader<PositionNodeEdges>> pos_readers;
   std::vector<CompressedClassReader<NodeMoveIndexRange>> readers;
   CompressedClassWriter<NodeMovePositionRange> writer(MovePath(group), 256 * kPieces, -2);
@@ -328,7 +330,7 @@ void MergeFullRanges(int group, const std::vector<int>& sections) {
   spdlog::info("Group {} merged", group);
 }
 
-std::vector<MoveEval> LoadValues(int start_pieces, const std::vector<size_t> offsets[]) {
+std::vector<MoveEval> LoadValues(int& start_pieces, const std::vector<size_t> offsets[]) {
   std::vector<MoveEval> values;
   if (start_pieces == -1) {
     size_t max_cells = 0;
@@ -345,6 +347,41 @@ std::vector<MoveEval> LoadValues(int start_pieces, const std::vector<size_t> off
     if (values.size() != offsets[start_group].back()) throw std::length_error("initial value file incorrect");
   }
   return values;
+}
+
+void WriteThreshold(int pieces, const std::vector<size_t>& offset, const std::vector<MoveEval>& values,
+                    const std::string& name, const std::vector<float> threshold,
+                    float start_ratio, float end_ratio, uint8_t buckets) {
+  spdlog::info("Writing threshold of piece {}", pieces);
+  int group = GetGroupByPieces(pieces);
+  CompressedClassWriter<BasicIOType<uint8_t>> writer(ThresholdOnePath(name, pieces), 65536 * kPieces);
+  for (size_t i = 0; i < offset.size() - 1; i++) {
+    int cells = pieces * 4 - int(i * 10 + group * 2);
+    if (cells < 0) break;
+    if (cells % 10) throw std::logic_error("unexpected: cells incorrect");
+    int lines = cells / 10;
+    std::vector<BasicIOType<uint8_t>> out((offset[i+1] - offset[i]) * kPieces, BasicIOType<uint8_t>{});
+    if (lines < kLineCap) {
+      float thresh_low = threshold[lines] * start_ratio;
+      float thresh_high = threshold[lines] * end_ratio;
+      //  0 <-|-> 1 2 3 ... buckets-3 buckets-2 <-|-> buckets-1
+      // thresh_low                          thresh_high
+      // bucket(val) = floor( (val-thresh_low)/(thresh_high-thresh_low)*(bucket-2) + 1 )
+      //             = floor( (val-thresh_low)*multiplier + 1 )
+      //             = floor( val*multiplier + (1-thresh_low*multiplier) )
+      float multiplier = (buckets - 2) / (thresh_high - thresh_low);
+      float bias = 1 - thresh_low * multiplier;
+      float mx = buckets - 1;
+      for (size_t idx = offset[i]; idx < offset[i+1]; idx++) {
+        __m256 bucket = _mm256_fmadd_ps(values[idx].ev_vec, _mm256_set1_ps(multiplier), _mm256_set1_ps(bias));
+        bucket = _mm256_min_ps(_mm256_set1_ps(mx), _mm256_max_ps(_mm256_setzero_ps(), bucket));
+        alignas(32) float val[8];
+        _mm256_store_ps(val, bucket);
+        for (size_t j = 0; j < kPieces; j++) out[(idx - offset[i]) * kPieces + j] = val[j];
+      }
+    }
+    writer.Write(out);
+  }
 }
 
 } // namespace
@@ -364,7 +401,9 @@ void MergeRanges(int pieces_l, int pieces_r, bool delete_after) {
   BS::thread_pool pool(threads);
   pool.parallelize_loop(0, kGroups, [&](int l, int r){
     for (int group = l; group < r; group++) {
-      MergeRanges(group, pieces_l, pieces_r, GetBoardCountOffset(group), delete_after);
+      MergeRanges<NodeMoveIndex, NodeMoveIndexRange>(
+          group, pieces_l, pieces_r, GetBoardCountOffset(group), delete_after,
+          MoveIndexPath, MoveRangePath, 4096 * kPieces);
     }
   }).wait();
 }
@@ -389,4 +428,43 @@ void MergeFullRanges() {
       MergeFullRanges(group, sections);
     }
   }).get();
+}
+
+void RunCalculateThreshold(
+    int start_pieces, int end_pieces,
+    const std::string& name, const std::string& threshold_path,
+    float start_ratio, float end_ratio, uint8_t buckets) {
+  std::vector<size_t> offsets[kGroups];
+  for (int i = 0; i < kGroups; i++) offsets[i] = GetBoardCountOffset(i);
+
+  std::vector<float> threshold(kLineCap);
+  {
+    std::ifstream fin(threshold_path);
+    for (float& i : threshold) {
+      if (!(fin >> i)) throw std::runtime_error("Invalid threshold file");
+    }
+  }
+
+  std::vector<MoveEval> values = LoadValues(start_pieces, offsets);
+  for (int pieces = start_pieces - 1; pieces >= end_pieces; pieces--) {
+    int group = GetGroupByPieces(pieces);
+    values = CalculatePieceMoves<false>(pieces, values, offsets[group]);
+    WriteThreshold(pieces, offsets[group], values, name, threshold, start_ratio, end_ratio, buckets);
+  }
+}
+
+void MergeThresholdRanges(const std::string& name, int pieces_l, int pieces_r, bool delete_after) {
+  int threads = std::min(kParallel, kGroups);
+  BS::thread_pool pool(threads);
+  pool.parallelize_loop(0, kGroups, [&](int l, int r){
+    for (int group = l; group < r; group++) {
+      MergeRanges<BasicIOType<uint8_t>, NodePartialThreshold>(
+          group, pieces_l, pieces_r, GetBoardCountOffset(group), delete_after,
+          [&name](int piece){ return ThresholdOnePath(name, piece); },
+          [&name](int pieces_l, int pieces_r, int group){
+            return ThresholdRangePath(name, pieces_l, pieces_r, group);
+          },
+          65536 * kPieces);
+    }
+  }).wait();
 }

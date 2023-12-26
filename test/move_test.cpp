@@ -47,12 +47,6 @@ class MoveTest : public ::testing::Test {
   void TearDown() override {}
 };
 
-NodeMoveIndex GenNodeMoveIndex(int x) {
-  NodeMoveIndex a{};
-  a[0] = x;
-  return a;
-}
-
 TEST_F(MoveTest, ModeIndexConstruct) {
   std::array<NodeMoveIndex, 10> inds{};
   {
@@ -72,32 +66,6 @@ TEST_F(MoveTest, ModeIndexConstruct) {
       {14, 15, inds[9]}
     };
     ASSERT_EQ(r.ranges, expected);
-  }
-}
-
-TEST_F(MoveTest, ModeIndexMerge) {
-  {
-    NodeMoveIndexRange r1, r2;
-    r1.ranges.push_back({10, 20, GenNodeMoveIndex(1)});
-    r1.ranges.push_back({20, 30, GenNodeMoveIndex(2)});
-    r2.ranges.push_back({30, 40, GenNodeMoveIndex(2)});
-    r2.ranges.push_back({40, 50, GenNodeMoveIndex(3)});
-    r1 <<= r2;
-    ASSERT_EQ(r1.ranges.size(), 3);
-    r2.ranges[0].start = 20;
-    ASSERT_EQ(r1.ranges[1], r2.ranges[0]);
-    ASSERT_EQ(r1.ranges[2], r2.ranges[1]);
-  } {
-    NodeMoveIndexRange r1, r2;
-    r1.ranges.push_back({10, 20, GenNodeMoveIndex(1)});
-    r1.ranges.push_back({20, 30, GenNodeMoveIndex(2)});
-    r2.ranges.push_back({30, 40, GenNodeMoveIndex(3)});
-    r2.ranges.push_back({40, 50, GenNodeMoveIndex(4)});
-    r1 <<= r2;
-    ASSERT_EQ(r1.ranges.size(), 4);
-    ASSERT_EQ(r1.ranges[2], r2.ranges[0]);
-    ASSERT_EQ(r1.ranges[3], r2.ranges[1]);
-    EXPECT_ANY_THROW({ r1 <<= r2; });
   }
 }
 

@@ -116,6 +116,13 @@ int main(int argc, char** argv) {
       .scan<'i', int>()
       .default_value(-1);
   };
+  auto UntilArg = [](ArgumentParser& parser) {
+    parser.add_argument("-e", "--until")
+      .help("Calculate until this many pieces")
+      .metavar("PIECES")
+      .scan<'i', int>()
+      .default_value(0);
+  };
   auto NumSamplesArg = [](ArgumentParser& parser) {
     parser.add_argument("-n", "--num-samples-per-group").required()
       .help("Number of samples for each group")
@@ -132,6 +139,26 @@ int main(int argc, char** argv) {
       .help("Random seed")
       .scan<'i', long>()
       .default_value(0l);
+  };
+  auto MergeArgs = [](ArgumentParser& parser) {
+    parser.add_argument("-s", "--start").required()
+      .help("Start pieces")
+      .metavar("PIECES")
+      .scan<'i', int>()
+      .default_value(-1);
+    parser.add_argument("-e", "--end").required()
+      .help("End pieces")
+      .metavar("PIECES")
+      .scan<'i', int>()
+      .default_value(-1);
+    parser.add_argument("-d", "--delete")
+      .help("Delete files after merge")
+      .default_value(false)
+      .implicit_value(true);
+    parser.add_argument("-w", "--whole")
+      .help("Whole merge")
+      .default_value(false)
+      .implicit_value(true);
   };
 
   ArgumentParser preprocess("preprocess", "", default_arguments::help);
@@ -174,34 +201,42 @@ int main(int argc, char** argv) {
   ParallelArg(move_cal);
   IOThreadsArg(move_cal);
   ResumeArg(move_cal);
-  move_cal.add_argument("-e", "--until")
-    .help("Calculate until this many pieces")
-    .metavar("PIECES")
-    .scan<'i', int>()
-    .default_value(0);
+  UntilArg(move_cal);
 
   ArgumentParser move_merge("move-merge", "", default_arguments::help);
   move_merge.add_description("Merge moves");
   DataDirArg(move_merge);
   ParallelArg(move_merge);
-  move_merge.add_argument("-s", "--start").required()
-    .help("Start pieces")
-    .metavar("PIECES")
-    .scan<'i', int>()
-    .default_value(-1);
-  move_merge.add_argument("-e", "--end").required()
-    .help("End pieces")
-    .metavar("PIECES")
-    .scan<'i', int>()
-    .default_value(-1);
-  move_merge.add_argument("-d", "--delete")
-    .help("Delete files after merge")
-    .default_value(false)
-    .implicit_value(true);
-  move_merge.add_argument("-w", "--whole")
-    .help("Whole merge")
-    .default_value(false)
-    .implicit_value(true);
+  MergeArgs(move_merge);
+
+  ArgumentParser threshold_cal("threshold", "", default_arguments::help);
+  threshold_cal.add_description("Calculate EV level of every board");
+  DataDirArg(threshold_cal);
+  ParallelArg(threshold_cal);
+  IOThreadsArg(threshold_cal);
+  ResumeArg(threshold_cal);
+  UntilArg(threshold_cal);
+  threshold_cal.add_argument("-b", "--buckets").required()
+    .help("Threshold file (contains base value of each lines)")
+    .scan<'i', int>();
+  threshold_cal.add_argument("-f", "--threshold-file").required()
+    .help("Threshold file (contains base value of each lines)");
+  threshold_cal.add_argument("-l", "--ratio-low").required()
+    .help("Ratio of level 0")
+    .scan<'f', float>();
+  threshold_cal.add_argument("-h", "--ratio-high").required()
+    .help("Ratio of level (buckets-1)")
+    .scan<'f', float>();
+  threshold_cal.add_argument("name").required()
+    .help("Name of this threshold");
+
+  ArgumentParser threshold_merge("threshold-merge", "", default_arguments::help);
+  threshold_merge.add_description("Merge thresholds");
+  DataDirArg(threshold_merge);
+  ParallelArg(threshold_merge);
+  MergeArgs(threshold_merge);
+  threshold_merge.add_argument("name").required()
+    .help("Name of this threshold");
 
   ArgumentParser sample_svd("sample-svd", "", default_arguments::help);
   sample_svd.add_description("Sample boards for SVD");
@@ -303,6 +338,8 @@ int main(int argc, char** argv) {
   program.add_subparser(evaluate);
   program.add_subparser(move_cal);
   program.add_subparser(move_merge);
+  program.add_subparser(threshold_cal);
+  program.add_subparser(threshold_merge);
   program.add_subparser(sample_svd);
   program.add_subparser(svd);
   program.add_subparser(sample_train);
@@ -324,6 +361,10 @@ int main(int argc, char** argv) {
       std::cerr << move_cal;
     } else if (program.is_subcommand_used("move-merge")) {
       std::cerr << move_merge;
+    } else if (program.is_subcommand_used("threshold")) {
+      std::cerr << threshold_cal;
+    } else if (program.is_subcommand_used("threshold-merge")) {
+      std::cerr << threshold_merge;
     } else if (program.is_subcommand_used("sample-svd")) {
       std::cerr << sample_svd;
     } else if (program.is_subcommand_used("svd")) {
@@ -429,6 +470,36 @@ int main(int argc, char** argv) {
         MergeFullRanges();
       } else if (start != -1 || end != -1) {
         MergeRanges(start, end, delete_after);
+      } else {
+        throw std::runtime_error("start / end not given");
+      }
+    } else if (program.is_subcommand_used("threshold")) {
+      auto& args = program.at<ArgumentParser>("threshold");
+      SetParallel(args);
+      SetDataDir(args);
+      SetIOThreads(args);
+      int resume = GetResume(args);
+      int until = args.get<int>("--until");
+      std::string name = args.get<std::string>("name");
+      std::string threshold_path = args.get<std::string>("--threshold-file");
+      float start_ratio = args.get<float>("--ratio-low");
+      float end_ratio = args.get<float>("--ratio-high");
+      int buckets = args.get<int>("--buckets");
+      buckets = std::max(3, std::min(255, buckets));
+      RunCalculateThreshold(resume, until, name, threshold_path, start_ratio, end_ratio, buckets);
+    } else if (program.is_subcommand_used("threshold-merge")) {
+      auto& args = program.at<ArgumentParser>("threshold-merge");
+      SetParallel(args);
+      SetDataDir(args);
+      std::string name = args.get<std::string>("name");
+      int start = args.get<int>("--start");
+      int end = args.get<int>("--end");
+      bool whole = args.get<bool>("--whole");
+      bool delete_after = args.get<bool>("--delete");
+      if (whole) {
+        throw std::runtime_error("not implemented");
+      } else if (start != -1 || end != -1) {
+        MergeThresholdRanges(name, start, end, delete_after);
       } else {
         throw std::runtime_error("start / end not given");
       }
