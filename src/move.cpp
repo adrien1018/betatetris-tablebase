@@ -284,8 +284,8 @@ void MergeRanges(int group, int pieces_l, int pieces_r, const std::vector<size_t
   if (delete_after) {
     readers.clear();
     for (int pieces = pieces_l; pieces < pieces_r; pieces += kGroups) {
-      std::filesystem::remove(MoveIndexPath(pieces));
-      std::filesystem::remove(std::string(MoveIndexPath(pieces)) + ".index");
+      std::filesystem::remove(one_filename_func(pieces));
+      std::filesystem::remove(std::string(one_filename_func(pieces)) + ".index");
     }
   }
 }
@@ -357,11 +357,10 @@ void WriteThreshold(int pieces, const std::vector<size_t>& offset, const std::ve
   CompressedClassWriter<BasicIOType<uint8_t>> writer(ThresholdOnePath(name, pieces), 65536 * kPieces);
   for (size_t i = 0; i < offset.size() - 1; i++) {
     int cells = pieces * 4 - int(i * 10 + group * 2);
-    if (cells < 0) break;
+    std::vector<BasicIOType<uint8_t>> out((offset[i+1] - offset[i]) * kPieces, BasicIOType<uint8_t>{});
     if (cells % 10) throw std::logic_error("unexpected: cells incorrect");
     int lines = cells / 10;
-    std::vector<BasicIOType<uint8_t>> out((offset[i+1] - offset[i]) * kPieces, BasicIOType<uint8_t>{});
-    if (lines < kLineCap) {
+    if (cells >= 0 && lines < kLineCap) {
       float thresh_low = threshold[lines] * start_ratio;
       float thresh_high = threshold[lines] * end_ratio;
       //  0 <-|-> 1 2 3 ... buckets-3 buckets-2 <-|-> buckets-1
@@ -405,7 +404,7 @@ void MergeRanges(int pieces_l, int pieces_r, bool delete_after) {
           group, pieces_l, pieces_r, GetBoardCountOffset(group), delete_after,
           MoveIndexPath, MoveRangePath, 4096 * kPieces);
     }
-  }).wait();
+  }).get();
 }
 
 void MergeFullRanges() {
@@ -466,5 +465,5 @@ void MergeThresholdRanges(const std::string& name, int pieces_l, int pieces_r, b
           },
           65536 * kPieces);
     }
-  }).wait();
+  }).get();
 }
