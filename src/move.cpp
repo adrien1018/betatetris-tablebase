@@ -69,22 +69,26 @@ void CalculateBlock(
         if (cur_ev > mx_ev) mx_ev = cur_ev, res_idx = new_idx;
       };
       for (size_t i = 0; i < item.non_adj_size; i++) {
+        auto idx = item.non_adj[i];
         if constexpr (calculate_moves) {
-          Update(local_val[item.non_adj[i]], _mm256_set1_epi32(item.non_adj[i]));
+          Update(local_val[idx], _mm256_set1_epi32(idx));
         } else {
-          mx_ev = std::max(mx_ev, local_val[item.non_adj[i]].Dot(probs));
+          mx_ev = std::max(mx_ev, local_val[idx].Dot(probs));
         }
       }
       if (item.use_subset) {
         for (size_t i = 0; i < item.subset_idx_prev_size; i++) {
           auto& [idx, prev] = item.subset_idx_prev[i];
-          adj_val[i] = local_val[idx];
           if (prev != 255) {
             if constexpr (calculate_moves) {
-              adj_idx[i] = adj_val[i].MaxWithMask(adj_val[prev], adj_idx[i], idx);
+              adj_val[i] = adj_val[prev];
+              adj_idx[i] = adj_val[i].MaxWithMask(local_val[idx], adj_idx[prev], idx);
             } else {
               adj_val[i].MaxWith(adj_val[prev]);
             }
+          } else {
+            adj_val[i] = local_val[idx];
+            if constexpr (calculate_moves) adj_idx[i] = _mm256_set1_epi32(idx);
           }
         }
         for (size_t i = 0; i < item.adj_subset_size; i++) {
@@ -100,7 +104,7 @@ void CalculateBlock(
           size_t start = item.adj_lst[i], end = item.adj_lst[i+1];
           MoveEval cur = local_val[item.adj[start]];
           if constexpr (calculate_moves) {
-            __m256i cur_idx = _mm256_setzero_si256();
+            __m256i cur_idx = _mm256_set1_epi32(item.adj[start]);
             for (size_t j = start + 1; j < end; j++) {
               cur_idx = cur.MaxWithMask(local_val[item.adj[j]], cur_idx, item.adj[j]);
             }
