@@ -128,7 +128,8 @@ void CalculateBlock(
 template <bool calculate_moves>
 void CalculateSameLines(
     int group, size_t start, size_t end, const std::vector<MoveEval>& prev, int lines,
-    MoveEval out[], CompressedClassWriter<NodeMoveIndex>* idx_writer_ptr = nullptr) {
+    MoveEval out[], CompressedClassWriter<NodeMoveIndex>* idx_writer_ptr,
+    std::optional<std::thread>& writer_thread) {
   constexpr size_t kBatchSize = 1024;
   constexpr size_t kBlockSize = 524288;
 
@@ -196,7 +197,13 @@ void CalculateSameLines(
   io_pool.wait_for_tasks();
   thread_queue.WaitAll();
   if constexpr (calculate_moves) {
-    idx_writer_ptr->Write(out_idx);
+    if (writer_thread) {
+      writer_thread.value().join();
+      writer_thread = std::nullopt;
+    };
+    writer_thread = std::thread([idx_writer_ptr,out_idx=std::move(out_idx)]() {
+      idx_writer_ptr->Write(out_idx);
+    });
   }
 }
 
@@ -209,6 +216,16 @@ std::vector<MoveEval> CalculatePieceMoves(
   if constexpr (calculate_moves) {
     writer.reset(new CompressedClassWriter<NodeMoveIndex>(MoveIndexPath(pieces), 4096 * kPieces));
   }
+
+  std::optional<std::thread> writer_thread;
+  auto WaitWriter = [&writer_thread]() {
+    if constexpr (calculate_moves) {
+      if (writer_thread) {
+        writer_thread.value().join();
+        writer_thread = std::nullopt;
+      }
+    }
+  };
 
   spdlog::info("Start calculate piece {}", pieces);
   stats.Clear();
@@ -226,6 +243,7 @@ std::vector<MoveEval> CalculatePieceMoves(
       // lines will decrease as i increase, so this only happen at the start of the loop
       memset(ret.data() + start, 0x0, (offsets[i + 1] - start) * sizeof(MoveEval));
       if constexpr (calculate_moves) {
+        WaitWriter();
         writer->Write(NodeMoveIndex{}, (offsets[i + 1] - start) * kPieces);
       }
       start = offsets[i + 1];
@@ -233,21 +251,23 @@ std::vector<MoveEval> CalculatePieceMoves(
     }
     if (cur_lines != -1) {
       spdlog::debug("Calculate group {} lines {}: {} - {}", group, cur_lines, start, offsets[i]);
-      CalculateSameLines<calculate_moves>(group, start, offsets[i], prev, cur_lines, ret.data(), writer.get());
+      CalculateSameLines<calculate_moves>(group, start, offsets[i], prev, cur_lines, ret.data(), writer.get(), writer_thread);
       start = offsets[i];
     }
     cur_lines = lines;
   }
   if (cur_lines != -1) {
     spdlog::debug("Calculate group {} lines {}: {} - {}", group, cur_lines, start, last);
-    CalculateSameLines<calculate_moves>(group, start, last, prev, cur_lines, ret.data(), writer.get());
+    CalculateSameLines<calculate_moves>(group, start, last, prev, cur_lines, ret.data(), writer.get(), writer_thread);
   }
   if (last < offsets.back()) {
     memset(ret.data() + last, 0x0, (offsets.back() - last) * sizeof(MoveEval));
     if constexpr (calculate_moves) {
+      WaitWriter();
       writer->Write(NodeMoveIndex{}, (offsets.back() - last) * kPieces);
     }
   }
+  WaitWriter();
   std::vector<float> ev(7);
   ret[0].GetEv(ev.data());
   spdlog::debug("Finish piece {}: max_val {}, val0 {}", pieces, stats.maximum.load(), ev);
