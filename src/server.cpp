@@ -78,9 +78,6 @@ class Connection : public std::enable_shared_from_this<Connection> {
     for (auto& range : pos_ranges.ranges) {
       uint8_t loc = game.GetLines() / 2;
       if (range.start <= loc && loc < range.end) {
-        std::string str;
-        for (auto& i : range.pos) str += fmt::format("({},{},{})", i.r, i.x, i.y);
-        spdlog::debug("{}-{} ({}): {}", range.start, range.end, loc, str);
         return range.pos;
       }
     }
@@ -91,12 +88,17 @@ class Connection : public std::enable_shared_from_this<Connection> {
     if (done) return;
     game.InputPlacement(pos, 0);
     done = game.IsOver();
+    if (done) {
+      spdlog::info("Game over");
+    }
   }
 
   void DoPremove() {
     auto strat = GetCurrentStrat();
     if (strat[0] == Position::Invalid) {
+      spdlog::info("Not a seen board; topping out");
       done = true;
+      prev_strats[0] = {-1, 0, 0};
       SendSeq({});
       return;
     }

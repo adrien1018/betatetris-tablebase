@@ -16,6 +16,15 @@ struct FrameInput {
   bool IsB() const { return value & 8; }
   bool IsL() const { return value & 1; }
   bool IsR() const { return value & 2; }
+
+  std::string ToString() const {
+    std::string str;
+    if (IsL()) str += 'L';
+    if (IsR()) str += 'R';
+    if (IsA()) str += 'A';
+    if (IsB()) str += 'B';
+    return str.empty() ? "-" : str;
+  }
 };
 
 inline constexpr FrameInput FrameInput::A = FrameInput{4};
