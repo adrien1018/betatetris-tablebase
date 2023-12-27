@@ -13,23 +13,12 @@ class PythonTetris {
   double step_reward_ = 5e-4;
 
  private:
-  static constexpr int kTransitionProb_[kPieces][kPieces] = {
-  // T  J  Z  O  S  L  I (next)
-    {1, 5, 6, 5, 5, 5, 5}, // T (current)
-    {6, 1, 5, 5, 5, 5, 5}, // J
-    {5, 6, 1, 5, 5, 5, 5}, // Z
-    {5, 5, 5, 2, 5, 5, 5}, // O
-    {5, 5, 5, 5, 2, 5, 5}, // S
-    {6, 5, 5, 5, 5, 1, 5}, // L
-    {5, 5, 5, 5, 6, 5, 1}, // I
-  };
-
   std::mt19937_64 rng_;
   int next_piece_;
 
   int GenNextPiece_(int piece) {
     return std::discrete_distribution<int>(
-        kTransitionProb_[piece], kTransitionProb_[piece] + kPieces)(rng_);
+        kTransitionProbInt[piece], kTransitionProbInt[piece] + kPieces)(rng_);
   }
 
  public:

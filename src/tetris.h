@@ -46,6 +46,35 @@ class Tetris {
     }
   }
 
+  std::pair<int, int> StepGame_(const Position& pos, int next_piece) {
+    auto before_clear = board_.Place(now_piece_, pos.r, pos.x, pos.y);
+    // do not allow placing pieces to be cut off from the board
+    if (board_.Count() + 4 != before_clear.Count()) {
+      consecutive_fail_++;
+      return {-1, 0};
+    }
+
+    auto [lines, new_board] = before_clear.ClearLines();
+    lines_ += lines;
+    int delta_score = Score(lines, GetLevel());
+    board_ = new_board;
+    pieces_++;
+    is_adj_ = false;
+    initial_move_ = 0;
+    now_piece_ = next_piece_;
+    next_piece_ = next_piece;
+    if (lines_ >= kLineCap) {
+      game_over_ = true;
+    } else {
+      CalculateMoves_(true);
+    }
+    consecutive_fail_ = 0;
+    run_score_ += delta_score;
+    run_lines_ += lines;
+    run_pieces_++;
+    return {delta_score, lines};
+  }
+
  public:
   void Reset(const Board& b, int lines, int now_piece, int next_piece) {
     int pieces = (lines * 10 + b.Count()) / 4;
@@ -72,6 +101,22 @@ class Tetris {
     return move_map_[pos.r][pos.x][pos.y] == kHasAdj;
   }
 
+  void DirectPlacement(const Position& pos, int next_piece) {
+    if (game_over_) throw std::logic_error("already game over");
+    if (next_piece < 0 || next_piece >= (int)kPieces) throw std::range_error("Invalid piece");
+    uint8_t location = move_map_[pos.r][pos.x][pos.y];
+    if (!(location == kNoAdj || std::any_of(moves_.adj.begin(), moves_.adj.end(), [&pos](auto i) {
+            return std::find(i.second.begin(), i.second.end(), pos) != i.second.end();
+          }))) {
+      game_over_ = true;
+      return;
+    }
+    if (StepGame_(pos, next_piece).first == -1) {
+      game_over_ = true;
+      return;
+    }
+  }
+
   // (score, lines)
   // score == -1 if invalid
   std::pair<int, int> InputPlacement(const Position& pos, int next_piece) {
@@ -83,32 +128,7 @@ class Tetris {
       return {-1, 0};
     }
     if (location == kNoAdj) {
-      auto before_clear = board_.Place(now_piece_, pos.r, pos.x, pos.y);
-      // do not allow placing pieces to be cut off from the board
-      if (board_.Count() + 4 != before_clear.Count()) {
-        consecutive_fail_++;
-        return {-1, 0};
-      }
-
-      auto [lines, new_board] = before_clear.ClearLines();
-      lines_ += lines;
-      int delta_score = Score(lines, GetLevel());
-      board_ = new_board;
-      pieces_++;
-      is_adj_ = false;
-      initial_move_ = 0;
-      now_piece_ = next_piece_;
-      next_piece_ = next_piece;
-      if (lines_ >= kLineCap) {
-        game_over_ = true;
-      } else {
-        CalculateMoves_(true);
-      }
-      consecutive_fail_ = 0;
-      run_score_ += delta_score;
-      run_lines_ += lines;
-      run_pieces_++;
-      return {delta_score, lines};
+      return StepGame_(pos, next_piece);
     } else {
       for (size_t i = 0; i < moves_.adj.size(); i++) {
         if (moves_.adj[i].first == pos) {

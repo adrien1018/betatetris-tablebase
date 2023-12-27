@@ -27,6 +27,17 @@ alignas(32) constexpr float kTransitionProb[][8] = {
   {5./32, 5./32, 5./32, 5./32, 6./32, 5./32, 1./32}, // I
 };
 
+constexpr int kTransitionProbInt[7][7] = {
+// T  J  Z  O  S  L  I (next)
+  {1, 5, 6, 5, 5, 5, 5}, // T (current)
+  {6, 1, 5, 5, 5, 5, 5}, // J
+  {5, 6, 1, 5, 5, 5, 5}, // Z
+  {5, 5, 5, 2, 5, 5, 5}, // O
+  {5, 5, 5, 5, 2, 5, 5}, // S
+  {6, 5, 5, 5, 5, 1, 5}, // L
+  {5, 5, 5, 5, 6, 5, 1}, // I
+};
+
 constexpr int kLevelSpeedLines[] = {0, 130, 230, 330};
 
 constexpr int GetLevelByLines(int lines) {

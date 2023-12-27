@@ -16,6 +16,20 @@ std::string NumToStr(int num, size_t lpad = 4) {
   return std::string(lpad - r.size(), '0') + r;
 }
 
+std::vector<std::pair<int, int>> GetAvailableRanges(const fs::path path) {
+  std::regex pattern("[0-4].([0-9]+)-([0-9]+)");
+  std::vector<std::pair<int, int>> ret;
+  for (auto const& dir_entry : std::filesystem::directory_iterator{path}) {
+    std::cmatch match;
+    if (std::regex_match(dir_entry.path().filename().c_str(), match, pattern)) {
+      ret.push_back({std::stoi(match[1]), std::stoi(match[2])});
+    }
+  }
+  std::sort(ret.begin(), ret.end());
+  ret.resize(std::unique(ret.begin(), ret.end()) - ret.begin());
+  return ret;
+}
+
 } // namespace
 
 fs::path BoardPath(int group) {
@@ -45,20 +59,6 @@ fs::path MoveIndexPath(int pieces) {
 fs::path MoveRangePath(int pieces_l, int pieces_r, int group) {
   return kDataDir / "moves" / (std::to_string(group) + '.' + NumToStr(pieces_l) + '-' + NumToStr(pieces_r));
 }
-std::vector<std::pair<int, int>> GetAvailableMoveRanges() {
-  fs::path path = kDataDir / "moves";
-  std::regex pattern("[0-4].([0-9]+)-([0-9]+)");
-  std::vector<std::pair<int, int>> ret;
-  for (auto const& dir_entry : std::filesystem::directory_iterator{path}) {
-    std::cmatch match;
-    if (std::regex_match(dir_entry.path().filename().c_str(), match, pattern)) {
-      ret.push_back({std::stoi(match[1]), std::stoi(match[2])});
-    }
-  }
-  std::sort(ret.begin(), ret.end());
-  ret.resize(std::unique(ret.begin(), ret.end()) - ret.begin());
-  return ret;
-}
 fs::path MovePath(int group) {
   return kDataDir / "moves" / (std::to_string(group) + ".all");
 }
@@ -70,6 +70,13 @@ fs::path ThresholdRangePath(const std::string& name, int pieces_l, int pieces_r,
 }
 fs::path ThresholdPath(const std::string& name, int group) {
   return kDataDir / "threshold" / name / (std::to_string(group) + ".all");
+}
+
+std::vector<std::pair<int, int>> GetAvailableMoveRanges() {
+  return GetAvailableRanges(kDataDir / "moves");
+}
+std::vector<std::pair<int, int>> GetAvailableThresholdRanges(const std::string& name) {
+  return GetAvailableRanges(kDataDir / "threshold" / name);
 }
 
 fs::path SVDSamplePath(int group) {

@@ -14,11 +14,13 @@ std::filesystem::path ValueStatsPath(int pieces);
 std::filesystem::path ProbPath(int pieces);
 std::filesystem::path MoveIndexPath(int pieces);
 std::filesystem::path MoveRangePath(int pieces_l, int pieces_r, int group);
-std::vector<std::pair<int, int>> GetAvailableMoveRanges();
 std::filesystem::path MovePath(int group);
 std::filesystem::path ThresholdOnePath(const std::string& name, int pieces);
 std::filesystem::path ThresholdRangePath(const std::string& name, int pieces_l, int pieces_r, int group);
 std::filesystem::path ThresholdPath(const std::string& name, int group);
+
+std::vector<std::pair<int, int>> GetAvailableMoveRanges();
+std::vector<std::pair<int, int>> GetAvailableThresholdRanges(const std::string& name);
 
 std::filesystem::path SVDSamplePath(int group);
 std::filesystem::path SVDSampleCountPath(int group);

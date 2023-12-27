@@ -314,7 +314,7 @@ void MergeRanges(int group, int pieces_l, int pieces_r, const std::vector<size_t
   }
 }
 
-void MergeFullRanges(int group, const std::vector<int>& sections) {
+void MergeFullMoveRanges(int group, const std::vector<int>& sections) {
   std::vector<CompressedClassReader<PositionNodeEdges>> pos_readers;
   std::vector<CompressedClassReader<NodeMoveIndexRange>> readers;
   CompressedClassWriter<NodeMovePositionRange> writer(MovePath(group), 256 * kPieces, -2);
@@ -354,6 +354,24 @@ void MergeFullRanges(int group, const std::vector<int>& sections) {
   spdlog::info("Group {} merged", group);
 }
 
+void MergeFullThresholdRanges(const std::string& name, int group, const std::vector<int>& sections) {
+  std::vector<CompressedClassReader<NodePartialThreshold>> readers;
+  CompressedClassWriter<NodeThreshold> writer(ThresholdPath(name, group), 256 * kPieces, -2);
+  for (size_t i = 0; i < sections.size() - 1; i++) {
+    readers.emplace_back(ThresholdRangePath(name, sections[i], sections[i+1], group));
+  }
+  size_t n_boards = GetBoardCountOffset(group).back();
+  for (size_t i = 0; i < n_boards * kPieces; i++) {
+    NodeThreshold range = {};
+    for (auto& reader : readers) {
+      auto threshold = reader.ReadOne();
+      memcpy(range.data() + threshold.start, threshold.levels.data(), threshold.levels.size());
+    }
+    writer.Write(range);
+  }
+  spdlog::info("Group {} merged", group);
+}
+
 std::vector<MoveEval> LoadValues(int& start_pieces, const std::vector<size_t> offsets[]) {
   std::vector<MoveEval> values;
   if (start_pieces == -1) {
@@ -371,6 +389,20 @@ std::vector<MoveEval> LoadValues(int& start_pieces, const std::vector<size_t> of
     if (values.size() != offsets[start_group].back()) throw std::length_error("initial value file incorrect");
   }
   return values;
+}
+
+std::vector<int> GetSections(const std::vector<std::pair<int, int>>& ranges) {
+  if (ranges.empty()) throw std::runtime_error("No ranges available");
+  std::vector<int> sections;
+  sections.push_back(ranges[0].first);
+  sections.push_back(ranges[0].second);
+  for (size_t i = 1; i < ranges.size(); i++) {
+    if (ranges[i - 1].second != ranges[i].first) {
+      throw std::runtime_error("Ranges not consecutive or mutually exclusive");
+    }
+    sections.push_back(ranges[i].second);
+  }
+  return sections;
 }
 
 void WriteThreshold(int pieces, const std::vector<size_t>& offset, const std::vector<MoveEval>& values,
@@ -419,7 +451,7 @@ void RunCalculateMoves(int start_pieces, int end_pieces) {
   }
 }
 
-void MergeRanges(int pieces_l, int pieces_r, bool delete_after) {
+void MergeMoveRanges(int pieces_l, int pieces_r, bool delete_after) {
   int threads = std::min(kParallel, kGroups);
   BS::thread_pool pool(threads);
   pool.parallelize_loop(0, kGroups, [&](int l, int r){
@@ -431,24 +463,14 @@ void MergeRanges(int pieces_l, int pieces_r, bool delete_after) {
   }).get();
 }
 
-void MergeFullRanges() {
-  auto ranges = GetAvailableMoveRanges();
-  if (ranges.empty()) throw std::runtime_error("No ranges available");
-  std::vector<int> sections;
-  sections.push_back(ranges[0].first);
-  sections.push_back(ranges[0].second);
-  for (size_t i = 1; i < ranges.size(); i++) {
-    if (ranges[i - 1].second != ranges[i].first) {
-      throw std::runtime_error("Ranges not consecutive or mutually exclusive");
-    }
-    sections.push_back(ranges[i].second);
-  }
+void MergeFullMoveRanges() {
+  auto sections = GetSections(GetAvailableMoveRanges());
   spdlog::info("Start merge ranges {}", sections);
   int threads = std::min(kParallel, kGroups);
   BS::thread_pool pool(threads);
   pool.parallelize_loop(0, kGroups, [&](int l, int r){
     for (int group = l; group < r; group++) {
-      MergeFullRanges(group, sections);
+      MergeFullMoveRanges(group, sections);
     }
   }).get();
 }
@@ -488,6 +510,18 @@ void MergeThresholdRanges(const std::string& name, int pieces_l, int pieces_r, b
             return ThresholdRangePath(name, pieces_l, pieces_r, group);
           },
           65536 * kPieces);
+    }
+  }).get();
+}
+
+void MergeFullThresholdRanges(const std::string& name) {
+  auto sections = GetSections(GetAvailableThresholdRanges(name));
+  spdlog::info("Start merge ranges {}", sections);
+  int threads = std::min(kParallel, kGroups);
+  BS::thread_pool pool(threads);
+  pool.parallelize_loop(0, kGroups, [&](int l, int r){
+    for (int group = l; group < r; group++) {
+      MergeFullThresholdRanges(name, group, sections);
     }
   }).get();
 }

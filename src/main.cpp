@@ -10,6 +10,7 @@
 #include "server.h"
 #include "inspect.h"
 #include "evaluate.h"
+#include "simulate.h"
 #include "board_set.h"
 #include "sample_svd.h"
 #include "sample_train.h"
@@ -300,6 +301,21 @@ int main(int argc, char** argv) {
     .default_value(3456);
   DataDirArg(fceux_server);
 
+  ArgumentParser simulate("simulate", "", default_arguments::help);
+  simulate.add_description("Simulate games");
+  DataDirArg(simulate);
+  ParallelArg(simulate);
+  simulate.add_argument("-f", "--seed-file")
+    .help("File containing seeds")
+    .default_value("-");
+  simulate.add_argument("-o", "--output-file")
+    .help("Output CSV file")
+    .default_value("-");
+  simulate.add_argument("--gym-rng")
+    .help("Use TetrisGYM RNG (seed is decimal)")
+    .default_value(false)
+    .implicit_value(true);
+
   ArgumentParser inspect("inspect", "", default_arguments::help);
   inspect.add_description("Inspect files");
 
@@ -357,6 +373,7 @@ int main(int argc, char** argv) {
   program.add_subparser(svd);
   program.add_subparser(sample_train);
   program.add_subparser(fceux_server);
+  program.add_subparser(simulate);
   program.add_subparser(inspect);
 
   try {
@@ -387,6 +404,8 @@ int main(int argc, char** argv) {
       std::cerr << sample_train;
     } else if (program.is_subcommand_used("fceux-server")) {
       std::cerr << fceux_server;
+    } else if (program.is_subcommand_used("simulate")) {
+      std::cerr << simulate;
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
       if (subparser.is_subcommand_used("board-id")) {
@@ -483,9 +502,9 @@ int main(int argc, char** argv) {
       bool whole = args.get<bool>("--whole");
       bool delete_after = args.get<bool>("--delete");
       if (whole) {
-        MergeFullRanges();
+        MergeFullMoveRanges();
       } else if (start != -1 || end != -1) {
-        MergeRanges(start, end, delete_after);
+        MergeMoveRanges(start, end, delete_after);
       } else {
         throw std::runtime_error("start / end not given");
       }
@@ -513,7 +532,7 @@ int main(int argc, char** argv) {
       bool whole = args.get<bool>("--whole");
       bool delete_after = args.get<bool>("--delete");
       if (whole) {
-        throw std::runtime_error("not implemented");
+        MergeFullThresholdRanges(name);
       } else if (start != -1 || end != -1) {
         MergeThresholdRanges(name, start, end, delete_after);
       } else {
@@ -556,6 +575,14 @@ int main(int argc, char** argv) {
       int port = args.get<int>("--port");
       std::string addr = args.get<std::string>("--bind");
       StartServer(addr, port);
+    } else if (program.is_subcommand_used("simulate")) {
+      auto& args = program.at<ArgumentParser>("simulate");
+      SetParallel(args);
+      SetDataDir(args);
+      std::string seed_file = args.get<std::string>("--seed-file");
+      std::string output_file = args.get<std::string>("--output-file");
+      bool gym_rng = args.get<bool>("--gym-rng");
+      OutputSimulate(seed_file, output_file, gym_rng);
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
       if (subparser.is_subcommand_used("board-id")) {
@@ -600,7 +627,7 @@ int main(int argc, char** argv) {
   } catch (std::exception& e) {
     int status;
     char* type = abi::__cxa_demangle(abi::__cxa_current_exception_type()->name(), 0, 0, &status);
-    spdlog::error("Error running command: {}({})", type, e.what());
+    spdlog::error("Exception {} when running command: {}", type, e.what());
     if (type) free(type);
     return 1;
   }

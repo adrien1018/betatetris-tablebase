@@ -7,8 +7,8 @@
 #pragma GCC diagnostic ignored "-Warray-bounds"
 #include <spdlog/spdlog.h>
 #pragma GCC diagnostic pop
-#include "game.h"
 #include "move.h"
+#include "play.h"
 #include "config.h"
 #include "tetris.h"
 #include "io_hash.h"
@@ -49,8 +49,7 @@ class Connection : public std::enable_shared_from_this<Connection> {
 
   Tetris game;
   bool done;
-  std::vector<HashMapReader<CompactBoard, BasicIOType<uint32_t>>> board_hash;
-  std::vector<CompressedClassReader<NodeMovePositionRange>> move_readers;
+  Play play;
   Position prev_pos, prev_placement;
   FrameSequence prev_seq;
   std::array<Position, 7> prev_strats;
@@ -65,25 +64,6 @@ class Connection : public std::enable_shared_from_this<Connection> {
     Send(reinterpret_cast<const char*>(buf.data()), buf.size());
   }
 
-  std::array<Position, 7> GetCurrentStrat() {
-    auto board = game.GetBoard().ToBytes();
-    int group = board.Group();
-    auto idx = board_hash[group][board];
-    if (!idx) return {Position::Invalid}; // actually {}, since Invalid is (0,0,0)
-    size_t move_idx = (size_t)idx.value() * kPieces + game.NowPiece();
-    move_readers[group].Seek(move_idx, 0, 0);
-    spdlog::debug("Group {}, idx {}, move_idx {}", group, (size_t)idx.value(), move_idx);
-    // use 1 to avoid being treated as NULL
-    NodeMovePositionRange pos_ranges = move_readers[group].ReadOne(1, 0);
-    for (auto& range : pos_ranges.ranges) {
-      uint8_t loc = game.GetLines() / 2;
-      if (range.start <= loc && loc < range.end) {
-        return range.pos;
-      }
-    }
-    return {Position::Invalid};
-  }
-
   void StepGame(const Position& pos) {
     if (done) return;
     game.InputPlacement(pos, 0);
@@ -94,7 +74,7 @@ class Connection : public std::enable_shared_from_this<Connection> {
   }
 
   void DoPremove() {
-    auto strat = GetCurrentStrat();
+    auto strat = play.GetStrat(game);
     if (strat[0] == Position::Invalid) {
       spdlog::info("Not a seen board; topping out");
       done = true;
@@ -142,7 +122,7 @@ class Connection : public std::enable_shared_from_this<Connection> {
   }
 
   void FirstPiece() {
-    auto strats = GetCurrentStrat();
+    auto strats = play.GetStrat(game);
     auto pos = strats[game.NextPiece()];
     SendSeq(game.GetSequence(pos));
     if (!game.IsNoAdjMove(strats[0])) {
@@ -177,13 +157,7 @@ class Connection : public std::enable_shared_from_this<Connection> {
     }
   }
  public:
-  Connection(asio::io_context& io_context) :
-      socket_(io_context), done(true) {
-    for (int i = 0; i < kGroups; i++) {
-      board_hash.emplace_back(BoardMapPath(i));
-      move_readers.emplace_back(MovePath(i));
-    }
-  }
+  Connection(asio::io_context& io_context) : socket_(io_context), done(true) {}
   tcp::socket& GetSocket() { return socket_; }
   void Run(const std::string& remote_addr, int remote_port) {
     remote_addr_ = remote_addr;
