@@ -2,4 +2,5 @@
 
 #include <string>
 
-void StartServer(const std::string& bind, int port);
+void StartFCEUXServer(const std::string& bind, int port);
+void StartBoardServer(const std::string& bind, int port, const std::string& threshold_name);

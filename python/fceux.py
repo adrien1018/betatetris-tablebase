@@ -46,6 +46,24 @@ class GameConn(socketserver.BaseRequestHandler):
             actions = torch.argmax(pi, 1).flatten().cpu().tolist()
             return [(action // 200, action // 10 % 20, action % 10) for action in actions]
 
+    def get_strat_all(self):
+        if self.game.GetLines() < 230 and self.board_conn:
+            # tablebase
+            query = bytes([1]) + self.game.GetBytes() + bytes([self.game.GetNowPiece(), self.game.GetLines()])
+            self.board_conn.sendall(query)
+            result = self.recv(22)
+            level = result[21]
+            print(level)
+            adj_strats = [tuple(result[i:i+3]) for i in range(0, 21, 3)]
+            if self.game.IsAdjMove(*adj_strats[0]):
+                return False, adj_strats[0]
+            return True, adj_strats
+        # beta
+        strat = self.get_strat()
+        if self.game.IsAdjMove(*strat):
+            return True, self.get_adj_strat(strat)
+        return False, strat
+
     def send_seq(self, seq):
         self.request.send(self.gen_seq(seq))
 
@@ -59,15 +77,14 @@ class GameConn(socketserver.BaseRequestHandler):
             self.prev = (-1, -1, -1)
             self.send_seq([])
             return
-        strat = self.get_strat()
-        seq = self.game.GetSequence(*strat)
-        if self.game.IsAdjMove(*strat):
-            adj_strats = self.get_adj_strat(strat)
-            pos, seq = self.game.GetAdjPremove(adj_strats)
-            self.prev = (pos, seq, adj_strats)
+        is_adj, strat = self.get_strat_all()
+        if is_adj:
+            pos, seq = self.game.GetAdjPremove(strat)
+            self.prev = (pos, seq, strat)
             self.step_game(pos)
             self.send_seq(seq)
         else:
+            seq = self.game.GetSequence(*strat)
             self.prev = (strat, None, None)
             self.send_seq(seq)
             self.send_seq([])
@@ -129,6 +146,7 @@ if __name__ == "__main__":
     parser.add_argument('model')
     parser.add_argument('-b', '--bind', type=str, default='0.0.0.0')
     parser.add_argument('-p', '--port', type=int, default=3456)
+    parser.add_argument('-s', '--server', type=str)
     args = parser.parse_args()
     print(args)
 
@@ -146,9 +164,17 @@ if __name__ == "__main__":
 
     with socketserver.TCPServer((args.bind, args.port), GameConn) as server:
         server.model = model
+        if args.server:
+            host, port = args.server.split(':')
+            port = int(port)
+            server.board_conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server.board_conn.connect((host, port))
+        else:
+            server.board_conn = None
         print(f'Ready, listening on {args.bind}:{args.port}')
         try:
             server.serve_forever()
         except KeyboardInterrupt:
+            if server.board_conn: server.board_conn.close()
             server.shutdown()
 

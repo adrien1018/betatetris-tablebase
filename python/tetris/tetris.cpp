@@ -377,6 +377,14 @@ PyObject* Tetris_GetPieces(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
   return PyLong_FromLong(self->tetris.GetPieces());
 }
 
+PyObject* Tetris_GetNowPiece(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
+  return PyLong_FromLong(self->tetris.NowPiece());
+}
+
+PyObject* Tetris_GetNextPiece(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
+  return PyLong_FromLong(self->tetris.NextPiece());
+}
+
 PyObject* Tetris_GetRunScore(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
   return PyLong_FromLong(self->tetris.RunScore());
 }
@@ -418,6 +426,8 @@ PyMethodDef py_tetris_class_methods[] = {
     {"GetBoard", (PyCFunction)Tetris_GetBoard, METH_NOARGS, "Get board object"},
     {"GetLines", (PyCFunction)Tetris_GetLines, METH_NOARGS, "Get total lines"},
     {"GetPieces", (PyCFunction)Tetris_GetPieces, METH_NOARGS, "Get total pieces"},
+    {"GetNowPiece", (PyCFunction)Tetris_GetNowPiece, METH_NOARGS, "Get current piece"},
+    {"GetNextPiece", (PyCFunction)Tetris_GetNextPiece, METH_NOARGS, "Get next piece"},
     {"GetRunScore", (PyCFunction)Tetris_GetRunScore, METH_NOARGS, "Get score of this run"},
     {"GetRunLines", (PyCFunction)Tetris_GetRunLines, METH_NOARGS, "Get lines of this run"},
     {"GetRunPieces", (PyCFunction)Tetris_GetRunPieces, METH_NOARGS, "Get pieces of this run"},

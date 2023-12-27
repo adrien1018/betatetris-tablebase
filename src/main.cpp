@@ -163,6 +163,15 @@ int main(int argc, char** argv) {
       .default_value(false)
       .implicit_value(true);
   };
+  auto ServerArgs = [](ArgumentParser& parser) {
+    parser.add_argument("-b", "--bind")
+      .help("Server bind address")
+      .default_value("127.0.0.1");
+    parser.add_argument("-p", "--port")
+      .help("Server listen port")
+      .scan<'i', int>()
+      .default_value(3456);
+  };
 
   ArgumentParser preprocess("preprocess", "", default_arguments::help);
   preprocess.add_description("Preprocess a board file");
@@ -292,14 +301,15 @@ int main(int argc, char** argv) {
 
   ArgumentParser fceux_server("fceux-server", "", default_arguments::help);
   fceux_server.add_description("Server for FCEUX");
-  fceux_server.add_argument("-b", "--bind")
-    .help("Server bind address")
-    .default_value("127.0.0.1");
-  fceux_server.add_argument("-p", "--port")
-    .help("Server listen port")
-    .scan<'i', int>()
-    .default_value(3456);
+  ServerArgs(fceux_server);
   DataDirArg(fceux_server);
+
+  ArgumentParser board_server("board-server", "", default_arguments::help);
+  board_server.add_description("Server for boards");
+  ServerArgs(board_server);
+  DataDirArg(board_server);
+  board_server.add_argument("name").required()
+    .help("Name of the threshold");
 
   ArgumentParser simulate("simulate", "", default_arguments::help);
   simulate.add_description("Simulate games");
@@ -373,6 +383,7 @@ int main(int argc, char** argv) {
   program.add_subparser(svd);
   program.add_subparser(sample_train);
   program.add_subparser(fceux_server);
+  program.add_subparser(board_server);
   program.add_subparser(simulate);
   program.add_subparser(inspect);
 
@@ -574,7 +585,14 @@ int main(int argc, char** argv) {
       SetDataDir(args);
       int port = args.get<int>("--port");
       std::string addr = args.get<std::string>("--bind");
-      StartServer(addr, port);
+      StartFCEUXServer(addr, port);
+    } else if (program.is_subcommand_used("board-server")) {
+      auto& args = program.at<ArgumentParser>("board-server");
+      SetDataDir(args);
+      int port = args.get<int>("--port");
+      std::string addr = args.get<std::string>("--bind");
+      std::string threshold_name = args.get<std::string>("name");
+      StartBoardServer(addr, port, threshold_name);
     } else if (program.is_subcommand_used("simulate")) {
       auto& args = program.at<ArgumentParser>("simulate");
       SetParallel(args);

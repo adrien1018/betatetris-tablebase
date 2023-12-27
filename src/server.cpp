@@ -20,10 +20,11 @@ using boost::system::error_code;
 
 namespace {
 
-class Connection : public std::enable_shared_from_this<Connection> {
+struct ReadEOF {};
+
+class ConnectionBase {
+ protected:
   tcp::socket socket_;
-  std::string remote_addr_;
-  int remote_port_;
 
   void Send(const char* buf, size_t len) {
     error_code ec;
@@ -41,11 +42,24 @@ class Connection : public std::enable_shared_from_this<Connection> {
     size_t received = 0;
     while (received < len) {
       size_t cur = socket_.read_some(asio::buffer(buf.data() + received, len - received), ec);
-      if (ec) throw std::runtime_error(fmt::format("Read error: {}", ec.message()));
+      if (ec) {
+        if (ec == asio::error::eof) throw ReadEOF();
+        throw std::runtime_error(fmt::format("Read error: {}", ec.message()));
+      }
       received += cur;
     }
     return buf;
   }
+
+  ConnectionBase(asio::io_context& io_context) : socket_(io_context) {}
+ public:
+  tcp::socket& GetSocket() { return socket_; }
+};
+
+class FCEUXConnection : public std::enable_shared_from_this<FCEUXConnection>, public ConnectionBase {
+  using ConnectionBase::socket_;
+  using ConnectionBase::Send;
+  using ConnectionBase::ReadUntil;
 
   Tetris game;
   bool done;
@@ -74,9 +88,9 @@ class Connection : public std::enable_shared_from_this<Connection> {
   }
 
   void DoPremove() {
-    auto strat = play.GetStrat(game);
-    if (strat[0] == Position::Invalid) {
-      spdlog::info("Not a seen board; topping out");
+    auto strat = done ? std::array<Position, 7>{} : play.GetStrat(game);
+    if (strat[0] == Position::Invalid || done) {
+      if (!done) spdlog::info("Not a seen board; topping out");
       done = true;
       prev_strats[0] = {-1, 0, 0};
       SendSeq({});
@@ -157,25 +171,85 @@ class Connection : public std::enable_shared_from_this<Connection> {
     }
   }
  public:
-  Connection(asio::io_context& io_context) : socket_(io_context), done(true) {}
-  tcp::socket& GetSocket() { return socket_; }
+  FCEUXConnection(asio::io_context& io_context) : ConnectionBase(io_context), done(true) {}
+
   void Run(const std::string& remote_addr, int remote_port) {
-    remote_addr_ = remote_addr;
-    remote_port_ = remote_port;
     try {
       DoWork();
+    } catch (ReadEOF& e) {
+      spdlog::info("EOF from {}:{}", remote_addr, remote_port);
     } catch (std::exception& e) {
       spdlog::warn("{}", e.what());
     }
   }
 };
 
+class BoardConnection : public std::enable_shared_from_this<BoardConnection>, public ConnectionBase {
+  using ConnectionBase::socket_;
+  using ConnectionBase::Send;
+  using ConnectionBase::ReadUntil;
+
+  std::string threshold_name;
+
+  void DoWork() {
+    Play play;
+    std::vector<CompressedClassReader<NodeThreshold>> readers;
+    for (int i = 0; i < kGroups; i++) readers.emplace_back(ThresholdPath(threshold_name, i));
+    // receive: 25 bytes board + 1 byte current piece + 2 bytes lines
+    constexpr size_t kReceiveSize = 28;
+    // send: 21 bytes position ((r,x,y)*7) + 1 byte threshold
+    constexpr size_t kSendSize = 22;
+    while (true) {
+      uint32_t num_boards = ReadUntil(1)[0];
+      auto data = ReadUntil(kReceiveSize * num_boards);
+      // send: 21 bytes position ((r,x,y)*7) + 1 byte threshold
+      std::vector<uint8_t> send_buf(kSendSize * num_boards);
+      for (size_t i = 0; i < num_boards; i++) {
+        const uint8_t* in_ptr = data.data() + kReceiveSize * i;
+        uint8_t* out_ptr = send_buf.data() + kSendSize * i;
+        CompactBoard board(in_ptr, 25);
+        size_t move_idx = 0;
+        int group = board.Group();
+        int piece = in_ptr[25];
+        int lines = BytesToInt<uint16_t>(in_ptr + 26);
+        auto strats = play.GetStrat(board, piece, lines, &move_idx);
+        for (size_t j = 0; j < kPieces; j++) {
+          out_ptr[j*3  ] = strats[j].r;
+          out_ptr[j*3+1] = strats[j].x;
+          out_ptr[j*3+2] = strats[j].y;
+        }
+        if (strats[0] != Position::Invalid) {
+          readers[group].Seek(move_idx);
+          out_ptr[21] = readers[group].ReadOne(1, 0)[lines / 2];
+        }
+      }
+      Send(reinterpret_cast<const char*>(send_buf.data()), send_buf.size());
+    }
+  }
+ public:
+  BoardConnection(asio::io_context& io_context) : ConnectionBase(io_context) {}
+  BoardConnection(asio::io_context& io_context, const std::string& threshold_name) :
+      ConnectionBase(io_context), threshold_name(threshold_name) {}
+
+  void Run(const std::string& remote_addr, int remote_port) {
+    try {
+      DoWork();
+    } catch (ReadEOF& e) {
+      spdlog::info("EOF from {}:{}", remote_addr, remote_port);
+    } catch (std::exception& e) {
+      spdlog::warn("{}", e.what());
+    }
+  }
+};
+
+template <class Connection>
 class Server {
   boost::asio::io_context& io_context_;
   tcp::acceptor acceptor_;
 
-  void DoAccept() {
-    auto new_connection = std::make_shared<Connection>(io_context_);
+  template <class... Args>
+  void DoAccept(Args&&... args) {
+    auto new_connection = std::make_shared<Connection>(io_context_, std::forward<Args>(args)...);
     acceptor_.async_accept(new_connection->GetSocket(), [this,new_connection](error_code ec) {
       auto& socket = new_connection->GetSocket();
       auto remote_addr = socket.remote_endpoint().address().to_string();
@@ -192,17 +266,24 @@ class Server {
     });
   }
  public:
-  Server(asio::io_context& io_context, const std::string& addr, int port) :
+  template <class... Args>
+  Server(asio::io_context& io_context, const std::string& addr, int port, Args&&... args) :
       io_context_(io_context),
       acceptor_(io_context, tcp::endpoint(asio::ip::make_address(addr), port)) {
-    DoAccept();
+    DoAccept(std::forward<Args>(args)...);
   }
 };
 
 } // namespace
 
-void StartServer(const std::string& bind, int port) {
+void StartFCEUXServer(const std::string& bind, int port) {
   asio::io_context io_context;
-  Server s(io_context, bind, port);
+  Server<FCEUXConnection> s(io_context, bind, port);
+  io_context.run();
+}
+
+void StartBoardServer(const std::string& bind, int port, const std::string& threshold_name) {
+  asio::io_context io_context;
+  Server<BoardConnection> s(io_context, bind, port, threshold_name);
   io_context.run();
 }

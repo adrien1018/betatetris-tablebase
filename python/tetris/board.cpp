@@ -57,12 +57,18 @@ PyObject* Board_IsClean(PythonBoard* self, PyObject* Py_UNUSED(ignored)) {
   return PyBool_FromLong((long)self->IsClean());
 }
 
+PyObject* Board_GetBytes(PyObject* obj) {
+  CompactBoard board = reinterpret_cast<PythonBoard*>(obj)->board.ToBytes();
+  return PyBytes_FromStringAndSize(reinterpret_cast<const char*>(board.data()), board.size());
+}
+
 PyObject* Board_str(PyObject* obj) {
   return PyUnicode_FromString(reinterpret_cast<PythonBoard*>(obj)->board.ToString().c_str());
 }
 
 PyMethodDef py_board_class_methods[] = {
     {"IsClean", (PyCFunction)Board_IsClean, METH_NOARGS, "Check board cleanness"},
+    {"GetBytes", (PyCFunction)Board_GetBytes, METH_NOARGS, "Get 25-byte representation"},
     {nullptr}};
 } // namespace
 

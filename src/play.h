@@ -10,11 +10,12 @@ class Play {
   std::vector<HashMapReader<CompactBoard, BasicIOType<uint32_t>>> board_hash;
   std::vector<CompressedClassReader<NodeMovePositionRange>> move_readers;
  public:
-  std::array<Position, 7> GetStrat(const CompactBoard& board, int now_piece, int lines) {
+  std::array<Position, 7> GetStrat(const CompactBoard& board, int now_piece, int lines, size_t* move_idx_ptr = nullptr) {
     int group = board.Group();
     auto idx = board_hash[group][board];
     if (!idx) return {Position::Invalid}; // actually {}, since Invalid is (0,0,0)
     size_t move_idx = (size_t)idx.value() * kPieces + now_piece;
+    if (move_idx_ptr) *move_idx_ptr = move_idx;
     move_readers[group].Seek(move_idx, 0, 0);
     // use 1 to avoid being treated as NULL
     NodeMovePositionRange pos_ranges = move_readers[group].ReadOne(1, 0);
@@ -27,8 +28,8 @@ class Play {
     return {Position::Invalid};
   }
 
-  std::array<Position, 7> GetStrat(const Tetris& game) {
-    return GetStrat(game.GetBoard().ToBytes(), game.NowPiece(), game.GetLines());
+  std::array<Position, 7> GetStrat(const Tetris& game, size_t* move_idx_ptr = nullptr) {
+    return GetStrat(game.GetBoard().ToBytes(), game.NowPiece(), game.GetLines(), move_idx_ptr);
   }
 
   Play() {
