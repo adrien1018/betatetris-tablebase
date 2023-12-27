@@ -91,10 +91,10 @@ class Tetris {
       }
 
       auto [lines, new_board] = before_clear.ClearLines();
+      lines_ += lines;
       int delta_score = Score(lines, GetLevel());
       board_ = new_board;
       pieces_++;
-      lines_ += lines;
       is_adj_ = false;
       initial_move_ = 0;
       now_piece_ = next_piece_;

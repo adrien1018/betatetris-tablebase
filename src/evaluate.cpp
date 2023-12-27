@@ -41,7 +41,7 @@ struct Stats {
 void CalculateBlock(
     const EvaluateNodeEdgesFast* edges, size_t edges_size,
     const std::vector<NodeEval>& prev,
-    int level,
+    int base_lines,
     NodeEval out[]) {
   if (!edges_size) return;
   if (edges_size % kPieces != 0) throw std::logic_error("unexpected: not multiples of 7");
@@ -56,7 +56,7 @@ void CalculateBlock(
       for (size_t i = 0; i < item.next_ids_size; i++) {
         auto& [next, lines] = item.next_ids[i];
         local_val[i] = prev[next];
-        local_val[i] += Score(lines, level);
+        local_val[i] += Score(lines, GetLevelByLines(base_lines + lines));
       }
       __m256 probs = _mm256_load_ps(kTransitionProb[piece]);
       NodeEval result(_mm256_setzero_ps(), _mm256_setzero_ps());
@@ -94,12 +94,13 @@ void CalculateBlock(
   }
 }
 
-void CalculateSameLevel(
-    int group, size_t start, size_t end, const std::vector<NodeEval>& prev, int level,
+void CalculateSameLines(
+    int group, size_t start, size_t end, const std::vector<NodeEval>& prev, int lines,
     NodeEval out[]) {
   constexpr size_t kBatchSize = 1024;
   constexpr size_t kBlockSize = 524288;
 
+  int level = GetLevelByLines(lines);
   auto fname = EvaluateEdgePath(group, GetLevelSpeed(level));
   using Result = std::pair<size_t, size_t>;
 
@@ -118,7 +119,7 @@ void CalculateSameLevel(
   for (size_t block_start = start; block_start < end; block_start += kBlockSize) {
     size_t block_end = std::min(end, block_start + kBlockSize);
     unfinished++;
-    io_pool.push_task([&fname,&thread_queue,&works,&unfinished,&cv,&mtx,block_start,block_end,&prev,level,out]() {
+    io_pool.push_task([&fname,&thread_queue,&works,&unfinished,&cv,&mtx,block_start,block_end,&prev,lines,out]() {
       CompressedClassReader<EvaluateNodeEdgesFast> reader(fname);
       reader.Seek(block_start * kPieces);
       for (size_t batch_l = block_start; batch_l < block_end; batch_l += kBatchSize) {
@@ -129,9 +130,9 @@ void CalculateSameLevel(
         {
           std::lock_guard lck(mtx);
           works.push_back(make_copyable_function([
-                edges=std::move(edges),&works,&unfinished,&cv,&mtx,num_to_read,batch_l,batch_r,&prev,level,out
+                edges=std::move(edges),&works,&unfinished,&cv,&mtx,num_to_read,batch_l,batch_r,&prev,lines,out
           ]() {
-            CalculateBlock(edges.get(), num_to_read, prev, level, out + batch_l);
+            CalculateBlock(edges.get(), num_to_read, prev, lines, out + batch_l);
             return std::make_pair(batch_l, batch_r);
           }));
         }
@@ -168,7 +169,7 @@ std::vector<NodeEval> CalculatePiece(
   spdlog::info("Start calculate piece {}", pieces);
   stats.Clear();
   size_t start = 0, last = offsets.back();
-  int cur_level = 0; // 0 -> uninitialized
+  int cur_lines = -1; // -1 -> uninitialized
   for (size_t i = 0; i < offsets.size() - 1; i++) {
     int cells = pieces * 4 - int(i * 10 + group * 2);
     if (cells < 0) {
@@ -183,17 +184,16 @@ std::vector<NodeEval> CalculatePiece(
       start = offsets[i + 1];
       continue;
     }
-    int level = GetLevelByLines(lines);
-    if (level != cur_level && cur_level != 0) {
-      spdlog::debug("Calculate group {} lvl {}: {} - {}", group, cur_level, start, offsets[i]);
-      CalculateSameLevel(group, start, offsets[i], prev, cur_level, ret.data());
+    if (cur_lines != -1) {
+      spdlog::debug("Calculate group {} lines {}: {} - {}", group, cur_lines, start, offsets[i]);
+      CalculateSameLines(group, start, offsets[i], prev, cur_lines, ret.data());
       start = offsets[i];
     }
-    cur_level = level;
+    cur_lines = lines;
   }
-  if (cur_level != 0) {
-    spdlog::debug("Calculate group {} lvl {}: {} - {}", group, cur_level, start, last);
-    CalculateSameLevel(group, start, last, prev, cur_level, ret.data());
+  if (cur_lines != -1) {
+    spdlog::debug("Calculate group {} lines {}: {} - {}", group, cur_lines, start, last);
+    CalculateSameLines(group, start, last, prev, cur_lines, ret.data());
   }
   {
     MkdirForFile(ValueStatsPath(pieces));

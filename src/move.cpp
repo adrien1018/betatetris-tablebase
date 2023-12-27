@@ -43,7 +43,7 @@ template <bool calculate_moves>
 void CalculateBlock(
     const EvaluateNodeEdgesFast* edges, size_t edges_size,
     const std::vector<MoveEval>& prev,
-    int level,
+    int base_lines,
     MoveEval out[], NodeMoveIndex out_idx[] = nullptr) {
   if (!edges_size) return;
   if (edges_size % kPieces != 0) throw std::logic_error("unexpected: not multiples of 7");
@@ -59,7 +59,7 @@ void CalculateBlock(
       for (size_t i = 0; i < item.next_ids_size; i++) {
         auto& [next, lines] = item.next_ids[i];
         local_val[i] = prev[next];
-        local_val[i] += Score(lines, level);
+        local_val[i] += Score(lines, GetLevelByLines(base_lines + lines));
       }
       __m256 probs = _mm256_load_ps(kTransitionProb[piece]);
       __m256i res_idx = _mm256_setzero_si256();
@@ -157,7 +157,7 @@ void CalculateSameLines(
   for (size_t block_start = start; block_start < end; block_start += kBlockSize) {
     size_t block_end = std::min(end, block_start + kBlockSize);
     unfinished++;
-    io_pool.push_task([&fname,&thread_queue,&works,&unfinished,&cv,&mtx,block_start,block_end,start,&prev,level,out,&out_idx]() {
+    io_pool.push_task([&fname,&thread_queue,&works,&unfinished,&cv,&mtx,block_start,block_end,start,&prev,lines,out,&out_idx]() {
       CompressedClassReader<EvaluateNodeEdgesFast> reader(fname);
       reader.Seek(block_start * kPieces);
       for (size_t batch_l = block_start; batch_l < block_end; batch_l += kBatchSize) {
@@ -168,10 +168,10 @@ void CalculateSameLines(
         {
           std::lock_guard lck(mtx);
           works.push_back(make_copyable_function([
-                edges=std::move(edges),&works,&unfinished,&cv,&mtx,num_to_read,start,batch_l,batch_r,&prev,level,out,&out_idx
+                edges=std::move(edges),&works,&unfinished,&cv,&mtx,num_to_read,start,batch_l,batch_r,&prev,lines,out,&out_idx
           ]() {
             auto out_ptr = calculate_moves ? out_idx.data() + (batch_l - start) * kPieces : nullptr;
-            CalculateBlock<calculate_moves>(edges.get(), num_to_read, prev, level, out + batch_l, out_ptr);
+            CalculateBlock<calculate_moves>(edges.get(), num_to_read, prev, lines, out + batch_l, out_ptr);
             return std::make_pair(batch_l, batch_r);
           }));
         }
