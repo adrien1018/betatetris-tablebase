@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys, os.path, socketserver, argparse, re
+import sys, os.path, socketserver, argparse, re, socket
 import numpy as np, torch
 
 import tetris
@@ -36,33 +36,42 @@ class GameConn(socketserver.BaseRequestHandler):
 
     def get_strat(self):
         with torch.no_grad():
-            pi = model(obs_to_torch(self.game.GetState()), pi_only=True)[0]
+            pi = self.model(obs_to_torch(self.game.GetState()), pi_only=True)[0]
             action = torch.argmax(pi, 1).item()
             return action // 200, action // 10 % 20, action % 10
 
     def get_adj_strat(self, pos):
         with torch.no_grad():
-            pi = model(obs_to_torch(self.game.GetAdjStates(*pos)), pi_only=True)[0]
+            pi = self.model(obs_to_torch(self.game.GetAdjStates(*pos)), pi_only=True)[0]
             actions = torch.argmax(pi, 1).flatten().cpu().tolist()
             return [(action // 200, action // 10 % 20, action % 10) for action in actions]
 
+    def query_tablebase(self):
+        query = (
+            bytes([1]) +
+            self.game.GetBoard().GetBytes() +
+            bytes([self.game.GetNowPiece(), self.game.GetLines() % 256, self.game.GetLines() // 256])
+        )
+        self.board_conn.sendall(query)
+        result = self.board_conn.recv(22)
+        level = result[21]
+        adj_strats = [tuple(result[i:i+3]) for i in range(0, 21, 3)]
+        print(level, adj_strats)
+        return adj_strats, level
+
     def get_strat_all(self):
-        if self.game.GetLines() < 230 and self.board_conn:
+        if self.game.GetLines() < 310 and self.board_conn:
             # tablebase
-            query = bytes([1]) + self.game.GetBytes() + bytes([self.game.GetNowPiece(), self.game.GetLines()])
-            self.board_conn.sendall(query)
-            result = self.recv(22)
-            level = result[21]
-            print(level)
-            adj_strats = [tuple(result[i:i+3]) for i in range(0, 21, 3)]
-            if self.game.IsAdjMove(*adj_strats[0]):
-                return False, adj_strats[0]
-            return True, adj_strats
+            adj_strats, level = self.query_tablebase()
+            if not (adj_strats[0] == (0, 0, 0) or level < 6 or (level < 12 and self.game.GetLines() >= 230)):
+                if self.game.IsNoAdjMove(*adj_strats[0]):
+                    return False, adj_strats[0]
+                return True, adj_strats
         # beta
         strat = self.get_strat()
-        if self.game.IsAdjMove(*strat):
-            return True, self.get_adj_strat(strat)
-        return False, strat
+        if self.game.IsNoAdjMove(*strat):
+            return False, strat
+        return True, self.get_adj_strat(strat)
 
     def send_seq(self, seq):
         self.request.send(self.gen_seq(seq))
@@ -107,12 +116,22 @@ class GameConn(socketserver.BaseRequestHandler):
 
     def first_piece(self):
         # first piece
-        strat = self.get_strat()
-        seq = self.game.GetSequence(*strat)
-        if self.game.IsAdjMove(*strat):
-            self.step_game(strat)
+        if self.board_conn:
+            is_adj, strat = self.get_strat_all()
+            if is_adj:
+                pos, _ = self.game.GetAdjPremove(strat)
+                strat = strat[self.game.GetNextPiece()]
+                self.step_game(pos)
+            else:
+                strat = adj_strats
+            seq = self.game.GetSequence(*strat)
+        else:
             strat = self.get_strat()
             seq = self.game.GetSequence(*strat)
+            if self.game.IsAdjMove(*strat):
+                self.step_game(strat)
+                strat = self.get_strat()
+                seq = self.game.GetSequence(*strat)
         self.step_game(strat)
         self.prev_placement = strat
         self.send_seq(seq)
@@ -141,6 +160,16 @@ class GameConn(socketserver.BaseRequestHandler):
                 self.request.close()
                 break
 
+
+def GenHandler(model, board_conn):
+    class Handler(GameConn):
+        def __init__(self, *args, **kwargs):
+            self.model = model
+            self.board_conn = board_conn
+            super().__init__(*args, **kwargs)
+    return Handler
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('model')
@@ -159,22 +188,22 @@ if __name__ == "__main__":
         model.load_state_dict(state_dict)
         model.eval()
 
+    if args.server:
+        host, port = args.server.split(':')
+        port = int(port)
+        board_conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        board_conn.connect((host, port))
+    else:
+        board_conn = None
+
     # load GPU first to reduce lag
     model(obs_to_torch(tetris.Tetris().GetState()), pi_only=True)
 
-    with socketserver.TCPServer((args.bind, args.port), GameConn) as server:
+    with socketserver.TCPServer((args.bind, args.port), GenHandler(model, board_conn)) as server:
         server.model = model
-        if args.server:
-            host, port = args.server.split(':')
-            port = int(port)
-            server.board_conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server.board_conn.connect((host, port))
-        else:
-            server.board_conn = None
         print(f'Ready, listening on {args.bind}:{args.port}')
         try:
             server.serve_forever()
         except KeyboardInterrupt:
-            if server.board_conn: server.board_conn.close()
             server.shutdown()
 

@@ -311,6 +311,15 @@ PyObject* Tetris_IsAdjMove(PythonTetris* self, PyObject* args, PyObject* kwds) {
   return PyBool_FromLong(self->tetris.IsAdjMove(pos));
 }
 
+PyObject* Tetris_IsNoAdjMove(PythonTetris* self, PyObject* args, PyObject* kwds) {
+  static const char* kwlist[] = {"rotate", "x", "y", nullptr};
+  Position pos;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "iii", (char**)kwlist, &pos.r, &pos.x, &pos.y)) {
+    return nullptr;
+  }
+  return PyBool_FromLong(self->tetris.IsNoAdjMove(pos));
+}
+
 PyObject* Tetris_GetSequence(PythonTetris* self, PyObject* args, PyObject* kwds) {
   static const char* kwlist[] = {"rotate", "x", "y", nullptr};
   Position pos;
@@ -417,6 +426,8 @@ PyMethodDef py_tetris_class_methods[] = {
      "Get types of state array (static)"},
     {"IsAdjMove", (PyCFunction)Tetris_IsAdjMove, METH_VARARGS | METH_KEYWORDS,
      "Check if a move can have adjustments"},
+    {"IsNoAdjMove", (PyCFunction)Tetris_IsNoAdjMove, METH_VARARGS | METH_KEYWORDS,
+     "Check if a move cannot have adjustments"},
     {"GetSequence", (PyCFunction)Tetris_GetSequence, METH_VARARGS | METH_KEYWORDS,
      "Get frame sequence to a particular position"},
     {"GetAdjPremove", (PyCFunction)Tetris_GetAdjPremove, METH_VARARGS | METH_KEYWORDS,
