@@ -171,6 +171,10 @@ int main(int argc, char** argv) {
       .help("Server listen port")
       .scan<'i', int>()
       .default_value(3456);
+    parser.add_argument("-x", "--exclusive")
+      .help("Only one connection at a time")
+      .default_value(false)
+      .implicit_value(true);
   };
 
   ArgumentParser preprocess("preprocess", "", default_arguments::help);
@@ -585,14 +589,16 @@ int main(int argc, char** argv) {
       SetDataDir(args);
       int port = args.get<int>("--port");
       std::string addr = args.get<std::string>("--bind");
-      StartFCEUXServer(addr, port);
+      bool one_conn = args.get<bool>("--exclusive");
+      StartFCEUXServer(addr, port, one_conn);
     } else if (program.is_subcommand_used("board-server")) {
       auto& args = program.at<ArgumentParser>("board-server");
       SetDataDir(args);
       int port = args.get<int>("--port");
       std::string addr = args.get<std::string>("--bind");
       std::string threshold_name = args.get<std::string>("name");
-      StartBoardServer(addr, port, threshold_name);
+      bool one_conn = args.get<bool>("--exclusive");
+      StartBoardServer(addr, port, threshold_name, one_conn);
     } else if (program.is_subcommand_used("simulate")) {
       auto& args = program.at<ArgumentParser>("simulate");
       SetParallel(args);

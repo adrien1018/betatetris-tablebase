@@ -249,8 +249,8 @@ class Server {
 
   template <class... Args>
   void DoAccept(Args&&... args) {
-    auto new_connection = std::make_shared<Connection>(io_context_, std::forward<Args>(args)...);
-    acceptor_.async_accept(new_connection->GetSocket(), [this,new_connection](error_code ec) {
+    auto new_connection = std::make_shared<Connection>(io_context_, args...);
+    acceptor_.async_accept(new_connection->GetSocket(), [this,new_connection,...args=std::forward<Args>(args)](error_code ec) {
       auto& socket = new_connection->GetSocket();
       auto remote_addr = socket.remote_endpoint().address().to_string();
       auto remote_port = socket.remote_endpoint().port();
@@ -262,28 +262,45 @@ class Server {
       } else {
         spdlog::info("Accept error: {}", ec.message());
       }
-      DoAccept();
+      DoAccept(std::forward<Args>(args)...);
     });
+  }
+
+  template <class... Args>
+  void DoAcceptSynchronous(Args&&... args) {
+    while (true) {
+      Connection new_connection(io_context_, std::forward<Args>(args)...);
+      acceptor_.accept(new_connection.GetSocket());
+      auto& socket = new_connection.GetSocket();
+      auto remote_addr = socket.remote_endpoint().address().to_string();
+      auto remote_port = socket.remote_endpoint().port();
+      spdlog::info("New connection: {}:{}", remote_addr, remote_port);
+      new_connection.Run(remote_addr, remote_port);
+    }
   }
  public:
   template <class... Args>
-  Server(asio::io_context& io_context, const std::string& addr, int port, Args&&... args) :
+  Server(asio::io_context& io_context, const std::string& addr, int port, bool one_conn, Args&&... args) :
       io_context_(io_context),
       acceptor_(io_context, tcp::endpoint(asio::ip::make_address(addr), port)) {
-    DoAccept(std::forward<Args>(args)...);
+    if (one_conn) {
+      DoAcceptSynchronous(std::forward<Args>(args)...);
+    } else {
+      DoAccept(std::forward<Args>(args)...);
+    }
   }
 };
 
 } // namespace
 
-void StartFCEUXServer(const std::string& bind, int port) {
+void StartFCEUXServer(const std::string& bind, int port, bool one_conn) {
   asio::io_context io_context;
-  Server<FCEUXConnection> s(io_context, bind, port);
+  Server<FCEUXConnection> s(io_context, bind, port, one_conn);
   io_context.run();
 }
 
-void StartBoardServer(const std::string& bind, int port, const std::string& threshold_name) {
+void StartBoardServer(const std::string& bind, int port, const std::string& threshold_name, bool one_conn) {
   asio::io_context io_context;
-  Server<BoardConnection> s(io_context, bind, port, threshold_name);
+  Server<BoardConnection> s(io_context, bind, port, one_conn, threshold_name);
   io_context.run();
 }
