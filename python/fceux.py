@@ -36,15 +36,33 @@ class GameConn(socketserver.BaseRequestHandler):
 
     def get_strat(self):
         with torch.no_grad():
-            pi = self.model(obs_to_torch(self.game.GetState()), pi_only=True)[0]
+            pi, v = self.model(obs_to_torch(self.game.GetState()), pi_only=True)
             action = torch.argmax(pi, 1).item()
-            return action // 200, action // 10 % 20, action % 10
+            return (action // 200, action // 10 % 20, action % 10), v[0].item()
+
+    def print_status(self, strats, is_table, data):
+        def StratText(i):
+            ntxt = f'({strats[i][0]},{strats[i][1]:2d},{strats[i][2]})'
+            if not is_table:
+                ntxt += f' val {data[i]:6.3f}'
+            return ntxt
+        txt = 'Tablebase' if is_table else 'Neural Net'
+        txt += '\nPlacements\n'
+        for i in range(7):
+            txt += 'TJZOSLI'[i] + ' ' + StratText(i) + '\n'
+        if is_table:
+            txt += f'confidence {data}\n'
+        else:
+            txt += '\n'
+        print(txt, end='', flush=True)
 
     def get_adj_strat(self, pos):
         with torch.no_grad():
-            pi = self.model(obs_to_torch(self.game.GetAdjStates(*pos)), pi_only=True)[0]
+            pi, v = self.model(obs_to_torch(self.game.GetAdjStates(*pos)), pi_only=True)
             actions = torch.argmax(pi, 1).flatten().cpu().tolist()
-            return [(action // 200, action // 10 % 20, action % 10) for action in actions]
+            strats = [(action // 200, action // 10 % 20, action % 10) for action in actions]
+            self.print_status(strats, False, v[0].flatten().cpu().tolist())
+            return strats
 
     def query_tablebase(self):
         query = (
@@ -56,7 +74,7 @@ class GameConn(socketserver.BaseRequestHandler):
         result = self.board_conn.recv(22)
         level = result[21]
         adj_strats = [tuple(result[i:i+3]) for i in range(0, 21, 3)]
-        print(level, adj_strats)
+        self.print_status(adj_strats, True, level)
         return adj_strats, level
 
     def get_strat_all(self):
@@ -68,8 +86,9 @@ class GameConn(socketserver.BaseRequestHandler):
                     return False, adj_strats[0]
                 return True, adj_strats
         # beta
-        strat = self.get_strat()
+        strat, v = self.get_strat()
         if self.game.IsNoAdjMove(*strat):
+            self.print_status([strat]*7, False, [v]*7)
             return False, strat
         return True, self.get_adj_strat(strat)
 
