@@ -517,7 +517,7 @@ int main(int argc, char** argv) {
       bool whole = args.get<bool>("--whole");
       bool delete_after = args.get<bool>("--delete");
       if (whole) {
-        MergeFullMoveRanges();
+        MergeFullMoveRanges(delete_after);
       } else if (start != -1 || end != -1) {
         MergeMoveRanges(start, end, delete_after);
       } else {
@@ -547,7 +547,7 @@ int main(int argc, char** argv) {
       bool whole = args.get<bool>("--whole");
       bool delete_after = args.get<bool>("--delete");
       if (whole) {
-        MergeFullThresholdRanges(name);
+        MergeFullThresholdRanges(name, delete_after);
       } else if (start != -1 || end != -1) {
         MergeThresholdRanges(name, start, end, delete_after);
       } else {

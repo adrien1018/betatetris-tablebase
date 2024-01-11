@@ -146,11 +146,11 @@ using NodeThreshold = SimpleIOArray<uint8_t, (kLineCap + 1) / 2>;
 
 void RunCalculateMoves(int start_pieces, int end_pieces);
 void MergeMoveRanges(int pieces_l, int pieces_r, bool delete_after);
-void MergeFullMoveRanges();
+void MergeFullMoveRanges(bool delete_after);
 
 void RunCalculateThreshold(
     int start_pieces, int end_pieces,
     const std::string& name, const std::string& threshold_path,
     float start_ratio, float end_ratio, uint8_t buckets);
 void MergeThresholdRanges(const std::string& name, int pieces_l, int pieces_r, bool delete_after);
-void MergeFullThresholdRanges(const std::string& name);
+void MergeFullThresholdRanges(const std::string& name, bool delete_after);
