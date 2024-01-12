@@ -245,7 +245,7 @@ After preparing the board file, execute the following commands to generate the b
 
 After this, generate some checkpoints. This would simplify subsequent steps:
 ```bash
-./main evaluate -p 6 -c 0:1120:40 [workdir] 2>&1 | tee evaluate.log
+./main evaluate -p 6 -c 0:1081:40 [workdir] 2>&1 | tee evaluate.log
 ```
 
 - `-c 0:1081:120` indicates the checkpoints to be stored. `0:1081:120` means storing a checkpoint every 120 pieces, up to 1080 pieces, similar to Python slicing syntax.
@@ -258,7 +258,7 @@ After this, generate some checkpoints. This would simplify subsequent steps:
 After generating the checkpoints, proceed to generate the placements:
 ```bash
 ./main move -p 4 -e 960 [workdir]
-./main move-merge -p 5 -s [max-piece] -e 1119 -d [workdir]
+./main move-merge -p 5 -s 960 -e [max-piece] -d [workdir]
 ./main move -p 4 -r 960 -e 840 [workdir]
 ./main move-merge -p 5 -s 840 -e 960 -d [workdir]
 ./main move -p 4 -r 840 -e 720 [workdir]
@@ -274,7 +274,7 @@ After generating the checkpoints, proceed to generate the placements:
 - `[max-piece]` varies based on your board set and line cap. Use the value (1 + (piece number shown in the first line of output when running `move`)).
 - The `move` commands generate placements for pieces between `-e` and `-r` parameters. The `move-merge` commands (except the final merge) convert placements into a more compressible format to save disk space.
 - The `move` command requires the existence of the checkpoint specified by `-r`. The `move-merge` command requires computed placements. You can thus modify the exact ranges in the commands, the command order, or even run some commands in parallel, depending on the available checkpoints, disk space, and RAM.
-    - For instance, if you have sufficient disk space & RAM, you can run all `move` commands in parallel, and then run `./main move-merge -p 5 -s 0 -e 1119 -d [workdir] && ./main move-merge -p 5 -w [workdir]` at the end.
+    - For instance, if you have sufficient disk space & RAM, you can run all `move` commands in parallel, and then run `./main move-merge -p 5 -s 0 -e [max-piece] -d [workdir] && ./main move-merge -p 5 -w [workdir]` at the end.
 
 At this point, the tablebase can already operate on its own and play some games! However, to use the hybrid agent, another step is required to generate the "confidence level" of any given board.
 The confidence level of a board is defined as the ratio of the average score to a reference "threshold" value. The confidence levels used in the Tetris Friendlies Revolution can be generated with these commands:
