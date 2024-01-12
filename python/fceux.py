@@ -145,11 +145,11 @@ class GameConn(socketserver.BaseRequestHandler):
                 strat = adj_strats
             seq = self.game.GetSequence(*strat)
         else:
-            strat = self.get_strat()
+            strat, _ = self.get_strat()
             seq = self.game.GetSequence(*strat)
             if self.game.IsAdjMove(*strat):
                 self.step_game(strat)
-                strat = self.get_strat()
+                strat, _ = self.get_strat()
                 seq = self.game.GetSequence(*strat)
         self.step_game(strat)
         self.prev_placement = strat
