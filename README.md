@@ -21,18 +21,18 @@ This is the BetaTetris version featured in [Tetris Friendlies Revolution 2023](h
 
 ## Introduction
 
-The basic concept of BetaTetris Tablebase is as follows. Consider a Tetris variant: we first collect a set of boards and play Tetris normally, except that you are limited to play on those boards. 
+The basic concept of BetaTetris Tablebase is as follows. Consider a Tetris variant: we first collect a set of boards and play Tetris normally, except that you are limited to play on those boards.
 This variant has a useful property: it is possible to create a bot that plays *perfectly* in this variant, in the sense that it achieves the highest possible average score. This is accomplished through an extensive tree search (expectimax) that calculates the highest possible average score for any given board, line count, and current piece, which are then stored in a tablebase.
 Although this version differs from the original Tetris game, by using enough boards in the set of boards, the perfect bot on this variant can also play decently well on normal Tetris.
 
-The agent featured in Tetris Friendlies Revolution 2023 used approximately 3.5 billion boards gathered from in millions of games played by previous BetaTetris versions. With such a large set of boards, the tablebase outperforms any previous BetaTetris versions in pre-29 play. However, it falls short after killscreen where digs are more likely to happen.
+The agent featured in Tetris Friendlies Revolution 2023 used approximately 3.5 billion boards gathered in millions of games played by previous BetaTetris versions. With such a large set of boards, the tablebase outperforms any previous BetaTetris versions in pre-29 play. However, it falls short after killscreen where digs are more likely to happen.
 Consequently, a hybrid approach is used: before level 37, if the expected score calculated by the tablebase exceeds a certain threshold, the tablebase decides the placement; otherwise, the decision is made by the neural network. After level 37, the neural network has the full control.
 
 This agent is capable of playing at any tap speed, reaction time, and line cap, though currently I only trained an agent playing on 30 Hz, 300 ms reaction time and level 49 line cap, which is the format used in Tetris Friendlies Revolution 2023. For additional insights, you may view the [introduction video](https://www.twitch.tv/videos/2017475671?t=02h43m18s) from Tetris Friendlies Revolution 2023.
 
 ## Statistics
 
-These statistics were collected through simulations of the agents playing on 2000 (tablebase, NN) or 1100 (hybrid) randomly-selected TetrisGYMv5 seeds.
+These statistics were collected through simulations of the agents playing on 2000 (tablebase, NN) or 1100 (hybrid) randomly-selected TetrisGYMv5 seeds. The format is 30 Hz, 300 ms reaction time, level 39 double killscreen and level 49 line cap.
 
 |       |                 | Tablebase | NN        | Hybrid    |
 |-------|-----------------|----------:|----------:|----------:|
@@ -89,6 +89,9 @@ Q: Can BetaTetris (NN or tablebase) do RNG manipulation?\
 A: No. Both the NN and the tablebase assume a Markov-style RNG (which means the distribution of the next piece only depends on the current piece). This differs from the RNG in real NES Tetris, though they are quite similar.
 The distinction prevents RNG manipulation, but the similarity still allows the bots to perform well on the original RNG.\
 (This also implies that the tablebase is only perfect **on the Markov-style RNG** on *Tetris Limited* - but well, the perfect strategy on the real RNG will just be RNG manipulation🙂)
+
+Q: How did you collect the boards used in the tablebase?\
+A: I run millions of games using old BetaTetris versions and collected all the encountered boards. No filtering was done. The games are in several different formats with tap speed ranging from 12 to 30 Hz and reaction time ranging from 8 to 21 frames.
 
 Q: What are the respective strengths and weaknesses of NN and tablebase, and why is the hybrid approach so effective?\
 A: The tablebase's strength lies in its optimality. Its weaknesses include its inability to play on dirty boards (because there are too many dirty boards compared to clean boards) and a tendency to play overly safe due to assuming instant top-out for unseen boards (discussed in the second question).\
