@@ -1,3 +1,5 @@
+# BetaTetris Tablebase
+
 BetaTetris Tablebase is an NES Tetris agent incorporating a tablebase to brute-force optimal moves on a predefined set of boards. It also contains a hybrid agent that merges the tablebase approach with the previously established [neural-net-based BetaTetris](https://github.com/adrien1018/beta-tetris).
 
 This is the BetaTetris version featured in [Tetris Friendlies Revolution 2023](https://www.twitch.tv/videos/2017475671?t=02h36m25s).
