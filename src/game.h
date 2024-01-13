@@ -1,6 +1,11 @@
 #pragma once
 
+#ifdef NO_2KS
+constexpr int kLevels = 3;
+#else
 constexpr int kLevels = 4;
+#endif
+
 #ifdef LINE_CAP
 constexpr int kLineCap = LINE_CAP;
 #else
@@ -38,22 +43,28 @@ constexpr int kTransitionProbInt[7][7] = {
   {5, 5, 5, 5, 6, 5, 1}, // I
 };
 
-constexpr int kLevelSpeedLines[] = {0, 130, 230, 330};
+constexpr int kLevelSpeedLines[] = {0, 130, 230,
+#ifdef NO_2KS
+  kLineCap
+#else
+  330
+#endif
+};
 
 constexpr int GetLevelByLines(int lines) {
   if (lines < 130) return 18;
   return lines / 10 + 6;
 }
-static_assert(GetLevelByLines(kLevelSpeedLines[0]) == 18);
-static_assert(GetLevelByLines(kLevelSpeedLines[1]) == 19);
-static_assert(GetLevelByLines(kLevelSpeedLines[2]) == 29);
-static_assert(GetLevelByLines(kLevelSpeedLines[3]) == 39);
 
 constexpr Level GetLevelSpeed(int level) {
   if (level == 18) return kLevel18;
   if (level < 29) return kLevel19;
+#ifdef NO_2KS
+  return kLevel29;
+#else
   if (level < 39) return kLevel29;
   return kLevel39;
+#endif
 }
 
 constexpr Level GetLevelSpeedByLines(int lines) {
@@ -68,6 +79,16 @@ constexpr int Score(int lines, int level) {
 constexpr int GetGroupByPieces(int pieces) {
   return pieces * 4 / 2 % 5;
 }
+
+// some testcases
+
+static_assert(GetLevelByLines(kLevelSpeedLines[0]) == 18);
+static_assert(GetLevelByLines(kLevelSpeedLines[1]) == 19);
+static_assert(GetLevelByLines(kLevelSpeedLines[2]) == 29);
+#ifndef NO_2KS
+static_assert(GetLevelByLines(kLevelSpeedLines[3]) == 39);
+#endif
+
 static_assert(GetGroupByPieces(0) == 0);
 static_assert(GetGroupByPieces(1) == 2);
 static_assert(GetGroupByPieces(4) == 3);

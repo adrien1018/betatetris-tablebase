@@ -48,8 +48,12 @@ std::vector<T> ParseIntList(const std::string& str) {
 Level ParseLevel(int level) {
   if (level == 18) return kLevel18;
   if (level >= 19 && level < 29) return kLevel19;
+#ifdef NO_2KS
+  if (level >= 29) return kLevel29;
+#else
   if (level >= 29 && level < 39) return kLevel29;
   if (level >= 39) return kLevel39;
+#endif
   throw std::out_of_range("Invalid level");
 }
 
