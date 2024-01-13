@@ -23,6 +23,7 @@ class Tetris {
   PossibleMoves moves_;
   MoveMap move_map_;
   int consecutive_fail_;
+  bool no_tuck_;
 
   // stats
   int run_score_;
@@ -54,6 +55,22 @@ class Tetris {
       return {-1, 0};
     }
 
+    if (no_tuck_) {
+      FrameSequence seq;
+      if (is_adj_) {
+        auto initial = InitialMove();
+        seq = GetSequence(initial);
+        FinishAdjSequence(seq, initial, pos);
+      } else {
+        seq = GetSequence(pos);
+      }
+      size_t frame = move_search::GetFirstFrameOnRow(pos.x + 1, LevelSpeed());
+      if (seq.size() >= frame && seq[frame - 1].value) {
+        consecutive_fail_++;
+        return {-1, 0};
+      }
+    }
+
     auto [lines, new_board] = before_clear.ClearLines();
     lines_ += lines;
     int delta_score = Score(lines, GetLevel());
@@ -76,7 +93,7 @@ class Tetris {
   }
 
  public:
-  void Reset(const Board& b, int lines, int now_piece, int next_piece) {
+  void Reset(const Board& b, int lines, int now_piece, int next_piece, bool no_tuck = false) {
     int pieces = (lines * 10 + b.Count()) / 4;
     if (pieces * 4 != lines * 10 + (int)b.Count()) throw std::runtime_error("Incorrect lines");
     board_ = b;
@@ -88,6 +105,7 @@ class Tetris {
     next_piece_ = next_piece;
     game_over_ = false;
     CalculateMoves_(true);
+    no_tuck_ = no_tuck;
     consecutive_fail_ = 0;
     run_score_ = 0;
     run_lines_ = 0;
@@ -165,7 +183,7 @@ class Tetris {
   const Board& GetBoard() const { return board_; }
 
   int GetLevel() const { return GetLevelByLines(lines_); }
-  Level LevelSpeed() const { return GetLevelSpeed(GetLevel()); }
+  constexpr Level LevelSpeed() const { return kLevel29; }
   bool IsAdj() const { return is_adj_; }
   int GetPieces() const { return pieces_; }
   int GetLines() const { return lines_; }

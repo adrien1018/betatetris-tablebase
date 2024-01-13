@@ -37,12 +37,12 @@ class PythonTetris {
   void Reset(const Board& b, int lines) {
     int first_piece = std::uniform_int_distribution<int>(0, kPieces - 1)(rng_);
     next_piece_ = GenNextPiece_(first_piece);
-    tetris.Reset(b, lines, first_piece, next_piece_);
+    tetris.Reset(b, lines, first_piece, next_piece_, true);
     next_piece_ = GenNextPiece_(next_piece_);
   }
 
   void Reset(const Board& b, int lines, int now_piece, int next_piece) {
-    tetris.Reset(b, lines, now_piece, next_piece);
+    tetris.Reset(b, lines, now_piece, next_piece, true);
     next_piece_ = GenNextPiece_(next_piece);
   }
 
