@@ -121,7 +121,7 @@ class Model(nn.Module):
         return self.evdev_final.evdev_coeff(x)
 
     @autocast(device_type=device)
-    def forward(self, obs, categorical=False, pi_only=False, evdev_only=False):
+    def forward(self, obs, categorical=False, pi_only=False):
         board, board_meta, moves, moves_meta, meta_int = obs
         batch = board.shape[0]
         pi = None
@@ -131,16 +131,13 @@ class Model(nn.Module):
         invalid = moves[:,2:6].view(batch, -1) == 0
         x = self.board_embed(board, board_meta)
         x = self.main_start(x)
-        if not pi_only:
-            evdev = self.evdev_final(self.evdev_head(x), meta_int[:,0].type(torch.LongTensor))
-        if not evdev_only:
-            x = x + self.moves_embed(moves, moves_meta)
-            x = self.main_end(x)
-            pi, v = self.pi_value_final(
-                    self.pi_logits_head(x),
-                    self.value_head(x),
-                    invalid)
-            if categorical: pi = Categorical(logits=pi)
+        x = x + self.moves_embed(moves, moves_meta)
+        x = self.main_end(x)
+        pi, v = self.pi_value_final(
+                self.pi_logits_head(x),
+                self.value_head(x),
+                invalid)
+        if categorical: pi = Categorical(logits=pi)
         return pi, torch.concat([v, evdev])
 
 def obs_to_torch(obs, device=None):

@@ -65,7 +65,13 @@ class Tetris {
         seq = GetSequence(pos);
       }
       size_t frame = move_search::GetFirstFrameOnRow(pos.x + 1, LevelSpeed());
-      if (seq.size() >= frame && seq[frame - 1].value) {
+      bool flag = frame >= 5;
+      if (flag) {
+        for (size_t i = frame - 5; i < frame; i++) {
+          if (i < seq.size() && seq[i].value) flag = false;
+        }
+      }
+      if (!flag) {
         consecutive_fail_++;
         return {-1, 0};
       }
