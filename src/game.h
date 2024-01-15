@@ -47,7 +47,7 @@ constexpr int kLevelSpeedLines[] = {0, 130, 230,
 #ifdef NO_2KS
   kLineCap
 #else
-  330
+  330, kLineCap
 #endif
 };
 
