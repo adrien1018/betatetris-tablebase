@@ -9,7 +9,7 @@ from filelock import FileLock
 import tetris
 
 def RandLinesFromSpeed(x):
-    return random.randrange(0//2, 500//2)*2
+    return random.randrange(0//2, 430//2)*2
 
 class BoardManager:
     def __init__(self, board_file):
