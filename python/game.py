@@ -8,15 +8,8 @@ from filelock import FileLock
 
 import tetris
 
-def SpeedFromLines(x):
-    if x < 130: return 0
-    if x < 230: return 1
-    if x < 330: return 2
-    return 3
-
 def RandLinesFromSpeed(x):
-    LINE_TABLE = [0, 130, 230, 330, 430]
-    return random.randrange(LINE_TABLE[x]//2, LINE_TABLE[x+1]//2)*2
+    return random.randrange(0//2, 500//2)*2
 
 class BoardManager:
     def __init__(self, board_file):

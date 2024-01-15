@@ -321,12 +321,13 @@ PyObject* Tetris_IsNoAdjMove(PythonTetris* self, PyObject* args, PyObject* kwds)
 }
 
 PyObject* Tetris_GetSequence(PythonTetris* self, PyObject* args, PyObject* kwds) {
-  static const char* kwlist[] = {"rotate", "x", "y", nullptr};
+  static const char* kwlist[] = {"rotate", "x", "y", "is_final", nullptr};
   Position pos;
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "iii", (char**)kwlist, &pos.r, &pos.x, &pos.y)) {
+  int is_final;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "iiip", (char**)kwlist, &pos.r, &pos.x, &pos.y, &is_final)) {
     return nullptr;
   }
-  return FrameSequenceToArray(self->tetris.GetSequence(pos));
+  return FrameSequenceToArray(self->tetris.GetSequence(pos, (bool)is_final));
 }
 
 PyObject* Tetris_GetAdjPremove(PythonTetris* self, PyObject* args, PyObject* kwds) {

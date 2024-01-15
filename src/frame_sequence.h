@@ -7,6 +7,8 @@ struct FrameInput {
   static const FrameInput B;
   static const FrameInput L;
   static const FrameInput R;
+  static const FrameInput D;
+  static const FrameInput S;
   uint8_t value;
   FrameInput operator|=(FrameInput a) {
     value |= a.value;
@@ -16,6 +18,8 @@ struct FrameInput {
   bool IsB() const { return value & 8; }
   bool IsL() const { return value & 1; }
   bool IsR() const { return value & 2; }
+  bool IsD() const { return value & 16; }
+  bool IsS() const { return value & 32; }
 
   std::string ToString() const {
     std::string str;
@@ -23,6 +27,8 @@ struct FrameInput {
     if (IsR()) str += 'R';
     if (IsA()) str += 'A';
     if (IsB()) str += 'B';
+    if (IsD()) str += 'D';
+    if (IsS()) str += 'S';
     return str.empty() ? "-" : str;
   }
 };
@@ -31,6 +37,8 @@ inline constexpr FrameInput FrameInput::A = FrameInput{4};
 inline constexpr FrameInput FrameInput::B = FrameInput{8};
 inline constexpr FrameInput FrameInput::L = FrameInput{1};
 inline constexpr FrameInput FrameInput::R = FrameInput{2};
+inline constexpr FrameInput FrameInput::D = FrameInput{16};
+inline constexpr FrameInput FrameInput::S = FrameInput{32};
 
 inline FrameInput operator|(FrameInput a, FrameInput b) {
   return a |= b;

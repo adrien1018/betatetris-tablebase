@@ -23,7 +23,7 @@ class Tetris {
   PossibleMoves moves_;
   MoveMap move_map_;
   int consecutive_fail_;
-  bool no_tuck_;
+  bool pd_all_;
 
   // stats
   int run_score_;
@@ -55,14 +55,14 @@ class Tetris {
       return {-1, 0};
     }
 
-    if (no_tuck_) {
+    if (pd_all_) {
       FrameSequence seq;
       if (is_adj_) {
         auto initial = InitialMove();
-        seq = GetSequence(initial);
-        FinishAdjSequence(seq, initial, pos);
+        seq = GetSequence(initial, false);
+        FinishAdjSequence(seq, initial, pos, false);
       } else {
-        seq = GetSequence(pos);
+        seq = GetSequence(pos, false);
       }
       size_t frame = move_search::GetFirstFrameOnRow(pos.x + 1, LevelSpeed());
       bool flag = frame >= 5;
@@ -98,8 +98,16 @@ class Tetris {
     return {delta_score, lines};
   }
 
+  void AddPushdown(FrameSequence& seq, int x) const {
+    size_t frame = move_search::GetFirstFrameOnRow(x + 1, LevelSpeed());
+    seq.resize(frame);
+    if (frame >= 5) {
+      for (size_t i = frame - 5; i < frame; i++) seq[i] = FrameInput::D;
+    }
+  }
+
  public:
-  void Reset(const Board& b, int lines, int now_piece, int next_piece, bool no_tuck = false) {
+  void Reset(const Board& b, int lines, int now_piece, int next_piece, bool pd_all = false) {
     int pieces = (lines * 10 + b.Count()) / 4;
     if (pieces * 4 != lines * 10 + (int)b.Count()) throw std::runtime_error("Incorrect lines");
     board_ = b;
@@ -111,7 +119,7 @@ class Tetris {
     next_piece_ = next_piece;
     game_over_ = false;
     CalculateMoves_(true);
-    no_tuck_ = no_tuck;
+    pd_all_ = pd_all;
     consecutive_fail_ = 0;
     run_score_ = 0;
     run_lines_ = 0;
@@ -167,8 +175,10 @@ class Tetris {
     }
   }
 
-  FrameSequence GetSequence(const Position& pos) const {
-    return GetFrameSequenceStart<TAP_SPEED>(board_, LevelSpeed(), now_piece_, ADJ_DELAY, pos);
+  FrameSequence GetSequence(const Position& pos, bool is_final) const {
+    auto seq = GetFrameSequenceStart<TAP_SPEED>(board_, LevelSpeed(), now_piece_, ADJ_DELAY, pos);
+    if (is_final && pd_all_) AddPushdown(seq, pos.x);
+    return seq;
   }
 
   std::pair<Position, FrameSequence> GetAdjPremove(const Position pos[7]) const {
@@ -176,8 +186,9 @@ class Tetris {
     return {moves_.adj[idx].first, seq};
   }
 
-  void FinishAdjSequence(FrameSequence& seq, const Position& intermediate_pos, const Position& final_pos) const {
+  void FinishAdjSequence(FrameSequence& seq, const Position& intermediate_pos, const Position& final_pos, bool add_pd = true) const {
     GetFrameSequenceAdj<TAP_SPEED>(seq, board_, LevelSpeed(), now_piece_, intermediate_pos, final_pos);
+    if (add_pd) AddPushdown(seq, final_pos.x);
   }
 
   void SetNextPiece(int piece) {
@@ -195,7 +206,7 @@ class Tetris {
   int GetLines() const { return lines_; }
   int NowPiece() const { return now_piece_; }
   int NextPiece() const { return next_piece_; }
-  bool IsOver() const { return game_over_ || consecutive_fail_ >= 3; }
+  bool IsOver() const { return game_over_ || consecutive_fail_ >= 1; }
   Position InitialMove() const {
     if (!is_adj_) throw std::logic_error("No initial move");
     return moves_.adj[initial_move_].first;

@@ -112,7 +112,7 @@ class GameConn(socketserver.BaseRequestHandler):
             self.step_game(pos)
             self.send_seq(seq)
         else:
-            seq = self.game.GetSequence(*strat)
+            seq = self.game.GetSequence(*strat, True)
             self.prev = (strat, None, None)
             self.send_seq(seq)
             self.send_seq([])
@@ -143,14 +143,14 @@ class GameConn(socketserver.BaseRequestHandler):
                 self.step_game(pos)
             else:
                 strat = adj_strats
-            seq = self.game.GetSequence(*strat)
+            seq = self.game.GetSequence(*strat, not is_adj)
         else:
             strat, _ = self.get_strat()
-            seq = self.game.GetSequence(*strat)
+            seq = self.game.GetSequence(*strat, True)
             if self.game.IsAdjMove(*strat):
                 self.step_game(strat)
                 strat, _ = self.get_strat()
-                seq = self.game.GetSequence(*strat)
+                seq = self.game.GetSequence(*strat, False)
         self.step_game(strat)
         self.prev_placement = strat
         self.send_seq(seq)
