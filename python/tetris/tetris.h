@@ -128,12 +128,9 @@ class PythonTetris {
 
     memset(state.move_meta.data(), 0, sizeof(state.move_meta));
     int to_transition = 0;
-    switch (tetris.LevelSpeed()) {
-      case kLevel18: state.move_meta[0] = 1; to_transition = std::min(130, kLineCap) - lines; break;
-      case kLevel19: state.move_meta[1] = 1; to_transition = std::min(230, kLineCap) - lines; break;
-      case kLevel29: state.move_meta[2] = 1; to_transition = std::min(330, kLineCap) - lines; break;
-      case kLevel39: state.move_meta[3] = 1; to_transition = kLineCap - lines; break;
-    }
+    int level_int = static_cast<int>(tetris.LevelSpeed());
+    state.move_meta[level_int] = 1;
+    to_transition = std::max(0, kLevelSpeedLines[level_int + 1] - lines);
     if (to_transition <= 10) { // 4..13
       state.move_meta[4 + (to_transition - 1)] = 1;
     } else if (to_transition <= 22) { // 14..17
