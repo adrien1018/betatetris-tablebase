@@ -9,9 +9,9 @@ constexpr int kLevels = 4;
 #ifdef LINE_CAP
 constexpr int kLineCap = LINE_CAP;
 #else
-constexpr int kLineCap = 390;
+constexpr int kLineCap = 3300;
 #ifndef TESTING
-#warning "Line cap not defined. Setting to 390."
+#warning "Line cap not defined. Setting to 3300."
 #endif
 #endif
 
@@ -53,7 +53,10 @@ constexpr int kLevelSpeedLines[] = {0, 130, 230,
 
 constexpr int GetLevelByLines(int lines) {
   if (lines < 130) return 18;
-  return lines / 10 + 6;
+  if (lines < 2290) return lines / 10 + 6;
+  if (lines < 3100) return 235;
+  if (lines < 3300) return lines / 10 - 74;
+  return -1;
 }
 
 constexpr Level GetLevelSpeed(int level) {

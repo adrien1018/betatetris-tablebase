@@ -11,6 +11,12 @@ class Tetris {
   static constexpr uint8_t kNoAdj = 1;
   static constexpr uint8_t kHasAdj = 2;
 
+  enum AgentMode {
+    kNormalAgent,
+    kSingleAgent,
+    kPushdownAgent
+  };
+
  private:
   Board board_;
   int lines_;
@@ -23,16 +29,59 @@ class Tetris {
   PossibleMoves moves_;
   MoveMap move_map_;
   int consecutive_fail_;
-  bool pd_all_;
+  AgentMode agent_mode_;
+  bool cur_nnb_;
 
   // stats
   int run_score_;
   int run_lines_;
   int run_pieces_;
 
+  static bool ShouldPushdown_(int lines, int cleared) {
+    int start_level = GetLevelByLines(lines), end_level = GetLevelByLines(lines + cleared);
+    bool is_transition = start_level != end_level;
+    return (is_transition && end_level == 158) || (end_level == 253);
+  }
+
+  static bool ShouldNNB_(int lines, int cleared) {
+    int start_level = GetLevelByLines(lines), end_level = GetLevelByLines(lines + cleared);
+    bool is_transition = start_level != end_level;
+    return (is_transition && (end_level == 155 || end_level == 156 || end_level == 159)) ||
+           (!is_transition && cleared && (end_level == 157 || end_level == 158)) ||
+           (end_level == 249 || end_level == 255);
+  }
+
+  int GetClearLines_(const Position& pos) const {
+    return board_.Place(now_piece_, pos.r, pos.x, pos.y).ClearLines().first;
+  }
+
+  int GetAdjDelay_() const {
+    return agent_mode_ == kNormalAgent ? ADJ_DELAY : 61;
+  }
+
+  void SetAgentMode_() {
+    int level = GetLevelByLines(lines_);
+    if ((level >= 153 && level < 158) || (level >= 161 && level < 174) || (level >= 248 && level < 254)) {
+      // switch agent at clean and lower stack
+      if (agent_mode_ == kNormalAgent && board_.Height() <= 6 && board_.NumOverhang() <= 1) {
+        if (level >= 161 && level < 174) {
+          agent_mode_ = kSingleAgent;
+        } else {
+          agent_mode_ = kPushdownAgent;
+        }
+      }
+    } else {
+      agent_mode_ = kNormalAgent;
+    }
+  }
+
   void CalculateMoves_(bool regenerate) {
     if (regenerate) {
-      moves_ = MoveSearch<ADJ_DELAY, TAP_SPEED>(board_, LevelSpeed(), now_piece_);
+      if (agent_mode_ == kNormalAgent) {
+        moves_ = MoveSearch<ADJ_DELAY, TAP_SPEED>(board_, LevelSpeed(), now_piece_);
+      } else {
+        moves_ = MoveSearch<61, TAP_SPEED>(board_, LevelSpeed(), now_piece_);
+      }
       if (moves_.non_adj.empty() && moves_.adj.empty()) {
         game_over_ = true;
         return;
@@ -55,37 +104,17 @@ class Tetris {
       return {-1, 0};
     }
 
-    if (pd_all_) {
-      FrameSequence seq;
-      if (is_adj_) {
-        auto initial = InitialMove();
-        seq = GetSequence(initial, false);
-        FinishAdjSequence(seq, initial, pos, false);
-      } else {
-        seq = GetSequence(pos, false);
-      }
-      size_t frame = move_search::GetFirstFrameOnRow(pos.x + 1, LevelSpeed());
-      bool flag = frame >= 5;
-      if (flag) {
-        for (size_t i = frame - 5; i < frame; i++) {
-          if (i < seq.size() && seq[i].value) flag = false;
-        }
-      }
-      if (!flag) {
-        consecutive_fail_++;
-        return {-1, 0};
-      }
-    }
-
-    auto [lines, new_board] = before_clear.ClearLines();
-    lines_ += lines;
-    int delta_score = Score(lines, GetLevel());
+    auto [clear_lines, new_board] = before_clear.ClearLines();
+    cur_nnb_ = ShouldNNB_(lines_, clear_lines);
+    lines_ += clear_lines;
+    int delta_score = Score(clear_lines, GetRealLevel());
     board_ = new_board;
     pieces_++;
     is_adj_ = false;
     initial_move_ = 0;
     now_piece_ = next_piece_;
     next_piece_ = next_piece;
+    SetAgentMode_();
     if (lines_ >= kLineCap) {
       game_over_ = true;
     } else {
@@ -93,21 +122,48 @@ class Tetris {
     }
     consecutive_fail_ = 0;
     run_score_ += delta_score;
-    run_lines_ += lines;
+    run_lines_ += clear_lines;
     run_pieces_++;
-    return {delta_score, lines};
+    return {delta_score, clear_lines};
   }
 
-  void AddPushdown(FrameSequence& seq, int x) const {
-    size_t frame = move_search::GetFirstFrameOnRow(x + 1, LevelSpeed());
-    seq.resize(frame);
-    if (frame >= 5) {
-      for (size_t i = frame - 5; i < frame; i++) seq[i] = FrameInput::D;
+  static void AddStartNNB_(FrameSequence& seq) {
+    for (size_t i = seq.size(); i > 0; i--) {
+      if (!seq[i - 1].value) {
+        seq[i - 1] = FrameInput::S;
+        return;
+      }
+    }
+  }
+  static void AddStopNNB_(FrameSequence& seq) {
+    for (auto& i : seq) {
+      if (!i.value) {
+        i = FrameInput::S;
+        return;
+      }
+    }
+  }
+  static void AddPushdown_(FrameSequence& seq) {
+    if (seq.size() >= 5) {
+      for (size_t i = seq.size() - 5; i < seq.size(); i++) seq[i] = FrameInput::D;
     }
   }
 
+  void ResizeFrameSeq_(FrameSequence& seq, int row) const {
+    size_t frame = move_search::GetFirstFrameOnRow(row + 1, LevelSpeed());
+    seq.resize(frame);
+  }
+
+  void SequencePostProcess_(FrameSequence& seq, const Position& pos) const {
+    ResizeFrameSeq_(seq, pos.x);
+    int clear_lines = GetClearLines_(pos);
+    if (ShouldPushdown_(lines_, clear_lines)) AddPushdown_(seq);
+    if (cur_nnb_) AddStopNNB_(seq);
+    if (ShouldNNB_(lines_, clear_lines)) AddStartNNB_(seq);
+  }
+
  public:
-  void Reset(const Board& b, int lines, int now_piece, int next_piece, bool pd_all = false) {
+  void Reset(const Board& b, int lines, int now_piece, int next_piece) {
     int pieces = (lines * 10 + b.Count()) / 4;
     if (pieces * 4 != lines * 10 + (int)b.Count()) throw std::runtime_error("Incorrect lines");
     board_ = b;
@@ -118,8 +174,9 @@ class Tetris {
     now_piece_ = now_piece;
     next_piece_ = next_piece;
     game_over_ = false;
+    SetAgentMode_();
     CalculateMoves_(true);
-    pd_all_ = pd_all;
+    cur_nnb_ = false;
     consecutive_fail_ = 0;
     run_score_ = 0;
     run_lines_ = 0;
@@ -176,19 +233,19 @@ class Tetris {
   }
 
   FrameSequence GetSequence(const Position& pos, bool is_final) const {
-    auto seq = GetFrameSequenceStart<TAP_SPEED>(board_, LevelSpeed(), now_piece_, ADJ_DELAY, pos);
-    if (is_final && pd_all_) AddPushdown(seq, pos.x);
+    auto seq = GetFrameSequenceStart<TAP_SPEED>(board_, LevelSpeed(), now_piece_, GetAdjDelay_(), pos);
+    if (is_final) SequencePostProcess_(seq, pos);
     return seq;
   }
 
   std::pair<Position, FrameSequence> GetAdjPremove(const Position pos[7]) const {
-    auto [idx, seq] = GetBestAdj<TAP_SPEED>(board_, LevelSpeed(), now_piece_, moves_, ADJ_DELAY, pos);
+    auto [idx, seq] = GetBestAdj<TAP_SPEED>(board_, LevelSpeed(), now_piece_, moves_, GetAdjDelay_(), pos);
     return {moves_.adj[idx].first, seq};
   }
 
-  void FinishAdjSequence(FrameSequence& seq, const Position& intermediate_pos, const Position& final_pos, bool add_pd = true) const {
+  void FinishAdjSequence(FrameSequence& seq, const Position& intermediate_pos, const Position& final_pos, bool postprocess = true) const {
     GetFrameSequenceAdj<TAP_SPEED>(seq, board_, LevelSpeed(), now_piece_, intermediate_pos, final_pos);
-    if (add_pd) AddPushdown(seq, final_pos.x);
+    if (postprocess) SequencePostProcess_(seq, final_pos);
   }
 
   void SetNextPiece(int piece) {
@@ -199,11 +256,16 @@ class Tetris {
   const MoveMap& GetPossibleMoveMap() const { return move_map_; }
   const Board& GetBoard() const { return board_; }
 
-  int GetLevel() const { return GetLevelByLines(lines_); }
-  constexpr Level LevelSpeed() const { return kLevel29; }
+  int GetRealLevel() const { return GetLevelByLines(lines_); }
+  int GetStateLevel() const { return GetLevelByLines(GetStateLines()); }
+  Level LevelSpeed() const { return GetLevelSpeedByLines(lines_); }
   bool IsAdj() const { return is_adj_; }
   int GetPieces() const { return pieces_; }
-  int GetLines() const { return lines_; }
+  int GetRealLines() const { return lines_; }
+  int GetStateLines() const {
+    int line_cap = (agent_mode_ == kNormalAgent ? 250 : 40) + (lines_ % 2);
+    return std::min(lines_, line_cap);
+  }
   int NowPiece() const { return now_piece_; }
   int NextPiece() const { return next_piece_; }
   bool IsOver() const { return game_over_ || consecutive_fail_ >= 1; }
@@ -211,6 +273,7 @@ class Tetris {
     if (!is_adj_) throw std::logic_error("No initial move");
     return moves_.adj[initial_move_].first;
   }
+  AgentMode GetAgentMode() const { return agent_mode_; }
 
   int RunPieces() const { return run_pieces_; }
   int RunLines() const { return run_lines_; }

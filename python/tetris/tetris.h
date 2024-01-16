@@ -37,12 +37,12 @@ class PythonTetris {
   void Reset(const Board& b, int lines) {
     int first_piece = std::uniform_int_distribution<int>(0, kPieces - 1)(rng_);
     next_piece_ = GenNextPiece_(first_piece);
-    tetris.Reset(b, lines, first_piece, next_piece_, true);
+    tetris.Reset(b, lines, first_piece, next_piece_);
     next_piece_ = GenNextPiece_(next_piece_);
   }
 
   void Reset(const Board& b, int lines, int now_piece, int next_piece) {
-    tetris.Reset(b, lines, now_piece, next_piece, true);
+    tetris.Reset(b, lines, now_piece, next_piece);
     next_piece_ = GenNextPiece_(next_piece);
   }
 
@@ -122,7 +122,7 @@ class PythonTetris {
     state.meta[20] = 1; // hardcode now; modify if extended
     state.meta[24] = 1;
 
-    int lines = tetris.GetLines();
+    int lines = tetris.GetStateLines();
     state.meta_int[0] = lines / 2;
     state.meta_int[1] = tetris.NowPiece();
 
@@ -143,8 +143,8 @@ class PythonTetris {
       state.move_meta[23] = 1;
     }
     state.move_meta[24] = to_transition * 0.01;
-    state.move_meta[25] = (tetris.GetLevel() - 18) * 0.1;
-    state.move_meta[26] = tetris.GetLines() * 0.01;
+    state.move_meta[25] = (tetris.GetStateLevel() - 18) * 0.1;
+    state.move_meta[26] = tetris.GetStateLines() * 0.01;
     state.move_meta[27] = tetris.GetPieces() * 0.004;
   }
 
