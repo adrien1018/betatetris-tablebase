@@ -395,8 +395,12 @@ PyObject* Tetris_GetRealLevel(PythonTetris* self, PyObject* Py_UNUSED(ignored)) 
   return PyLong_FromLong(self->tetris.GetRealLevel());
 }
 
-PyObject* Tetris_GetPieces(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
-  return PyLong_FromLong(self->tetris.GetPieces());
+PyObject* Tetris_GetStatePieces(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
+  return PyLong_FromLong(self->tetris.GetStatePieces());
+}
+
+PyObject* Tetris_GetRealPieces(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
+  return PyLong_FromLong(self->tetris.GetRealPieces());
 }
 
 PyObject* Tetris_GetNowPiece(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
@@ -456,7 +460,8 @@ PyMethodDef py_tetris_class_methods[] = {
     {"GetRealLines", (PyCFunction)Tetris_GetRealLines, METH_NOARGS, "Get total lines"},
     {"GetStateLevel", (PyCFunction)Tetris_GetStateLevel, METH_NOARGS, "Get level for state"},
     {"GetRealLevel", (PyCFunction)Tetris_GetRealLevel, METH_NOARGS, "Get level"},
-    {"GetPieces", (PyCFunction)Tetris_GetPieces, METH_NOARGS, "Get total pieces"},
+    {"GetStatePieces", (PyCFunction)Tetris_GetStatePieces, METH_NOARGS, "Get total pieces for state"},
+    {"GetRealPieces", (PyCFunction)Tetris_GetRealPieces, METH_NOARGS, "Get total pieces"},
     {"GetNowPiece", (PyCFunction)Tetris_GetNowPiece, METH_NOARGS, "Get current piece"},
     {"GetNextPiece", (PyCFunction)Tetris_GetNextPiece, METH_NOARGS, "Get next piece"},
     {"GetAgentMode", (PyCFunction)Tetris_GetAgentMode, METH_NOARGS, "Get the agent to use"},

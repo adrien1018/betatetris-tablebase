@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
-import sys, os.path, socketserver, argparse, re, socket
+import sys, os.path, socketserver, argparse, re, socket, pickle
 import numpy as np, torch
 
 import tetris
 from model import Model, obs_to_torch
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+board_cache = {}
 
 class GameConn(socketserver.BaseRequestHandler):
     def read_until(self, sz):
@@ -42,7 +43,7 @@ class GameConn(socketserver.BaseRequestHandler):
             return (action // 200, action // 10 % 20, action % 10), v[0].item()
 
     def print_status(self, strats, is_table, data):
-        states = [is_table, self.game.GetAgentMode(), self.game.GetRunPieces()]
+        states = [is_table, self.game.GetAgentMode(), self.game.GetRealPieces(), self.game.GetRealLines(), self.game.GetRealLevel(), self.game.GetRunScore(), self.game.GetNowPiece()]
         def StratState(i):
             ntxt = f'{strats[i][0]} {strats[i][1]} {strats[i][2]}'
             if not is_table:
@@ -63,13 +64,18 @@ class GameConn(socketserver.BaseRequestHandler):
             return strats
 
     def query_tablebase(self):
+        global board_cache
         query = (
             bytes([1]) +
             self.game.GetBoard().GetBytes() +
             bytes([self.game.GetNowPiece(), self.game.GetStateLines() % 256, self.game.GetStateLines() // 256])
         )
-        self.board_conn.sendall(query)
-        result = self.board_conn.recv(22)
+        if query in board_cache:
+            result = board_cache[query]
+        else:
+            self.board_conn.sendall(query)
+            result = self.board_conn.recv(22)
+            board_cache[query] = result
         level = result[21]
         adj_strats = [tuple(result[i:i+3]) for i in range(0, 21, 3)]
         self.print_status(adj_strats, True, level)
@@ -79,7 +85,7 @@ class GameConn(socketserver.BaseRequestHandler):
         # tablebase
         if self.board_conn and self.game.GetAgentMode() == 0:
             adj_strats, level = self.query_tablebase()
-            if not (adj_strats[0] == (0, 0, 0) or level < 6 or (level < 12 and self.game.GetLines() >= 230)):
+            if not (adj_strats[0] == (0, 0, 0) or level < 6 or (level < 12 and self.game.GetRealLines() >= 230)):
                 if self.game.IsNoAdjMove(*adj_strats[0]):
                     return False, adj_strats[0]
                 return True, adj_strats
@@ -202,6 +208,7 @@ if __name__ == "__main__":
     parser.add_argument('model_normal')
     parser.add_argument('model_single')
     parser.add_argument('model_pushdown')
+    parser.add_argument('cache_file')
     parser.add_argument('-b', '--bind', type=str, default='0.0.0.0')
     parser.add_argument('-p', '--port', type=int, default=3456)
     parser.add_argument('-s', '--server', type=str)
@@ -213,6 +220,11 @@ if __name__ == "__main__":
         LoadModel(args.model_single),
         LoadModel(args.model_pushdown),
     ]
+    try:
+        with open(args.cache_file, 'rb') as f:
+            board_cache = pickle.load(f)
+    except FileNotFoundError:
+        pass
 
     if args.server:
         host, port = args.server.split(':')
@@ -226,10 +238,13 @@ if __name__ == "__main__":
     for model in models:
         model(obs_to_torch(tetris.Tetris().GetState()), pi_only=True)
 
+    socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer((args.bind, args.port), GenHandler(models, board_conn)) as server:
         print(f'Ready, listening on {args.bind}:{args.port}')
         try:
             server.serve_forever()
         except KeyboardInterrupt:
             server.shutdown()
+            with open(args.cache_file, 'wb') as f:
+                pickle.dump(board_cache, f)
 

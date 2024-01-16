@@ -131,7 +131,7 @@ class PythonTetris {
     int level_int = static_cast<int>(tetris.LevelSpeed());
     state.move_meta[level_int] = 1;
     switch (tetris.GetAgentMode()) {
-      case Tetris::kNormalAgent: to_transition = std::max(0, std::max(kLevelSpeedLines[level_int + 1], 330) - lines); break;
+      case Tetris::kNormalAgent: to_transition = std::max(0, std::min(kLevelSpeedLines[level_int + 1], 330) - lines); break;
       case Tetris::kSingleAgent: to_transition = std::max(0, 1000 - lines); break;
       case Tetris::kPushdownAgent: to_transition = std::max(0, 430 - lines); break;
     }
@@ -149,7 +149,7 @@ class PythonTetris {
     state.move_meta[24] = to_transition * 0.01;
     state.move_meta[25] = (tetris.GetStateLevel() - 18) * 0.1;
     state.move_meta[26] = tetris.GetStateLines() * 0.01;
-    state.move_meta[27] = tetris.GetPieces() * 0.004;
+    state.move_meta[27] = tetris.GetStatePieces() * 0.004;
   }
 
   operator Tetris() const { return tetris; }

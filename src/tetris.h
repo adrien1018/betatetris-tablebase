@@ -109,6 +109,7 @@ class Tetris {
 
     auto [clear_lines, new_board] = before_clear.ClearLines();
     cur_nnb_ = ShouldNNB_(lines_, clear_lines);
+    if (ShouldPushdown_(lines_, clear_lines)) run_score_++;
     lines_ += clear_lines;
     int delta_score = Score(clear_lines, GetRealLevel());
     board_ = new_board;
@@ -265,7 +266,8 @@ class Tetris {
   int GetStateLevel() const { return GetLevelByLines(GetStateLines()); }
   Level LevelSpeed() const { return GetLevelSpeedByLines(lines_); }
   bool IsAdj() const { return is_adj_; }
-  int GetPieces() const { return pieces_; }
+  int GetRealPieces() const { return pieces_; }
+  int GetStatePieces() const { return pieces_ - (GetRealLines() - GetStateLines()) * 10 / 4; }
   int GetRealLines() const { return lines_; }
   int GetStateLines() const {
     int line_cap = (agent_mode_ == kNormalAgent ? 250 : 40) + (lines_ % 2);
