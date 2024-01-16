@@ -21,6 +21,8 @@ struct FrameInput {
   bool IsD() const { return value & 16; }
   bool IsS() const { return value & 32; }
 
+  constexpr auto operator<=>(const FrameInput&) const = default;
+
   std::string ToString() const {
     std::string str;
     if (IsL()) str += 'L';

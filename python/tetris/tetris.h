@@ -130,7 +130,11 @@ class PythonTetris {
     int to_transition = 0;
     int level_int = static_cast<int>(tetris.LevelSpeed());
     state.move_meta[level_int] = 1;
-    to_transition = std::max(0, kLevelSpeedLines[level_int + 1] - lines);
+    switch (tetris.GetAgentMode()) {
+      case Tetris::kNormalAgent: to_transition = std::max(0, std::max(kLevelSpeedLines[level_int + 1], 330) - lines); break;
+      case Tetris::kSingleAgent: to_transition = std::max(0, 1000 - lines); break;
+      case Tetris::kPushdownAgent: to_transition = std::max(0, 430 - lines); break;
+    }
     if (to_transition <= 10) { // 4..13
       state.move_meta[4 + (to_transition - 1)] = 1;
     } else if (to_transition <= 22) { // 14..17

@@ -35,30 +35,28 @@ class GameConn(socketserver.BaseRequestHandler):
         return ret.strip()
 
     def get_strat(self):
+        agent_mode = self.game.GetAgentMode()
         with torch.no_grad():
-            pi, v = self.model(obs_to_torch(self.game.GetState()), pi_only=True)
+            pi, v = self.models[agent_mode](obs_to_torch(self.game.GetState()), pi_only=True)
             action = torch.argmax(pi, 1).item()
             return (action // 200, action // 10 % 20, action % 10), v[0].item()
 
     def print_status(self, strats, is_table, data):
-        def StratText(i):
-            ntxt = f'({strats[i][0]},{strats[i][1]:2d},{strats[i][2]})'
+        states = [is_table, self.game.GetAgentMode(), self.game.GetRunPieces()]
+        def StratState(i):
+            ntxt = f'{strats[i][0]} {strats[i][1]} {strats[i][2]}'
             if not is_table:
-                ntxt += f' val {data[i]:6.3f}'
+                ntxt += f' {data[i]}'
             return ntxt
-        txt = 'Tablebase' if is_table else 'Neural Net'
-        txt += '\nPlacements\n'
         for i in range(7):
-            txt += 'TJZOSLI'[i] + ' ' + StratText(i) + '\n'
-        if is_table:
-            txt += f'confidence {data}\n'
-        else:
-            txt += '\n'
-        print(txt, end='', flush=True)
+            states.append(StratState(i))
+        states.append(data if is_table else '')
+        print(','.join([str(i) for i in states]), flush=True)
 
     def get_adj_strat(self, pos):
         with torch.no_grad():
-            pi, v = self.model(obs_to_torch(self.game.GetAdjStates(*pos)), pi_only=True)
+            # adj is disabled in single & pushdown mode
+            pi, v = self.models[0](obs_to_torch(self.game.GetAdjStates(*pos)), pi_only=True)
             actions = torch.argmax(pi, 1).flatten().cpu().tolist()
             strats = [(action // 200, action // 10 % 20, action % 10) for action in actions]
             self.print_status(strats, False, v[0].flatten().cpu().tolist())
@@ -68,7 +66,7 @@ class GameConn(socketserver.BaseRequestHandler):
         query = (
             bytes([1]) +
             self.game.GetBoard().GetBytes() +
-            bytes([self.game.GetNowPiece(), self.game.GetLines() % 256, self.game.GetLines() // 256])
+            bytes([self.game.GetNowPiece(), self.game.GetStateLines() % 256, self.game.GetStateLines() // 256])
         )
         self.board_conn.sendall(query)
         result = self.board_conn.recv(22)
@@ -78,8 +76,8 @@ class GameConn(socketserver.BaseRequestHandler):
         return adj_strats, level
 
     def get_strat_all(self):
-        if self.game.GetLines() < 310 and self.board_conn:
-            # tablebase
+        # tablebase
+        if self.board_conn and self.game.GetAgentMode() == 0:
             adj_strats, level = self.query_tablebase()
             if not (adj_strats[0] == (0, 0, 0) or level < 6 or (level < 12 and self.game.GetLines() >= 230)):
                 if self.game.IsNoAdjMove(*adj_strats[0]):
@@ -141,8 +139,6 @@ class GameConn(socketserver.BaseRequestHandler):
                 pos, _ = self.game.GetAdjPremove(strat)
                 strat = strat[self.game.GetNextPiece()]
                 self.step_game(pos)
-            else:
-                strat = adj_strats
             seq = self.game.GetSequence(*strat, not is_adj)
         else:
             strat, _ = self.get_strat()
@@ -180,32 +176,43 @@ class GameConn(socketserver.BaseRequestHandler):
                 break
 
 
-def GenHandler(model, board_conn):
+def GenHandler(models, board_conn):
     class Handler(GameConn):
         def __init__(self, *args, **kwargs):
-            self.model = model
+            self.models = models
             self.board_conn = board_conn
             super().__init__(*args, **kwargs)
     return Handler
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('model')
-    parser.add_argument('-b', '--bind', type=str, default='0.0.0.0')
-    parser.add_argument('-p', '--port', type=int, default=3456)
-    parser.add_argument('-s', '--server', type=str)
-    args = parser.parse_args()
-    print(args)
-
+def LoadModel(path):
     with torch.no_grad():
-        state_dict = torch.load(args.model)
+        state_dict = torch.load(path)
         channels = state_dict['main_start.0.main.0.weight'].shape[0]
         start_blocks = len([0 for i in state_dict if re.fullmatch(r'main_start.*main\.0\.weight', i)])
         end_blocks = len([0 for i in state_dict if re.fullmatch(r'main_end.*main\.0\.weight', i)])
         model = Model(start_blocks, end_blocks, channels).to(device)
         model.load_state_dict(state_dict)
         model.eval()
+        return model
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('model_normal')
+    parser.add_argument('model_single')
+    parser.add_argument('model_pushdown')
+    parser.add_argument('-b', '--bind', type=str, default='0.0.0.0')
+    parser.add_argument('-p', '--port', type=int, default=3456)
+    parser.add_argument('-s', '--server', type=str)
+    args = parser.parse_args()
+    print(args)
+
+    models = [
+        LoadModel(args.model_normal),
+        LoadModel(args.model_single),
+        LoadModel(args.model_pushdown),
+    ]
 
     if args.server:
         host, port = args.server.split(':')
@@ -216,10 +223,10 @@ if __name__ == "__main__":
         board_conn = None
 
     # load GPU first to reduce lag
-    model(obs_to_torch(tetris.Tetris().GetState()), pi_only=True)
+    for model in models:
+        model(obs_to_torch(tetris.Tetris().GetState()), pi_only=True)
 
-    with socketserver.TCPServer((args.bind, args.port), GenHandler(model, board_conn)) as server:
-        server.model = model
+    with socketserver.TCPServer((args.bind, args.port), GenHandler(models, board_conn)) as server:
         print(f'Ready, listening on {args.bind}:{args.port}')
         try:
             server.serve_forever()

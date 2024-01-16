@@ -70,6 +70,9 @@ class Tetris {
           agent_mode_ = kPushdownAgent;
         }
       }
+    } else if (level >= 174 && lines_ < 248) {
+      // switch agent at very clean and low stack
+      if (agent_mode_ == kSingleAgent && board_.Height() <= 4 && board_.NumOverhang() == 0) agent_mode_ = kNormalAgent;
     } else {
       agent_mode_ = kNormalAgent;
     }
@@ -137,6 +140,7 @@ class Tetris {
   }
   static void AddStopNNB_(FrameSequence& seq) {
     for (auto& i : seq) {
+      if (i == FrameInput::S) return;
       if (!i.value) {
         i = FrameInput::S;
         return;
@@ -240,6 +244,7 @@ class Tetris {
 
   std::pair<Position, FrameSequence> GetAdjPremove(const Position pos[7]) const {
     auto [idx, seq] = GetBestAdj<TAP_SPEED>(board_, LevelSpeed(), now_piece_, moves_, GetAdjDelay_(), pos);
+    if (cur_nnb_) AddStopNNB_(seq);
     return {moves_.adj[idx].first, seq};
   }
 
