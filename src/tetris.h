@@ -47,7 +47,7 @@ class Tetris {
     int start_level = GetLevelByLines(lines), end_level = GetLevelByLines(lines + cleared);
     bool is_transition = start_level != end_level;
     return (is_transition && (end_level == 155 || end_level == 156 || end_level == 159)) ||
-           (!is_transition && cleared && (end_level == 157 || end_level == 158)) ||
+           (!is_transition && cleared && (end_level == 156 || end_level == 157 || end_level == 158)) ||
            (end_level == 249 || end_level == 255);
   }
 
@@ -132,21 +132,10 @@ class Tetris {
   }
 
   static void AddStartNNB_(FrameSequence& seq) {
-    for (size_t i = seq.size(); i > 0; i--) {
-      if (!seq[i - 1].value) {
-        seq[i - 1] = FrameInput::S;
-        return;
-      }
-    }
+    seq.back() |= FrameInput::S;
   }
   static void AddStopNNB_(FrameSequence& seq) {
-    for (auto& i : seq) {
-      if (i == FrameInput::S) return;
-      if (!i.value) {
-        i = FrameInput::S;
-        return;
-      }
-    }
+    seq[0] |= FrameInput::S;
   }
   static void AddPushdown_(FrameSequence& seq) {
     if (seq.size() >= 5) {

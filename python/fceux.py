@@ -245,6 +245,11 @@ if __name__ == "__main__":
             server.serve_forever()
         except KeyboardInterrupt:
             server.shutdown()
+            try:
+                with open(args.cache_file, 'rb') as f:
+                    board_cache.update(pickle.load(f))
+            except FileNotFoundError:
+                pass
             with open(args.cache_file, 'wb') as f:
                 pickle.dump(board_cache, f)
 
