@@ -21,8 +21,8 @@ class GameConn(socketserver.BaseRequestHandler):
 
     @staticmethod
     def gen_seq(seq):
-        if len(seq) == 0: return bytes([0xfe, 1, 0])
-        return bytes([0xfe, len(seq)]) + seq.tobytes()
+        if len(seq) == 0: return bytes([0xfe, 0, 1, 0])
+        return bytes([0xfe, len(seq) // 256, len(seq) % 256]) + seq.tobytes()
 
     @staticmethod
     def seq_to_str(seq):

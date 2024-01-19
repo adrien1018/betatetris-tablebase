@@ -53,14 +53,16 @@ constexpr int kLevelSpeedLines[] = {0, 130, 230,
 
 constexpr int GetLevelByLines(int lines) {
   if (lines < 130) return 18;
-  if (lines < 2290) return lines / 10 + 6;
-  if (lines < 3100) return 235;
-  if (lines < 3300) return lines / 10 - 74;
-  return -1;
+  if (lines < 200) return lines / 10 + 6;
+  int offset = (lines - 200) / 10 % 1760; // cycle of 17600 lines
+  int base = 26;
+  if (offset >= 880) offset -= 10, base += 10;
+  int cycle = offset / 290, add = offset % 290;
+  return (base + cycle * 210 + std::min(add, 209)) & 255;
 }
 
 constexpr Level GetLevelSpeed(int level) {
-  if (level == 18) return kLevel18;
+  if (level <= 18) return kLevel18;
   if (level < 29) return kLevel19;
 #ifdef NO_2KS
   return kLevel29;
@@ -91,6 +93,14 @@ static_assert(GetLevelByLines(kLevelSpeedLines[2]) == 29);
 #ifndef NO_2KS
 static_assert(GetLevelByLines(kLevelSpeedLines[3]) == 39);
 #endif
+
+static_assert(GetLevelByLines(1310) == 137);
+static_assert(GetLevelByLines(2290) == 235);
+static_assert(GetLevelByLines(3099) == 235);
+static_assert(GetLevelByLines(3300) == 0);
+static_assert(GetLevelByLines(3300) == 0);
+static_assert(GetLevelByLines(5190) == 189);
+static_assert(GetLevelByLines(5999) == 189);
 
 static_assert(GetGroupByPieces(0) == 0);
 static_assert(GetGroupByPieces(1) == 2);

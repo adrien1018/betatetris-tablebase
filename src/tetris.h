@@ -156,6 +156,31 @@ class Tetris {
     if (ShouldNNB_(lines_, clear_lines)) AddStartNNB_(seq);
   }
 
+  static constexpr size_t kLevelFrames_[] = {48,43,38,33,28,23,18,13,8,6,5,5,5,4,4,4};
+
+  void SequenceExtend_(FrameSequence& seq) const {
+    size_t level = GetRealLevel();
+    if (level >= 16) return;
+    FrameSequence nseq;
+    for (size_t i = 0; i < seq.size(); i++) {
+      nseq.push_back(seq[i]);
+      if (i % 3 == 2) {
+        for (size_t j = 3; j < kLevelFrames_[level]; j++) nseq.push_back(FrameInput{});
+      }
+    }
+    nseq.swap(seq);
+  }
+
+  void SequenceShrink_(FrameSequence& seq) const {
+    size_t level = GetRealLevel();
+    if (level >= 16) return;
+    FrameSequence nseq;
+    for (size_t i = 0; i < seq.size(); i++) {
+      if (i % kLevelFrames_[level] < 3) nseq.push_back(seq[i]);
+    }
+    nseq.swap(seq);
+  }
+
  public:
   void Reset(const Board& b, int lines, int now_piece, int next_piece) {
     int pieces = (lines * 10 + b.Count()) / 4;
@@ -229,18 +254,22 @@ class Tetris {
   FrameSequence GetSequence(const Position& pos, bool is_final) const {
     auto seq = GetFrameSequenceStart<TAP_SPEED>(board_, LevelSpeed(), now_piece_, GetAdjDelay_(), pos);
     if (is_final) SequencePostProcess_(seq, pos);
+    SequenceExtend_(seq);
     return seq;
   }
 
   std::pair<Position, FrameSequence> GetAdjPremove(const Position pos[7]) const {
     auto [idx, seq] = GetBestAdj<TAP_SPEED>(board_, LevelSpeed(), now_piece_, moves_, GetAdjDelay_(), pos);
     if (cur_nnb_) AddStopNNB_(seq);
+    SequenceExtend_(seq);
     return {moves_.adj[idx].first, seq};
   }
 
   void FinishAdjSequence(FrameSequence& seq, const Position& intermediate_pos, const Position& final_pos, bool postprocess = true) const {
+    SequenceShrink_(seq);
     GetFrameSequenceAdj<TAP_SPEED>(seq, board_, LevelSpeed(), now_piece_, intermediate_pos, final_pos);
     if (postprocess) SequencePostProcess_(seq, final_pos);
+    SequenceExtend_(seq);
   }
 
   void SetNextPiece(int piece) {
@@ -252,13 +281,20 @@ class Tetris {
   const Board& GetBoard() const { return board_; }
 
   int GetRealLevel() const { return GetLevelByLines(lines_); }
-  int GetStateLevel() const { return GetLevelByLines(GetStateLines()); }
+  int GetStateLevel() const { return std::max(18, GetLevelByLines(GetStateLines())); }
   Level LevelSpeed() const { return GetLevelSpeedByLines(lines_); }
   bool IsAdj() const { return is_adj_; }
   int GetRealPieces() const { return pieces_; }
   int GetStatePieces() const { return pieces_ - (GetRealLines() - GetStateLines()) * 10 / 4; }
   int GetRealLines() const { return lines_; }
   int GetStateLines() const {
+    if ((lines_ >= 1000 && GetRealLevel() < 31) || GetRealLevel() < 18) {
+      if (GetRealLevel() < 16) {
+        return 100 + lines_ % 2;
+      } else {
+        return 100 + (GetRealLevel() - 16) * 10 + lines_ % 10;
+      }
+    }
     int line_cap = (agent_mode_ == kNormalAgent ? 250 : 40) + (lines_ % 2);
     return std::min(lines_, line_cap);
   }
