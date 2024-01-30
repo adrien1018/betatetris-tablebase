@@ -817,3 +817,7 @@ private:
 // ============================================================================================= //
 
 } // namespace BS
+
+template <class T> inline bool IsReady(const std::future<T>& f) {
+  return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+}
