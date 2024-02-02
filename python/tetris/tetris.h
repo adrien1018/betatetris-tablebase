@@ -10,6 +10,7 @@ class PythonTetris {
   static constexpr double kInvalidReward_ = -0.3;
   static constexpr double kRewardMultiplier_ = 2e-5; // 20 per maxout
   static constexpr double kBottomMultiplier_ = 1.1;
+  static constexpr double kGameOverMultiplier_ = 1. / 16;
   double step_reward_ = 5e-3;
 
  private:
@@ -55,6 +56,9 @@ class PythonTetris {
     if (!tetris.IsAdj()) {
       next_piece_ = GenNextPiece_(next_piece_);
       n_reward += step_reward_;
+    }
+    if (lines && lines != 4) {
+      n_reward *= kGameOverMultiplier_;
     }
     return {n_reward, reward};
   }

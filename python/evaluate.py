@@ -13,6 +13,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 N = 2000
 batch_size = 512
 n_workers = 2
+start_lines = 0
 output_file = None
 global_seed = 0
 
@@ -74,7 +75,7 @@ class Game:
         self.rng.reset(seed)
         now = self.rng.spawn()
         nxt = self.rng.spawn()
-        self.env.Reset(now, nxt, lines=0)
+        self.env.Reset(now, nxt, lines=start_lines)
         self.stats = [0, 0, 0, 0]
 
 def worker_process(remote, q_size, offset, seed_queue, shms):
@@ -191,6 +192,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('model')
     parser.add_argument('-n', '--num', type=int, default=N)
+    parser.add_argument('-l', '--start-lines', type=int, default=0)
     parser.add_argument('-b', '--batch-size', type=int, default=batch_size)
     parser.add_argument('-w', '--workers', type=int, default=n_workers)
     parser.add_argument('-o', '--output', type=str)
@@ -203,6 +205,7 @@ if __name__ == "__main__":
     n_workers = args.workers
     output_file = args.output
     global_seed = args.seed
+    start_lines = args.start_lines
 
     with torch.no_grad():
         state_dict = torch.load(args.model)
