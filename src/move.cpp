@@ -84,7 +84,8 @@ void CalculateBlock(
               adj_val[i] = adj_val[prev];
               adj_idx[i] = adj_val[i].MaxWithMask(local_val[idx], adj_idx[prev], idx);
             } else {
-              adj_val[i].MaxWith(adj_val[prev]);
+              adj_val[i] = adj_val[prev];
+              adj_val[i].MaxWith(local_val[idx]);
             }
           } else {
             adj_val[i] = local_val[idx];
@@ -308,8 +309,9 @@ void MergeRanges(int group, int pieces_l, int pieces_r, const std::vector<size_t
   if (delete_after) {
     readers.clear();
     for (int pieces = pieces_l; pieces < pieces_r; pieces += kGroups) {
-      std::filesystem::remove(one_filename_func(pieces));
-      std::filesystem::remove(std::string(one_filename_func(pieces)) + ".index");
+      std::string fname = one_filename_func(pieces);
+      std::filesystem::remove(fname);
+      std::filesystem::remove(fname + ".index");
     }
   }
 }
@@ -355,7 +357,9 @@ void MergeFullMoveRanges(int group, const std::vector<int>& sections, bool delet
   if (delete_after) {
     readers.clear();
     for (size_t i = 0; i < sections.size() - 1; i++) {
-      std::filesystem::remove(MoveRangePath(sections[i], sections[i+1], group));
+      std::string fname = MoveRangePath(sections[i], sections[i+1], group);
+      std::filesystem::remove(fname);
+      std::filesystem::remove(fname + ".index");
     }
   }
 }
@@ -379,7 +383,9 @@ void MergeFullThresholdRanges(const std::string& name, int group, const std::vec
   if (delete_after) {
     readers.clear();
     for (size_t i = 0; i < sections.size() - 1; i++) {
-      std::filesystem::remove(ThresholdRangePath(name, sections[i], sections[i+1], group));
+      std::string fname = ThresholdRangePath(name, sections[i], sections[i+1], group);
+      std::filesystem::remove(fname);
+      std::filesystem::remove(fname + ".index");
     }
   }
 }
