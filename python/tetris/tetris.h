@@ -8,9 +8,9 @@ class PythonTetris {
  public:
   PyObject_HEAD
   static constexpr double kInvalidReward_ = -0.3;
-  static constexpr double kRewardMultiplier_ = 1e-5; // 10 per maxout
-  static constexpr double kBottomMultiplier_ = 1.2;
-  double step_reward_ = 5e-4;
+  static constexpr double kRewardMultiplier_ = 2e-5; // 20 per maxout
+  static constexpr double kBottomMultiplier_ = 1.1;
+  double step_reward_ = 5e-3;
 
  private:
   std::mt19937_64 rng_;

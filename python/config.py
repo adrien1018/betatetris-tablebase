@@ -8,7 +8,7 @@ class Configs(BaseConfigs):
     # #### Configurations
     ## NN
     start_blocks: int = 4
-    end_blocks: int = 2
+    end_blocks: int = 3
     channels: int = 192
 
     def model_args(self):
@@ -17,7 +17,7 @@ class Configs(BaseConfigs):
     ## training
     lr: float = FloatDynamicHyperParam(1e-4, range_ = (0, 1e-3))
     # $\gamma$ and $\lambda$ for advantage calculation
-    gamma: float = FloatDynamicHyperParam(0.99 ** 0.5, range_ = (0.95, 1))
+    gamma: float = FloatDynamicHyperParam(0.996 ** 0.5, range_ = (0.95, 1))
     lamda: float = FloatDynamicHyperParam(0.92, range_ = (0.8, 1))
     # number of updates
     updates: int = 400000
@@ -25,13 +25,13 @@ class Configs(BaseConfigs):
     epochs: int = 1
     # number of worker processes
     n_workers: int = 2
-    env_per_worker: int = 128
+    env_per_worker: int = 64
     # number of steps to run on each process for a single update
-    worker_steps: int = 128
+    worker_steps: int = 192
     # size of mini batches
     n_update_per_epoch: int = 32
     # calculate loss in batches of mini_batch_size
-    mini_batch_size: int = 1024
+    mini_batch_size: int = 768
 
     ## loss calculation
     clipping_range: float = 0.2

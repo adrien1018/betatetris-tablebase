@@ -63,7 +63,7 @@ class Tetris {
     initial_move_ = 0;
     now_piece_ = next_piece_;
     next_piece_ = next_piece;
-    if (lines_ >= kLineCap) {
+    if (lines_ >= kLineCap || (lines && lines != 4)) {
       game_over_ = true;
     } else {
       CalculateMoves_(true);
@@ -171,7 +171,7 @@ class Tetris {
   int GetLines() const { return lines_; }
   int NowPiece() const { return now_piece_; }
   int NextPiece() const { return next_piece_; }
-  bool IsOver() const { return game_over_ || consecutive_fail_ >= 3; }
+  bool IsOver() const { return game_over_ || consecutive_fail_ >= 1; }
   Position InitialMove() const {
     if (!is_adj_) throw std::logic_error("No initial move");
     return moves_.adj[initial_move_].first;

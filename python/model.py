@@ -49,10 +49,10 @@ class EvDev(nn.Module):
         super().__init__()
         self.linear_ev = nn.Linear(in_feat, ev_rank)
         self.linear_dev = nn.Linear(in_feat, dev_rank)
-        ev_mat = torch.tensor(kEvMatrix * 1e-5)[:,:ev_rank]
-        dev_mat = torch.tensor(kDevMatrix * 1e-5)[:,:dev_rank]
-        self.register_buffer(name='ev_mat', tensor=ev_mat)
-        self.register_buffer(name='dev_mat', tensor=dev_mat)
+        self.ev_mat = torch.nn.Parameter(torch.tensor(kEvMatrix * 1e-5)[:,:ev_rank])
+        self.dev_mat = torch.nn.Parameter(torch.tensor(kDevMatrix * 1e-5)[:,:dev_rank])
+        self.ev_mat.requires_grad = True
+        self.dev_mat.requires_grad = True
 
     @autocast(device_type=device, enabled=False)
     def evdev_coeff(self, obs):
