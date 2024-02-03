@@ -49,18 +49,20 @@ template <Level level>
 void TestSearchPosition(const TestSearchBoard& b) {
   PossibleMoves moves;
   if constexpr (level == kLevel18 || level == kLevel19) {
+    bool expected = level == kLevel18 || b.lvl_19_ok;
     moves = MoveSearch<level, 18, Tap15Hz>(b.board, b.piece);
-    EXPECT_TRUE(std::any_of(moves.adj.begin(), moves.adj.end(), [&b](const auto& q) {
+    EXPECT_EQ(std::any_of(moves.adj.begin(), moves.adj.end(), [&b](const auto& q) {
             return std::find(q.second.begin(), q.second.end(), b.pos) != q.second.end();
-          })) << b.board.ToString() << "adj," << (int)level;
+          }), expected) << b.board.ToString() << "adj," << (int)level;
   }
   if constexpr (level == kLevel39) {
     moves = MoveSearch<level, 18, Tap30Hz>(b.board, b.piece);
   } else {
     moves = MoveSearch<level, 61, Tap15Hz>(b.board, b.piece);
   }
-  EXPECT_EQ(std::find(moves.non_adj.begin(), moves.non_adj.end(), b.pos) != moves.non_adj.end(),
-            level != kLevel39 || b.lvl_39_ok) << b.board.ToString() << "non_adj," << (int)level;
+  bool expected = level == kLevel18 || (b.lvl_19_ok && (level != kLevel39 || b.lvl_39_ok));
+  EXPECT_EQ(std::find(moves.non_adj.begin(), moves.non_adj.end(), b.pos) != moves.non_adj.end(), expected)
+      << b.board.ToString() << "non_adj," << (int)level;
 }
 
 TEST_F(SearchTest, Test30Hz) {

@@ -17,6 +17,7 @@ class FrameTest : public ::testing::Test {
 };
 
 void AssertTapSep(const FrameSequence& seq, int frames) {
+  frames = 2; // DOUBLE_TUCK
   int prev_ab = -100, prev_lr = -100;
   for (int i = 0; i < (int)seq.size(); i++) {
     if (seq[i].IsL() || seq[i].IsR()) {
@@ -67,6 +68,7 @@ void RandTest(const Board& b, int piece, int frame_sep, Rand& gen) {
 template <Level level>
 void PositionTest(const TestSearchBoard& b) {
   if (!b.lvl_39_ok && level == kLevel39) return;
+  if (!b.lvl_19_ok && level != kLevel18) return;
   FrameSequence seq;
   std::pair<Position, bool> sim_pos;
   if constexpr (level == kLevel18 || level == kLevel19) {

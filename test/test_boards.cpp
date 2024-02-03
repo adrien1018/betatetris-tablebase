@@ -175,105 +175,111 @@ const std::array<Board, 169> kTestBoards = {{
 
 using namespace std::literals;
 
-const std::array<TestSearchBoard, 24> kTestTuckBoards = {{
+const std::array<TestSearchBoard, 26> kTestTuckBoards = {{
   {Board("....XXX...\n"
-         ".....X...."sv), 0, {2, 19, 7}, false}, // L
-  {Board("....XXX...\n"
-         ".....X....\n"
-         "XXXXXXXXXX"sv), 0, {2, 18, 7}, true}, // L
+         ".....X...."sv), 0, {2, 19, 7}, true, false}, // L
   {Board("....XXX...\n"
          ".....X....\n"
-         ".....X...."sv), 3, {0, 18, 7}, true}, // L
-  {Board("....XXX...\n"
-         ".....X...."sv), 0, {2, 19, 3}, false}, // R
+         "XXXXXXXXXX"sv), 0, {2, 18, 7}, true, true}, // L
   {Board("....XXX...\n"
          ".....X....\n"
-         "XXXXX.XXXX"sv), 0, {2, 18, 3}, true}, // R
+         ".....X...."sv), 3, {0, 18, 7}, true, true}, // L
+  {Board("....XXX...\n"
+         "....X.....\n"
+         "....X....."sv), 3, {0, 18, 6}, false, false}, // L-/-L
+  {Board("....XXX...\n"
+         ".....X...."sv), 0, {2, 19, 3}, true, false}, // R
   {Board("....XXX...\n"
          ".....X....\n"
-         ".....X...."sv), 3, {0, 18, 4}, true}, // R
+         "XXXXX.XXXX"sv), 0, {2, 18, 3}, true, true}, // R
+  {Board("....XXX...\n"
+         ".....X....\n"
+         ".....X...."sv), 3, {0, 18, 4}, true, true}, // R
+  {Board("....XXX...\n"
+         "......X...\n"
+         "......X..."sv), 3, {0, 18, 4}, false, false}, // R-/-R
   {Board("....XXX.XX\n"
          "....X....X\n"
-         "XXXXXXX.XX"sv), 6, {0, 18, 7}, true}, // A
+         "XXXXXXX.XX"sv), 6, {0, 18, 7}, true, true}, // A
   {Board("....XX..XX\n"
          "....X...XX\n"
          "XXXXXX.XXX\n"
-         "XXXXXX.XXX"sv), 0, {0, 17, 6}, false}, // A
+         "XXXXXX.XXX"sv), 0, {0, 17, 6}, true, false}, // A
   {Board("....XXX.XX\n"
          "....XX..XX\n"
          "....XX..XX\n"
          "XXXX....XX\n"
-         "XXXXXX..XX"sv), 6, {0, 18, 6}, true}, // LA
+         "XXXXXX..XX"sv), 6, {0, 18, 6}, true, true}, // LA
   {Board("....XXX..X\n"
          "....XX...X\n"
          "XXXXX...XX\n"
-         "XXXXXX..XX"sv), 1, {0, 18, 6}, true}, // LA
+         "XXXXXX..XX"sv), 1, {0, 18, 6}, true, true}, // LA
   {Board("XXXX.XXXXX\n"
          "XXXX..XXXX\n"
          "XXXX..XXXX\n"
          "XX.....XXX\n"
-         "XXXX..XXXX"sv), 6, {0, 18, 5}, true}, // RA
+         "XXXX..XXXX"sv), 6, {0, 18, 5}, true, true}, // RA
   {Board("....XXX.XX\n"
          "....XX..XX\n"
          "....XX..XX\n"
          "....XX..XX\n"
          "XXXX....XX\n"
-         "XXXXXX.XXX"sv), 6, {0, 18, 6}, false}, // L-A
+         "XXXXXX.XXX"sv), 6, {0, 18, 6}, true, false}, // L-A
   {Board("....XXX.XX\n"
          "....XX..XX\n"
          "....XX..XX\n"
          "....XX..XX\n"
          "....XX..XX\n"
          "XXXX....XX\n"
-         "XXXXXX.XXX"sv), 6, {0, 18, 6}, true}, // L-A
+         "XXXXXX.XXX"sv), 6, {0, 18, 6}, true, true}, // L-A
   {Board("....XXX..X\n"
          "....XX...X\n"
          "....XX..XX\n"
          "XXXXX...XX\n"
-         "XXXXXX..XX"sv), 1, {0, 18, 6}, false}, // L-A
+         "XXXXXX..XX"sv), 1, {0, 18, 6}, true, false}, // L-A
   {Board("XXXX.XXXXX\n"
          "XXXX..XXXX\n"
          "XXXX..XXXX\n"
          "XXXX..XXXX\n"
          "XX.....XXX\n"
-         "XXXXX.XXXX"sv), 6, {0, 18, 5}, false}, // R-A
+         "XXXXX.XXXX"sv), 6, {0, 18, 5}, true, false}, // R-A
   {Board("....XXX.XX\n"
          "....XXX.XX\n"
          "....XXX.XX\n"
          "...XX....X\n"
-         "XXXX.....X"sv), 6, {0, 19, 6}, false}, // A-L
+         "XXXX.....X"sv), 6, {0, 19, 6}, true, false}, // A-L
   {Board("..X..XXXXX\n"
          "..X..XXXXX\n"
          "..X...XXXX\n"
-         "XX....XXXX"sv), 0, {2, 19, 3}, false}, // A-L
+         "XX....XXXX"sv), 0, {2, 19, 3}, true, false}, // A-L
   {Board("..X..XXXXX\n"
          "..X..XXXXX\n"
          "..X...XXXX\n"
-         "XXX....XXX"sv), 0, {2, 19, 5}, false}, // A-R
+         "XXX....XXX"sv), 0, {2, 19, 5}, true, false}, // A-R
   {Board(".....XX...\n"
          "......X...\n"
          "XXXX.XXXXX\n"
-         "XXXX.XXXXX"sv), 0, {0, 17, 4}, false}, // B
+         "XXXX.XXXXX"sv), 0, {0, 17, 4}, true, false}, // B
   {Board("...X..XXXX\n"
          "...X...XXX\n"
          "XXXXX...XX\n"
-         "XXXXX..XXX"sv), 5, {0, 18, 6}, true}, // RB
+         "XXXXX..XXX"sv), 5, {0, 18, 6}, true, true}, // RB
   {Board("...X..XXXX\n"
          "...X...XXX\n"
          "XXXXX...XX\n"
          "XXXXX..XXX\n"
-         "XXXXXXXXXX"sv), 5, {0, 17, 6}, false}, // RB
+         "XXXXXXXXXX"sv), 5, {0, 17, 6}, true, false}, // RB
   {Board("...X..XXXX\n"
          "...X...XXX\n"
          "...XX..XXX\n"
          "XXXXX...XX\n"
-         "XXXXX..XXX"sv), 5, {0, 18, 6}, false}, // R-B
+         "XXXXX..XXX"sv), 5, {0, 18, 6}, true, false}, // R-B
   {Board("..XXX..XXX\n"
          "..XXX..XXX\n"
          "..XX...XXX\n"
-         "XXX....XXX"sv), 0, {2, 19, 4}, false}, // B-L
+         "XXX....XXX"sv), 0, {2, 19, 4}, true, false}, // B-L
   {Board("..XXX..XXX\n"
          "..XXX..XXX\n"
          "..XX...XXX\n"
-         "XXXX....XX"sv), 0, {2, 19, 6}, false} // B-R
+         "XXXX....XX"sv), 0, {2, 19, 6}, true, false} // B-R
 }};

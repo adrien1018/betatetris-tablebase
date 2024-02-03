@@ -9,7 +9,7 @@ struct TestSearchBoard {
   Board board;
   int piece;
   Position pos;
-  bool lvl_39_ok;
+  bool lvl_19_ok, lvl_39_ok;
 };
 
-extern const std::array<TestSearchBoard, 24> kTestTuckBoards;
+extern const std::array<TestSearchBoard, 26> kTestTuckBoards;

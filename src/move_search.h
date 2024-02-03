@@ -331,7 +331,7 @@ template <int R>
 using TuckMask = std::array<std::array<Frames, 10>, R>;
 
 constexpr int TuckTypes(int R) {
-  return R == 1 ? 2 : R == 2 ? 7 : 12;
+  return R == 1 ? 4 : R == 2 ? 9 : 14;
   // R = 1: L R
   // R = 2: A LA RA AL AR
   // R = 4: B LB RB BL BR
@@ -353,18 +353,20 @@ struct TuckTypeTable {
   constexpr TuckTypeTable() : table() {
     table[0] = {0, -1, 0}; // L
     table[1] = {0, 1, 0}; // R
+    table[2] = {0, -2, 2}; // L-/-L
+    table[3] = {0, 2, 2}; // R-/-R
     if constexpr (R == 1) return;
-    table[2] = {1, 0, 0}; // A
-    table[3] = {1, -1, 0}; // LA
-    table[4] = {1, 1, 0}; // RA
-    table[5] = {1, -1, 1}; // A-L L-A
-    table[6] = {1, 1, 1}; // A-R R-A
+    table[4] = {1, 0, 0}; // A
+    table[5] = {1, -1, 0}; // LA
+    table[6] = {1, 1, 0}; // RA
+    table[7] = {1, -1, 1}; // A-L L-A
+    table[8] = {1, 1, 1}; // A-R R-A
     if constexpr (R == 2) return;
-    table[7] = {3, 0, 0}; // B
-    table[8] = {3, -1, 0}; // LB
-    table[9] = {3, 1, 0}; // RB
-    table[10] = {3, -1, 1}; // B-L L-B
-    table[11] = {3, 1, 1}; // B-R R-B
+    table[9] = {3, 0, 0}; // B
+    table[10] = {3, -1, 0}; // LB
+    table[11] = {3, 1, 0}; // RB
+    table[12] = {3, -1, 1}; // B-L L-B
+    table[13] = {3, 1, 1}; // B-R R-B
   }
 };
 
@@ -376,6 +378,8 @@ constexpr TuckMasks<R> GetTuckMasks(const FrameMasks<R> m) {
     for (int col = 0; col < 10; col++) {
       if (col > 0) ret[0][rot][col] = m.frame[rot][col] & m.frame[rot][col-1];
       if (col < 9) ret[1][rot][col] = m.frame[rot][col] & m.frame[rot][col+1];
+      if (col > 1) ret[2][rot][col] = m.frame[rot][col] & m.drop[rot][col-1] & m.drop[rot][col-1] >> 1 & m.frame[rot][col-2] >> 2;
+      if (col < 8) ret[3][rot][col] = m.frame[rot][col] & m.drop[rot][col+1] & m.drop[rot][col+1] >> 1 & m.frame[rot][col+2] >> 2;
     }
   }
   if (R == 1) return ret;
@@ -383,11 +387,11 @@ constexpr TuckMasks<R> GetTuckMasks(const FrameMasks<R> m) {
   for (int rot = 0; rot < R; rot++) {
     int nrot = (rot + 1) % R;
     for (int col = 0; col < 10; col++) {
-      ret[2][rot][col] = m.frame[rot][col] & m.frame[nrot][col];
-      if (col > 0) ret[3][rot][col] = ret[0][rot][col] & m.frame[nrot][col-1];
-      if (col < 9) ret[4][rot][col] = ret[1][rot][col] & m.frame[nrot][col+1];
-      if (col > 0) ret[5][rot][col] = m.frame[rot][col] & (m.drop[nrot][col] | m.drop[rot][col-1]) & m.frame[nrot][col-1] >> 1;
-      if (col < 9) ret[6][rot][col] = m.frame[rot][col] & (m.drop[nrot][col] | m.drop[rot][col+1]) & m.frame[nrot][col+1] >> 1;
+      ret[4][rot][col] = m.frame[rot][col] & m.frame[nrot][col];
+      if (col > 0) ret[5][rot][col] = ret[0][rot][col] & m.frame[nrot][col-1];
+      if (col < 9) ret[6][rot][col] = ret[1][rot][col] & m.frame[nrot][col+1];
+      if (col > 0) ret[7][rot][col] = m.frame[rot][col] & (m.drop[nrot][col] | m.drop[rot][col-1]) & m.frame[nrot][col-1] >> 1;
+      if (col < 9) ret[8][rot][col] = m.frame[rot][col] & (m.drop[nrot][col] | m.drop[rot][col+1]) & m.frame[nrot][col+1] >> 1;
     }
   }
   if (R == 2) return ret;
@@ -395,11 +399,11 @@ constexpr TuckMasks<R> GetTuckMasks(const FrameMasks<R> m) {
   for (int rot = 0; rot < R; rot++) {
     int nrot = (rot + 3) % R;
     for (int col = 0; col < 10; col++) {
-      ret[7][rot][col] = m.frame[rot][col] & m.frame[nrot][col];
-      if (col > 0) ret[8][rot][col] = ret[0][rot][col] & m.frame[nrot][col-1];
-      if (col < 9) ret[9][rot][col] = ret[1][rot][col] & m.frame[nrot][col+1];
-      if (col > 0) ret[10][rot][col] = m.frame[rot][col] & (m.drop[nrot][col] | m.drop[rot][col-1]) & m.frame[nrot][col-1] >> 1;
-      if (col < 9) ret[11][rot][col] = m.frame[rot][col] & (m.drop[nrot][col] | m.drop[rot][col+1]) & m.frame[nrot][col+1] >> 1;
+      ret[9][rot][col] = m.frame[rot][col] & m.frame[nrot][col];
+      if (col > 0) ret[10][rot][col] = ret[0][rot][col] & m.frame[nrot][col-1];
+      if (col < 9) ret[11][rot][col] = ret[1][rot][col] & m.frame[nrot][col+1];
+      if (col > 0) ret[12][rot][col] = m.frame[rot][col] & (m.drop[nrot][col] | m.drop[rot][col-1]) & m.frame[nrot][col-1] >> 1;
+      if (col < 9) ret[13][rot][col] = m.frame[rot][col] & (m.drop[nrot][col] | m.drop[rot][col+1]) & m.frame[nrot][col+1] >> 1;
     }
   }
   return ret;
@@ -423,8 +427,8 @@ class Search {
     Frames tuck_result[R][10] = {};
     for (int i = 0; i < TuckTypes(R); i++) {
       const auto& tuck = tucks.table[i];
-      int start_col = tuck.delta_col == -1 ? 1 : 0;
-      int end_col = tuck.delta_col == 1 ? 9 : 10;
+      int start_col = std::max(0, -tuck.delta_col);
+      int end_col = std::min(10, 10 - tuck.delta_col);
       for (int rot = 0; rot < R; rot++) {
         int nrot = (rot + tuck.delta_rot) % R;
         for (int col = start_col; col < end_col; col++) {
