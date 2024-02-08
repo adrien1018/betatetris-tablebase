@@ -18,6 +18,15 @@ class PythonTetris {
   int next_piece_;
 
   int GenNextPiece_(int piece) {
+    constexpr int kThresh[4] = {28, 24, 16, 8};
+    constexpr double kAdd[4] = {0.035, 0.046, 0.06, 0.09};
+    int level_int = static_cast<int>(tetris.LevelSpeed());
+    int threshold = kThresh[level_int];
+    double add = kAdd[level_int];
+    if (tetris.RunLines() >= threshold) {
+      float prob = add * 0.3 + add * 0.7 * std::min((tetris.RunLines() - threshold) / (threshold * 0.5), 1.0);
+      if (std::uniform_real_distribution<float>(0, 1)(rng_) < prob) return 6;
+    }
     return std::discrete_distribution<int>(
         kTransitionProbInt[piece], kTransitionProbInt[piece] + kPieces)(rng_);
   }
@@ -60,6 +69,7 @@ class PythonTetris {
     if (lines && lines != 4) {
       n_reward *= kGameOverMultiplier_;
     }
+    if (tetris.IsOver()) n_reward -= 1.0;
     return {n_reward, reward};
   }
 

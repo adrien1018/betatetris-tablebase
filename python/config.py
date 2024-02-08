@@ -18,7 +18,7 @@ class Configs(BaseConfigs):
     lr: float = FloatDynamicHyperParam(1e-4, range_ = (0, 1e-3))
     # $\gamma$ and $\lambda$ for advantage calculation
     gamma: float = FloatDynamicHyperParam(0.996 ** 0.5, range_ = (0.95, 1))
-    lamda: float = FloatDynamicHyperParam(0.92, range_ = (0.8, 1))
+    lamda: float = FloatDynamicHyperParam(0.92, range_ = (0.7, 1))
     # number of updates
     updates: int = 400000
     # number of epochs to train the model with sampled data
@@ -35,8 +35,8 @@ class Configs(BaseConfigs):
 
     ## loss calculation
     clipping_range: float = 0.2
-    vf_weight: float = FloatDynamicHyperParam(0.5, range_ = (0, 1))
-    raw_weight: float = FloatDynamicHyperParam(3e-4, range_ = (0, 0.1))
+    vf_weight: float = FloatDynamicHyperParam(2, range_ = (0, 5))
+    raw_weight: float = FloatDynamicHyperParam(1e-4, range_ = (0, 0.1))
     entropy_weight: float = FloatDynamicHyperParam(2.2e-2, range_ = (0, 5e-2))
     reg_l2: float = FloatDynamicHyperParam(0., range_ = (0, 5e-5))
 
