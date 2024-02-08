@@ -7,6 +7,7 @@ from multiprocessing import Process, Pipe, Queue, shared_memory
 import tetris
 
 from model import Model, obs_to_torch
+import time
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -16,9 +17,10 @@ n_workers = 2
 start_lines = 0
 output_file = None
 global_seed = 0
+gym_rng = False
 
-class RNG:
-    def __init__(self, seed = 0):
+class RNGGym:
+    def __init__(self, seed=0):
         self.reset(seed)
 
     def reset(self, seed):
@@ -43,10 +45,31 @@ class RNG:
         self.prev = ind
         return ind
 
+class RNGNormal:
+    def __init__(self, seed=0):
+        self.transition_matrix = [
+            [1, 5, 6, 5, 5, 5, 5],
+            [6, 1, 5, 5, 5, 5, 5],
+            [5, 6, 1, 5, 5, 5, 5],
+            [5, 5, 5, 2, 5, 5, 5],
+            [5, 5, 5, 5, 2, 5, 5],
+            [6, 5, 5, 5, 5, 1, 5],
+            [5, 5, 5, 5, 6, 5, 1],
+        ]
+        self.reset(seed)
+
+    def reset(self, seed):
+        self.rng = random.Random(seed)
+        self.prev = self.rng.randrange(7)
+
+    def spawn(self):
+        self.prev = self.rng.choices(range(7), weights=self.transition_matrix[self.prev])[0]
+        return self.prev
+
 class Game:
     def __init__(self):
         self.env = tetris.Tetris()
-        self.rng = RNG(0)
+        self.rng = RNGGym(0) if gym_rng else RNGNormal(0)
         self.reset(0)
 
     def step(self, action):
@@ -85,13 +108,19 @@ def worker_process(remote, q_size, offset, seed_queue, shms):
     shms = [(shared_memory.SharedMemory(name), shape, typ) for name, shape, typ in shms]
     obs_np = [np.ndarray(shape, dtype = typ, buffer = shm.buf) for shm, shape, typ in shms]
     obs_idx = slice(offset, q_size + offset)
+    reach_end = False
 
     def Reset(idx):
-        nonlocal games, is_running
-        try:
-            games[idx].reset(seed_queue.get_nowait())
-        except queue.Empty:
+        nonlocal games, is_running, reach_end
+        if reach_end:
             is_running[idx] = False
+            return
+        seed = seed_queue.get()
+        if seed is None:
+            reach_end = True
+            is_running[idx] = False
+            return
+        games[idx].reset(seed)
 
     while True:
         cmd, data = remote.recv()
@@ -113,7 +142,7 @@ def worker_process(remote, q_size, offset, seed_queue, shms):
             obs = tuple(zip(*obs))
             for i in range(len(obs)):
                 obs_np[i][obs_idx] = np.stack(obs[i])
-            remote.send((info, sum(is_running)))
+            remote.send((info, is_running))
         elif cmd == "close":
             remote.close()
             return
@@ -125,7 +154,7 @@ class Worker:
         self.process.start()
 
 @torch.no_grad()
-def Main(model):
+def Main(models):
     assert batch_size % n_workers == 0
     q_size = batch_size // n_workers
 
@@ -133,6 +162,7 @@ def Main(model):
     seeds = random.sample(range(2 ** 24), N)
     seed_queue = Queue()
     for i in seeds: seed_queue.put(i)
+    for i in range(n_workers * 2): seed_queue.put(None)
 
     shapes = [(batch_size, *i) for i in tetris.Tetris.StateShapes()]
     types = [np.dtype(i) for i in tetris.Tetris.StateTypes()]
@@ -154,22 +184,25 @@ def Main(model):
 
     info_arr = []
     old_finished = 0
+    running = np.ones(batch_size, dtype='bool')
     while True:
-        obs_torch = obs_to_torch(obs_np)
-        pi = model(obs_torch, pi_only=True)[0]
+        obs_torch = obs_to_torch([i[running] for i in obs_np])
+        pi = torch.stack([model(obs_torch, pi_only=True)[0] for model in models]).sum(0)
         pi = torch.argmax(pi, 1)
+        pi_np = np.zeros(batch_size, dtype='int')
+        pi_np[running] = pi.view(-1).cpu().numpy()
         for i in range(n_workers):
-            workers[i].child.send(('step', pi[i*q_size:(i+1)*q_size].view(-1).cpu().numpy()))
+            workers[i].child.send(('step', pi_np[i*q_size:(i+1)*q_size]))
         to_end = True
-        for i in workers:
-            info, num_running = i.child.recv()
+        for i in range(n_workers):
+            info, is_running = workers[i].child.recv()
             info_arr += info
-            if num_running > 0: to_end = False
-        if to_end: break
+            running[i*q_size:(i+1)*q_size] = is_running
+        if running.sum() == 0: break
 
         if old_finished // 50 != len(info_arr) // 50:
             text = f'{len(info_arr)} / {N} games finished'
-            print(text)
+            print(text, file=sys.stderr)
         old_finished = len(info_arr)
 
     for i in workers:
@@ -190,15 +223,16 @@ def Main(model):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('model')
+    parser.add_argument('models', nargs='+')
     parser.add_argument('-n', '--num', type=int, default=N)
     parser.add_argument('-l', '--start-lines', type=int, default=0)
     parser.add_argument('-b', '--batch-size', type=int, default=batch_size)
     parser.add_argument('-w', '--workers', type=int, default=n_workers)
     parser.add_argument('-o', '--output', type=str)
+    parser.add_argument('--gym-rng', action='store_true')
     parser.add_argument('--seed', type=int, default=global_seed)
     args = parser.parse_args()
-    print(args)
+    print(args, file=sys.stderr)
 
     N = args.num
     batch_size = args.batch_size
@@ -206,14 +240,18 @@ if __name__ == "__main__":
     output_file = args.output
     global_seed = args.seed
     start_lines = args.start_lines
+    gym_rng = args.gym_rng
 
-    with torch.no_grad():
-        state_dict = torch.load(args.model)
-        channels = state_dict['main_start.0.main.0.weight'].shape[0]
-        start_blocks = len([0 for i in state_dict if re.fullmatch(r'main_start.*main\.0\.weight', i)])
-        end_blocks = len([0 for i in state_dict if re.fullmatch(r'main_end.*main\.0\.weight', i)])
-        model = Model(start_blocks, end_blocks, channels).to(device)
-        model.load_state_dict(state_dict)
-        model.eval()
+    models = []
+    for model_file in args.models:
+        with torch.no_grad():
+            state_dict = torch.load(model_file)
+            channels = state_dict['main_start.0.main.0.weight'].shape[0]
+            start_blocks = len([0 for i in state_dict if re.fullmatch(r'main_start.*main\.0\.weight', i)])
+            end_blocks = len([0 for i in state_dict if re.fullmatch(r'main_end.*main\.0\.weight', i)])
+            model = Model(start_blocks, end_blocks, channels).to(device)
+            model.load_state_dict(state_dict)
+            model.eval()
+            models.append(model)
 
-    Main(model)
+    Main(models)
