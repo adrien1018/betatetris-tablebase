@@ -81,8 +81,8 @@ class PythonTetris {
     std::array<int, 2> meta_int;
   };
 
-  void GetState(State& state) const {
-    PythonTetris::GetState(tetris, state);
+  void GetState(State& state, int line_reduce = 0) const {
+    PythonTetris::GetState(tetris, state, line_reduce);
   }
 
   void GetAdjStates(const Position& pos, State states[kPieces]) const {
@@ -96,7 +96,7 @@ class PythonTetris {
     }
   }
 
-  static void GetState(const Tetris& tetris, State& state) {
+  static void GetState(const Tetris& tetris, State& state, int line_reduce = 0) {
     // board: shape (2, 20, 10) [board, one]
     // meta: shape (28,) [group(5), now_piece(7), next_piece(7), is_adj(1), hz(4), adj(4)]
     // meta_int: shape (2,) [entry, now_piece]
@@ -137,14 +137,16 @@ class PythonTetris {
     state.meta[24] = 1;
 
     int lines = tetris.GetLines();
-    state.meta_int[0] = lines / 2;
+    int state_lines = lines - line_reduce;
+    int state_level = GetLevelByLines(state_lines);
+    int state_speed = static_cast<int>(GetLevelSpeed(state_level));
+    state.meta_int[0] = state_lines / 2;
     state.meta_int[1] = tetris.NowPiece();
 
     memset(state.move_meta.data(), 0, sizeof(state.move_meta));
     int to_transition = 0;
-    int level_int = static_cast<int>(tetris.LevelSpeed());
-    state.move_meta[level_int] = 1;
-    to_transition = std::max(0, kLevelSpeedLines[level_int + 1] - lines);
+    state.move_meta[state_speed] = 1;
+    to_transition = std::max(0, kLevelSpeedLines[state_speed + 1] - state_lines);
     if (to_transition <= 10) { // 4..13
       state.move_meta[4 + (to_transition - 1)] = 1;
     } else if (to_transition <= 22) { // 14..17
@@ -157,9 +159,9 @@ class PythonTetris {
       state.move_meta[23] = 1;
     }
     state.move_meta[24] = to_transition * 0.01;
-    state.move_meta[25] = (tetris.GetLevel() - 18) * 0.1;
-    state.move_meta[26] = tetris.GetLines() * 0.01;
-    state.move_meta[27] = tetris.GetPieces() * 0.004;
+    state.move_meta[25] = (state_level - 18) * 0.1;
+    state.move_meta[26] = state_lines * 0.01;
+    state.move_meta[27] = (tetris.GetPieces() + line_reduce * 10 / 4) * 0.004;
   }
 
   operator Tetris() const { return tetris; }

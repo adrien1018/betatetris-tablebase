@@ -177,9 +177,14 @@ PyObject* Tetris_ResetRandom(PythonTetris* self, PyObject* args, PyObject* kwds)
   Py_RETURN_NONE;
 }
 
-PyObject* Tetris_GetState(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
+PyObject* Tetris_GetState(PythonTetris* self, PyObject* args, PyObject* kwds) {
+  static const char* kwlist[] = {"line_reduce", nullptr};
+  int line_reduce = 0;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "|i", (char**)kwlist, &line_reduce)) {
+    return nullptr;
+  }
   PythonTetris::State state{};
-  self->GetState(state);
+  self->GetState(state, line_reduce);
   PyObject *r1, *r2, *r3, *r4, *r5;
   {
     npy_intp dims[] = {state.board.size(), state.board[0].size(), state.board[0][0].size()};
@@ -417,7 +422,8 @@ PyMethodDef py_tetris_class_methods[] = {
      "Reset game and assign pieces randomly"},
     {"ResetRandom", (PyCFunction)Tetris_ResetRandom, METH_VARARGS | METH_KEYWORDS,
      "Reset game and assign pieces randomly"},
-    {"GetState", (PyCFunction)Tetris_GetState, METH_NOARGS, "Get state tuple"},
+    {"GetState", (PyCFunction)Tetris_GetState, METH_VARARGS | METH_KEYWORDS,
+     "Get state tuple"},
     {"StateShapes", (PyCFunction)Tetris_StateShapes, METH_NOARGS | METH_STATIC,
      "Get shapes of state array (static)"},
     {"GetAdjStates", (PyCFunction)Tetris_GetAdjStates, METH_VARARGS | METH_KEYWORDS,
