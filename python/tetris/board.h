@@ -26,6 +26,41 @@ struct PythonBoard {
     }
     return differences - well <= 10;
   }
+
+  bool IsCleanForPerfect() const {
+    uint32_t cols[12], map[12] = {};
+    bool updated[12] = {};
+    bool flag = false;
+    for (int i = 0; i < 10; i++) {
+      cols[i+1] = board.Column(i);
+      if (cols[i+1] == 0xfffff) flag = true;
+    }
+    if (!flag) return false;
+    updated[6] = true;
+    map[6] = 1 & cols[6];
+    while (true) {
+      bool flag = false;
+      for (int i : {5, 6, 7, 8, 9, 4, 3, 2, 1, 0}) {
+        if (!updated[i+1]) continue;
+        flag = true;
+        updated[i+1] = false;
+        uint32_t old = map[i+1];
+        map[i+1] |= ((old + cols[i+1]) ^ old ^ cols[i+1]) >> 1;
+        //printf("%d %x->%x %x\n", i, old, map[i+1], cols[i+1]);
+        old = map[i];
+        map[i] = (map[i] | map[i+1]) & cols[i];
+        updated[i] = map[i] != old;
+        old = map[i+2];
+        map[i+2] = (map[i+2] | map[i+1]) & cols[i+2];
+        updated[i+2] = map[i+2] != old;
+      }
+      if (!flag) break;
+    }
+    for (int i = 0; i < 10; i++) {
+      if (map[i+1] != cols[i+1]) return false;
+    }
+    return true;
+  }
 };
 
 extern PyTypeObject py_board_class;

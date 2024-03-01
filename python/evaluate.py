@@ -2,6 +2,7 @@
 
 import argparse, sys, queue, csv, re, random, math
 import numpy as np, torch
+from torch.distributions import Categorical
 from multiprocessing import Process, Pipe, Queue, shared_memory
 
 import tetris
@@ -18,6 +19,10 @@ start_lines = 0
 output_file = None
 global_seed = 0
 gym_rng = False
+clean_only = False
+sample_action = False
+board_file = None
+start_from_board = False
 
 class RNGGym:
     def __init__(self, seed=0):
@@ -93,12 +98,15 @@ class Game:
     def get_stats(self):
         return [self.seed] + self.stats + [self.env.GetLines()]
 
-    def reset(self, seed):
+    def reset(self, seed, board=None):
         self.seed = seed
         self.rng.reset(seed)
         now = self.rng.spawn()
         nxt = self.rng.spawn()
-        self.env.Reset(now, nxt, lines=start_lines)
+        if board:
+            self.env.Reset(now, nxt, lines=start_lines, board=board)
+        else:
+            self.env.Reset(now, nxt, lines=start_lines)
         self.stats = [0, 0, 0, 0]
 
 def worker_process(remote, q_size, offset, seed_queue, shms):
@@ -115,12 +123,15 @@ def worker_process(remote, q_size, offset, seed_queue, shms):
         if reach_end:
             is_running[idx] = False
             return
-        seed = seed_queue.get()
+        seed, board = seed_queue.get()
         if seed is None:
             reach_end = True
             is_running[idx] = False
             return
-        games[idx].reset(seed)
+        board = tetris.Board(board) if board else None
+        if board and board.Count() % 4 != 0:
+            board = None
+        games[idx].reset(seed, board)
 
     while True:
         cmd, data = remote.recv()
@@ -138,6 +149,10 @@ def worker_process(remote, q_size, offset, seed_queue, shms):
                 if not games[i].step(data[i]):
                     info.append(games[i].get_stats())
                     Reset(i)
+                if clean_only and not games[i].env.GetBoard().IsCleanForPerfect():
+                    info.append(games[i].get_stats())
+                    Reset(i)
+
             obs = [i.env.GetState() for i in games]
             obs = tuple(zip(*obs))
             for i in range(len(obs)):
@@ -158,11 +173,31 @@ def Main(models):
     assert batch_size % n_workers == 0
     q_size = batch_size // n_workers
 
+    if board_file:
+        board_set = set()
+        try:
+            with open(board_file, 'rb', buffering=1048576) as f:
+                while True:
+                    item = f.read(25)
+                    if len(item) == 0: break
+                    assert len(item) == 25
+                    board_set.add(item)
+        except FileNotFoundError:
+            pass
+        last_save = time.time()
+        save_num = 0
+
     random.seed(global_seed)
-    seeds = random.sample(range(2 ** 24), N)
+    seeds = random.sample(range(2 ** 24 if gym_rng else 2 ** 60), N)
+    if board_file and start_from_board and len(board_set) > 0:
+        pn = int(N * 0.8)
+        boards = random.choices(list(board_set), k=pn) + [None] * (N - pn)
+        random.shuffle(boards)
+    else:
+        boards = [None] * N
     seed_queue = Queue()
-    for i in seeds: seed_queue.put(i)
-    for i in range(n_workers * 2): seed_queue.put(None)
+    for i in zip(seeds, boards): seed_queue.put(i)
+    for i in range(n_workers * 2): seed_queue.put((None, None))
 
     shapes = [(batch_size, *i) for i in tetris.Tetris.StateShapes()]
     types = [np.dtype(i) for i in tetris.Tetris.StateTypes()]
@@ -177,49 +212,74 @@ def Main(models):
     shm_child = [(shm.name, shape, typ) for shm, shape, typ in zip(shms, shapes, types)]
     workers = [Worker(q_size, i * q_size, seed_queue, shm_child) for i in range(n_workers)]
 
+    def Save(fname, to_sort=False):
+        nonlocal last_save
+        with open(fname, 'wb', buffering=1048576) as f:
+            if to_sort:
+                for i in sorted(board_set): f.write(i)
+            else:
+                for i in board_set: f.write(i)
+        last_save = time.time()
+
     for i in workers: i.child.send(('init', None))
     for i in workers: i.child.recv()
     started = batch_size
     results = []
 
-    info_arr = []
-    old_finished = 0
-    running = np.ones(batch_size, dtype='bool')
-    while True:
-        obs_torch = obs_to_torch([i[running] for i in obs_np])
-        pi = torch.stack([model(obs_torch, pi_only=True)[0] for model in models]).sum(0)
-        pi = torch.argmax(pi, 1)
-        pi_np = np.zeros(batch_size, dtype='int')
-        pi_np[running] = pi.view(-1).cpu().numpy()
-        for i in range(n_workers):
-            workers[i].child.send(('step', pi_np[i*q_size:(i+1)*q_size]))
-        to_end = True
-        for i in range(n_workers):
-            info, is_running = workers[i].child.recv()
-            info_arr += info
-            running[i*q_size:(i+1)*q_size] = is_running
-        if running.sum() == 0: break
+    try:
+        info_arr = []
+        old_finished = 0
+        running = np.ones(batch_size, dtype='bool')
+        while True:
+            obs_torch = obs_to_torch([i[running] for i in obs_np])
 
-        if old_finished // 50 != len(info_arr) // 50:
-            text = f'{len(info_arr)} / {N} games finished'
-            print(text, file=sys.stderr)
-        old_finished = len(info_arr)
+            if board_file:
+                boards = obs_torch[0][:,0].view(-1, 200).cpu().numpy().astype('bool')
+                boards = np.packbits(boards, axis=1, bitorder='little')
+                board_set.update(map(lambda x: x.tobytes(), boards))
 
-    for i in workers:
-        i.child.send(('close', None))
-        i.child.close()
+            pi = torch.stack([model(obs_torch, pi_only=True)[0] for model in models]).mean(0)
+            if sample_action:
+                pi = Categorical(logits=pi).sample()
+            else:
+                pi = torch.argmax(pi, 1)
+            pi_np = np.zeros(batch_size, dtype='int')
+            pi_np[running] = pi.view(-1).cpu().numpy()
+            for i in range(n_workers):
+                workers[i].child.send(('step', pi_np[i*q_size:(i+1)*q_size]))
+            to_end = True
+            for i in range(n_workers):
+                info, is_running = workers[i].child.recv()
+                info_arr += info
+                running[i*q_size:(i+1)*q_size] = is_running
+            if running.sum() == 0: break
 
-    if output_file is None:
-        writer = csv.writer(sys.stdout)
-        writer.writerows(sorted(info_arr))
-    else:
-        with open(output_file, 'w') as f:
-            writer = csv.writer(f)
+            if old_finished // 50 != len(info_arr) // 50:
+                text = f'{len(info_arr)} / {N} games finished'
+                if board_file: text += f'; {len(board_set)} boards collected'
+                print(text, file=sys.stderr)
+            old_finished = len(info_arr)
+
+            if board_file and time.time() - last_save >= 5400:
+                Save(board_file + f'.{save_num}')
+                save_num = 1 - save_num
+    finally:
+        if board_file: Save(board_file)
+
+        if output_file is None:
+            writer = csv.writer(sys.stdout)
             writer.writerows(sorted(info_arr))
+        else:
+            with open(output_file, 'w') as f:
+                writer = csv.writer(f)
+                writer.writerows(sorted(info_arr))
 
-    for i in shms:
-        i.close()
-        i.unlink()
+        for i in workers:
+            i.child.send(('close', None))
+            i.child.close()
+        for i in shms:
+            i.close()
+            i.unlink()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -229,8 +289,12 @@ if __name__ == "__main__":
     parser.add_argument('-b', '--batch-size', type=int, default=batch_size)
     parser.add_argument('-w', '--workers', type=int, default=n_workers)
     parser.add_argument('-o', '--output', type=str)
-    parser.add_argument('--gym-rng', action='store_true')
     parser.add_argument('--seed', type=int, default=global_seed)
+    parser.add_argument('--gym-rng', action='store_true')
+    parser.add_argument('--clean-only', action='store_true')
+    parser.add_argument('--sample-action', action='store_true')
+    parser.add_argument('--board-file', type = str)
+    parser.add_argument('--start-from-board', action='store_true')
     args = parser.parse_args()
     print(args, file=sys.stderr)
 
@@ -241,7 +305,14 @@ if __name__ == "__main__":
     global_seed = args.seed
     start_lines = args.start_lines
     gym_rng = args.gym_rng
+    clean_only = args.clean_only
+    sample_action = args.sample_action
+    board_file = args.board_file
+    start_from_board = args.start_from_board
 
+    torch.backends.cudnn.benchmark = True
+    torch.set_float32_matmul_precision('high')
+    torch.backends.cuda.matmul.allow_tf32 = True
     models = []
     for model_file in args.models:
         with torch.no_grad():
@@ -252,6 +323,7 @@ if __name__ == "__main__":
             model = Model(start_blocks, end_blocks, channels).to(device)
             model.load_state_dict(state_dict)
             model.eval()
+            model = torch.compile(model)
             models.append(model)
 
     Main(models)
