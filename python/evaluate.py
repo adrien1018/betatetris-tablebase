@@ -132,6 +132,8 @@ def worker_process(remote, q_size, offset, seed_queue, shms):
         if board and board.Count() % 4 != 0:
             board = None
         games[idx].reset(seed, board)
+        if games[idx].env.IsOver():
+            games[idx].reset(seed)
 
     while True:
         cmd, data = remote.recv()
@@ -173,6 +175,20 @@ def Main(models):
     assert batch_size % n_workers == 0
     q_size = batch_size // n_workers
 
+    seed_queue = Queue()
+    shapes = [(batch_size, *i) for i in tetris.Tetris.StateShapes()]
+    types = [np.dtype(i) for i in tetris.Tetris.StateTypes()]
+    shms = [
+        shared_memory.SharedMemory(create=True, size=math.prod(shape) * typ.itemsize)
+        for shape, typ in zip(shapes, types)
+    ]
+    obs_np = [
+        np.ndarray(shape, dtype=typ, buffer=shm.buf)
+        for shm, shape, typ in zip(shms, shapes, types)
+    ]
+    shm_child = [(shm.name, shape, typ) for shm, shape, typ in zip(shms, shapes, types)]
+    workers = [Worker(q_size, i * q_size, seed_queue, shm_child) for i in range(n_workers)]
+
     if board_file:
         board_set = set()
         try:
@@ -195,22 +211,8 @@ def Main(models):
         random.shuffle(boards)
     else:
         boards = [None] * N
-    seed_queue = Queue()
     for i in zip(seeds, boards): seed_queue.put(i)
     for i in range(n_workers * 2): seed_queue.put((None, None))
-
-    shapes = [(batch_size, *i) for i in tetris.Tetris.StateShapes()]
-    types = [np.dtype(i) for i in tetris.Tetris.StateTypes()]
-    shms = [
-        shared_memory.SharedMemory(create=True, size=math.prod(shape) * typ.itemsize)
-        for shape, typ in zip(shapes, types)
-    ]
-    obs_np = [
-        np.ndarray(shape, dtype=typ, buffer=shm.buf)
-        for shm, shape, typ in zip(shms, shapes, types)
-    ]
-    shm_child = [(shm.name, shape, typ) for shm, shape, typ in zip(shms, shapes, types)]
-    workers = [Worker(q_size, i * q_size, seed_queue, shm_child) for i in range(n_workers)]
 
     def Save(fname, to_sort=False):
         nonlocal last_save

@@ -29,9 +29,6 @@ struct CompactBoard : public SimpleIOArray<uint8_t, kBoardBytes> {
                      data()[24]};
     return 200 - (popcount(x[0]) + popcount(x[1]) + popcount(x[2]) + popcount(x[3]));
   }
-  constexpr int Group() const {
-    return (Count() >> 1) % 5;
-  }
 };
 
 using ByteBoard = std::array<std::array<uint8_t, 10>, 20>;

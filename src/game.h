@@ -15,6 +15,8 @@ constexpr int kLineCap = 390;
 #endif
 #endif
 
+constexpr int kGroups = 10;
+
 enum Level {
   kLevel18,
   kLevel19,
@@ -71,13 +73,22 @@ constexpr Level GetLevelSpeedByLines(int lines) {
   return GetLevelSpeed(GetLevelByLines(lines));
 }
 
-constexpr int Score(int lines, int level) {
-  constexpr int kTable[] = {0, 40, 100, 300, 1200};
-  return kTable[lines] * (level + 1);
+constexpr int Score(int base_lines, int lines) {
+  //constexpr int kTable[] = {0, 40, 100, 300, 1200};
+  //return kTable[lines] * (GetLevelByLines(base_lines + lines) + 1);
+  return base_lines < kLineCap && base_lines + lines >= kLineCap;
 }
 
 constexpr int GetGroupByPieces(int pieces) {
-  return pieces * 4 / 2 % 5;
+  return pieces % kGroups;
+}
+
+constexpr int GetGroupByCells(int cells) {
+  return (cells >> 2) % 10;
+}
+
+constexpr int NextGroup(int group) {
+  return (group + 1) % kGroups;
 }
 
 // some testcases
@@ -90,6 +101,6 @@ static_assert(GetLevelByLines(kLevelSpeedLines[3]) == 39);
 #endif
 
 static_assert(GetGroupByPieces(0) == 0);
-static_assert(GetGroupByPieces(1) == 2);
-static_assert(GetGroupByPieces(4) == 3);
-static_assert(GetGroupByPieces(9) == 3);
+static_assert(GetGroupByPieces(1) == 1);
+static_assert(GetGroupByPieces(9) == 9);
+static_assert(GetGroupByPieces(16) == 6);

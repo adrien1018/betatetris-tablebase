@@ -209,7 +209,7 @@ class BoardConnection : public std::enable_shared_from_this<BoardConnection>, pu
         uint8_t* out_ptr = send_buf.data() + kSendSize * i;
         CompactBoard board(in_ptr, 25);
         size_t move_idx = 0;
-        int group = board.Group();
+        int group = GetGroupByCells(board.Count());
         int piece = in_ptr[25];
         int lines = BytesToInt<uint16_t>(in_ptr + 26);
         auto strats = play.GetStrat(board, piece, lines, &move_idx);

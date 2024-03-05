@@ -11,7 +11,7 @@ class Play {
   std::vector<CompressedClassReader<NodeMovePositionRange>> move_readers;
  public:
   std::array<Position, 7> GetStrat(const CompactBoard& board, int now_piece, int lines, size_t* move_idx_ptr = nullptr) {
-    int group = board.Group();
+    int group = GetGroupByCells(board.Count());
     auto idx = board_hash[group][board];
     if (!idx) return {Position::Invalid}; // actually {}, since Invalid is (0,0,0)
     size_t move_idx = (size_t)idx.value() * kPieces + now_piece;
