@@ -11,7 +11,7 @@ if(NOT TAP_SPEED)
   set(TAP_SPEED Tap30Hz)
 endif()
 if(NOT LINE_CAP)
-  set(LINE_CAP 430)
+  set(LINE_CAP 230)
 endif()
 
 if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
@@ -100,7 +100,7 @@ target_link_libraries(board_merge tsl::sparse_map)
 file(GLOB MAIN_SRC "src/*.cpp")
 add_executable(main ${MAIN_SRC})
 
-target_compile_definitions(main PRIVATE -DTAP_SPEED=${TAP_SPEED} -DADJ_DELAY=${ADJ_DELAY} -DLINE_CAP=${LINE_CAP})
+target_compile_definitions(main PRIVATE -DTAP_SPEED=${TAP_SPEED} -DADJ_DELAY=${ADJ_DELAY} -DLINE_CAP=${LINE_CAP} -DNO_2KS)
 target_link_libraries(main argparse::argparse spdlog::spdlog zstd eigen tsl::sparse_map tsl::hopscotch_map Boost::asio)
 
 if(BUILD_TESTS)
