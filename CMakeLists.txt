@@ -93,15 +93,15 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable_Exclude(argparse spdlog eigen sparse_map hopscotch_map boost)
 
-#add_executable(mytest test.cpp)
 add_executable(random_boards scripts/random_boards.cpp)
+add_executable(board_merge scripts/board_merge.cpp)
+target_link_libraries(board_merge tsl::sparse_map)
 
 file(GLOB MAIN_SRC "src/*.cpp")
 add_executable(main ${MAIN_SRC})
 
 target_compile_definitions(main PRIVATE -DTAP_SPEED=${TAP_SPEED} -DADJ_DELAY=${ADJ_DELAY} -DLINE_CAP=${LINE_CAP})
 target_link_libraries(main argparse::argparse spdlog::spdlog zstd eigen tsl::sparse_map tsl::hopscotch_map Boost::asio)
-#target_link_libraries(mytest eigen)
 
 if(BUILD_TESTS)
   enable_testing()

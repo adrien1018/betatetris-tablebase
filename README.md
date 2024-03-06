@@ -227,8 +227,8 @@ A executable file `main` should be generated after a successful compilation. Thi
 To generate the tablebase, you first need a bunch of boards to start with. The system resources required can be estimated as follows:
 - Memory: 24MB per million boards
 - Disk: 250-450MB per million boards for strategy generation; more disk usage can speed up computation. 6GB per million boards for full tablebase (expected value + standard deviation) output. SSD is highly recommended.
-- CPU: 8-12 cores should be fine for any number of boards since the speed is limited mainly by disk access speed.
-- Time: 7 minutes per million boards given a fast enough SSD. Note that fewer CPU cores or slower disks will result in longer processing times.
+- CPU: 8-12 cores should be fine for any number of boards since the speed is limited mainly by disk and memory access speed.
+- Time: 7 minutes per million boards given a fast enough SSD. Note that fewer CPU cores or slower disks will result in longer processing times, while parallelizing some of the steps (needs more RAM, CPU and disk) can reduce the time.
 In order to have a good enough tablebase (with reasonable Tetris rate), it's advisable to use a minimum of 100 million boards.
 
 The set of boards should be stored in a file using the following format:

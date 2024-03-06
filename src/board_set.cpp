@@ -205,8 +205,8 @@ inline std::pair<EvaluateNodeEdges, PositionNodeEdges> GetEdges(
   return {eval_ed, pos_ed};
 }
 
-using EdgeChunk = std::pair<std::array<std::vector<EvaluateNodeEdges>, kLevels>,
-                            std::array<std::vector<PositionNodeEdges>, kLevels>>;
+using EdgeChunk = std::pair<std::array<std::vector<std::vector<uint8_t>>, kLevels>,
+                            std::array<std::vector<std::vector<uint8_t>>, kLevels>>;
 
 EdgeChunk BuildEdgeChunk(const std::vector<Board>& boards, const BoardMap& mp) {
   EdgeChunk ret;
@@ -239,8 +239,8 @@ EdgeChunk BuildEdgeChunk(const std::vector<Board>& boards, const BoardMap& mp) {
     for (size_t i = 0; i < boards.size(); i++) {
       for (size_t j = 0; j < kPieces; j++) {
         auto [eval_ed, pos_ed] = GetEdges(boards[i], j, cur_moves[i][j], mp, level);
-        cur_eval.push_back(std::move(eval_ed));
-        cur_pos.push_back(std::move(pos_ed));
+        cur_eval.push_back(Serialize(eval_ed));
+        cur_pos.push_back(Serialize(pos_ed));
       }
     }
   }
@@ -275,8 +275,8 @@ void BuildEdges(int group) {
     n_boards += sz;
     for (int level = 0; level < kLevels; level++) {
       if (output) PrintStats(n_boards, level, spdlog::level::debug);
-      eval_writers[level].Write(chunk.first[level]);
-      pos_writers[level].Write(chunk.second[level]);
+      eval_writers[level].WriteRaw(chunk.first[level]);
+      pos_writers[level].WriteRaw(chunk.second[level]);
     }
   });
   std::vector<Board> block;

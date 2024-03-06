@@ -5,10 +5,6 @@
 #include <type_traits>
 #include "thread_pool.hpp"
 
-template <class T> bool IsReady(const std::future<T>& f) {
-  return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
-}
-
 template <class T, class Finish>
 class ThreadQueue {
   BS::thread_pool pool;

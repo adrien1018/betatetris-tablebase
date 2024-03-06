@@ -8,6 +8,7 @@
 #include <zstd.h>
 
 #include "files.h"
+#include "compressor.h"
 #include "constexpr_helpers.h"
 
 namespace io_internal {
@@ -25,6 +26,22 @@ inline void WriteToBuf(std::vector<uint8_t>& buf, const T& val) {
     IntToBytes<uint64_t>(sz, sz_buf);
     memcpy(buf.data() + old_sz, sz_buf, T::kSizeNumberBytes);
     val.GetBytes(buf.data() + old_sz + T::kSizeNumberBytes);
+  }
+}
+
+template <class T>
+inline void WriteToBufRaw(std::vector<uint8_t>& buf, const std::vector<uint8_t>& val) {
+  size_t old_sz = buf.size();
+  if constexpr (T::kIsConstSize) {
+    buf.resize(old_sz + T::NumBytes());
+    memcpy(buf.data() + old_sz, val.data(), T::NumBytes());
+  } else {
+    size_t sz = val.size();
+    buf.resize(old_sz + T::kSizeNumberBytes + sz);
+    uint8_t sz_buf[8] = {};
+    IntToBytes<uint64_t>(sz, sz_buf);
+    memcpy(buf.data() + old_sz, sz_buf, T::kSizeNumberBytes);
+    memcpy(buf.data() + old_sz + T::kSizeNumberBytes, val.data(), sz);
   }
 }
 
@@ -393,22 +410,36 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
   using io_internal::ClassWriterImpl<T>::items_per_index;
   using io_internal::ClassWriterImpl<T>::moved;
 
-  std::unique_ptr<ZSTD_CCtx, size_t(*)(ZSTD_CCtx*)> zstd_ctx;
+  std::unique_ptr<CompressorBase> compressor;
   std::vector<uint8_t> compress_buf;
-  int compress_level;
+
+  void PushCompressedBlock(const std::vector<uint8_t>& vec) {
+    size_t old_size = buf.size();
+    buf.resize(old_size + vec.size());
+    memcpy(buf.data() + old_size, vec.data(), vec.size());
+    inds.push_back(ByteSize());
+    if (buf.size() >= kBufferSize) Flush();
+  }
+
+  void GetCompressResults(bool wait = false) {
+    if (wait) {
+      while (compressor->RemainingBlocks()) {
+        PushCompressedBlock(compressor->GetResultBlock());
+      }
+    } else {
+      while (true) {
+        auto block = compressor->GetResultBlockNoWait();
+        if (!block) return;
+        PushCompressedBlock(*block);
+      }
+    }
+  }
 
   void DoCompress() {
     inds.push_back(compress_buf.size());
-    size_t offset = buf.size();
-    size_t clear_size = ZSTD_compressBound(compress_buf.size());
-    buf.resize(offset + clear_size);
-    size_t nlen = ZSTD_compressCCtx(
-        zstd_ctx.get(), buf.data() + offset, clear_size, compress_buf.data(), compress_buf.size(), compress_level);
-    if (ZSTD_isError(nlen)) throw std::runtime_error("zstd compress failed");
-    buf.resize(offset + nlen);
+    compressor->CompressBlock(std::move(compress_buf));
     compress_buf.clear();
-    inds.push_back(ByteSize());
-    if (buf.size() >= kBufferSize) Flush();
+    GetCompressResults();
   }
  public:
   using io_internal::ClassWriterImpl<T>::HasIndex;
@@ -417,17 +448,22 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
 
   CompressedClassWriter(const std::string& fname, size_t items_per_index = 1024, int compress_level = -4) :
       io_internal::ClassWriterImpl<T>(fname, items_per_index == 0 ? 1 : items_per_index),
-      zstd_ctx(ZSTD_createCCtx(), ZSTD_freeCCtx), compress_level(compress_level) {
-    if (!zstd_ctx) throw std::runtime_error("zstd initialize failed");
+      compressor(std::make_unique<DefaultZstdCompressor>(compress_level)) {
+    inds.push_back(0);
+  }
+  CompressedClassWriter(const std::string& fname, size_t items_per_index, std::unique_ptr<CompressorBase>&& compressor) :
+      io_internal::ClassWriterImpl<T>(fname, items_per_index == 0 ? 1 : items_per_index),
+      compressor(std::move(compressor)) {
     inds.push_back(0);
   }
   CompressedClassWriter(const CompressedClassWriter&) = delete;
   CompressedClassWriter(CompressedClassWriter&& x) :
       io_internal::ClassWriterImpl<T>(std::move(x)),
-      zstd_ctx(std::move(x.zstd_ctx)), compress_buf(std::move(x.compress_buf)) {}
+      compressor(std::move(x.compressor)), compress_buf(std::move(x.compress_buf)) {}
   ~CompressedClassWriter() {
     if (moved) return;
     if (compress_buf.size()) DoCompress();
+    GetCompressResults(true);
   }
 
   void Write(const T& item) {
@@ -449,6 +485,23 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
 
   void Write(const T& item, size_t cnt) {
     for (size_t i = 0; i < cnt; i++) Write(item);
+  }
+
+  void WriteRaw(const std::vector<uint8_t>& item) {
+    current++;
+    size_t sz = item.size();
+    if (!kIsConstSize && kSizeNumberBytes < 8 && sz >= (1ll << (8 * kSizeNumberBytes))) {
+      throw std::out_of_range("output size too large");
+    }
+    io_internal::WriteToBufRaw<T>(compress_buf, item);
+    if (current % items_per_index == 0) {
+      DoCompress();
+      if (inds.size() >= kIndexBufferSize) FlushIndex();
+    }
+  }
+
+  void WriteRaw(const std::vector<std::vector<uint8_t>>& items) {
+    for (auto& i : items) WriteRaw(i);
   }
 };
 
@@ -679,3 +732,10 @@ class CompressedClassReader : public io_internal::ClassReaderImpl<T> {
     while (location > current) SkipOne(buf_size, ind_buf_size);
   }
 };
+
+template <class T>
+std::vector<uint8_t> Serialize(const T& val) {
+  std::vector<uint8_t> ret(val.NumBytes());
+  val.GetBytes(ret.data());
+  return ret;
+}
