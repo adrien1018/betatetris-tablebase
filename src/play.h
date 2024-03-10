@@ -20,7 +20,7 @@ class Play {
     // use 1 to avoid being treated as NULL
     NodeMovePositionRange pos_ranges = move_readers[group].ReadOne(1, 0);
     for (auto& range : pos_ranges.ranges) {
-      uint8_t loc = lines / 2;
+      uint8_t loc = lines / kGroupLineInterval;
       if (range.start <= loc && loc < range.end) {
         return range.pos;
       }

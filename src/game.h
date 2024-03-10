@@ -79,12 +79,20 @@ constexpr int Score(int base_lines, int lines) {
   return base_lines < kLineCap && base_lines + lines >= kLineCap;
 }
 
+constexpr int kGroupInterval = 40; // 10
+constexpr int kGroupLineInterval = 4; // 2
+
 constexpr int GetGroupByPieces(int pieces) {
   return pieces % kGroups;
 }
 
 constexpr int GetGroupByCells(int cells) {
   return (cells >> 2) % 10;
+}
+
+constexpr int GetCellsByGroupOffset(int offset, int group) {
+  return offset * kGroupInterval + group * 4;
+  // return offset * kGroupInterval + group * 2;
 }
 
 constexpr int NextGroup(int group) {

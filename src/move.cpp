@@ -233,7 +233,7 @@ std::vector<MoveEval> CalculatePieceMoves(
   size_t start = 0, last = offsets.back();
   int cur_lines = -1; // -1 -> uninitialized
   for (size_t i = 0; i < offsets.size() - 1; i++) {
-    int cells = pieces * 4 - int(i * 10 + group * 2);
+    int cells = pieces * 4 - GetCellsByGroupOffset(i, group);
     if (cells < 0) {
       last = offsets[i];
       break;
@@ -290,15 +290,15 @@ void MergeRanges(int group, int pieces_l, int pieces_r, const std::vector<size_t
       partial_filename_func(orig_pieces_l, pieces_r, group), index_size, -2);
   std::vector<OneClass> buf(readers.size());
   for (size_t i = 0; i < offset.size() - 1; i++) {
-    int start_cells = pieces_l * 4 - int(i * 10 + group * 2);
+    int start_cells = pieces_l * 4 - GetCellsByGroupOffset(i, group);
     if (start_cells % 10 != 0) throw std::logic_error("unexpected");
     int start_lines = start_cells / 10;
-    uint8_t start_lines_idx = (uint32_t)start_lines / 2;
+    uint8_t start_lines_idx = (uint32_t)start_lines / kGroupLineInterval;
     size_t begin = 0;
-    size_t end = std::min(buf.size(), (size_t)(kLineCap - start_lines + 1) / 2);
+    size_t end = std::min(buf.size(), (size_t)(kLineCap - start_lines + kGroupLineInterval - 1) / kGroupLineInterval);
     if (start_lines < 0) {
       start_lines_idx = 0;
-      begin = (-start_lines + 1) / 2;
+      begin = (-start_lines + 1) / kGroupLineInterval;
     }
     for (size_t x = 0; x < (offset[i + 1] - offset[i]) * kPieces; x++) {
       for (size_t j = 0; j < readers.size(); j++) readers[j].ReadOne(&buf[j]);
@@ -334,14 +334,18 @@ void MergeFullMoveRanges(int group, const std::vector<int>& sections, bool delet
     for (auto& move_reader : readers) {
       for (auto& move : move_reader.ReadOne().ranges) {
         // exploit the fact that transitions are all at even number of lines
+        // for perfect play: lines always multiples of 4 so still okay
         static_assert(std::all_of(kLevelSpeedLines, kLevelSpeedLines + kLevels, [](int x){ return x % 2 == 0; }));
-        Level start_level = GetLevelSpeedByLines(move.start * 2);
-        Level end_level = GetLevelSpeedByLines(move.end * 2 - 1);
+        Level start_level = GetLevelSpeedByLines(move.start * kGroupLineInterval);
+        Level end_level = GetLevelSpeedByLines((move.end - 1) * kGroupLineInterval - 1);
         for (int lvl = static_cast<int>(start_level); lvl <= static_cast<int>(end_level); lvl++) {
-          uint8_t start_idx = std::max(kLevelSpeedLines[lvl] / 2, (int)move.start);
+          uint8_t start_idx = std::max((kLevelSpeedLines[lvl] + kGroupLineInterval - 1) / kGroupLineInterval, (int)move.start);
           uint8_t end_idx = move.end;
-          if (lvl != kLevels - 1) end_idx = std::min(kLevelSpeedLines[lvl + 1] / 2, (int)end_idx);
+          if (lvl != kLevels - 1) {
+            end_idx = std::min((kLevelSpeedLines[lvl + 1] + kGroupLineInterval - 1) / kGroupLineInterval, (int)end_idx);
+          }
           MovePositionRange item{start_idx, end_idx, {}};
+          //spdlog::info("{}-{} {}-{}", move.start, move.end, start_idx, end_idx); //
           if (ed[lvl].nexts.size()) {
             for (size_t j = 0; j < kPieces; j++) item.pos[j] = ed[lvl].nexts[move.idx[j]];
           } else {
@@ -395,7 +399,7 @@ std::vector<MoveEval> LoadValues(int& start_pieces, const std::vector<size_t> of
   if (start_pieces == -1) {
     size_t max_cells = 0;
     for (int i = 0; i < kGroups; i++) {
-      max_cells = std::max(max_cells, (offsets[i].size() - 1) * 10 + i * 2);
+      max_cells = std::max(max_cells, (size_t)GetCellsByGroupOffset(offsets[i].size() - 1, i));
     }
     start_pieces = (kLineCap * 10 + max_cells + 3) / 4;
     int start_group = GetGroupByPieces(start_pieces);
@@ -430,7 +434,7 @@ void WriteThreshold(int pieces, const std::vector<size_t>& offset, const std::ve
   int group = GetGroupByPieces(pieces);
   CompressedClassWriter<BasicIOType<uint8_t>> writer(ThresholdOnePath(name, pieces), 65536 * kPieces);
   for (size_t i = 0; i < offset.size() - 1; i++) {
-    int cells = pieces * 4 - int(i * 10 + group * 2);
+    int cells = pieces * 4 - GetCellsByGroupOffset(i, group);
     std::vector<BasicIOType<uint8_t>> out((offset[i+1] - offset[i]) * kPieces, BasicIOType<uint8_t>{});
     if (cells % 10) throw std::logic_error("unexpected: cells incorrect");
     int lines = cells / 10;

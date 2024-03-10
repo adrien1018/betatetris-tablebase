@@ -171,7 +171,7 @@ std::vector<NodeEval> CalculatePiece(
   size_t start = 0, last = offsets.back();
   int cur_lines = -1; // -1 -> uninitialized
   for (size_t i = 0; i < offsets.size() - 1; i++) {
-    int cells = pieces * 4 - int(i * 10 + group * 2);
+    int cells = pieces * 4 - GetCellsByGroupOffset(i, group);
     if (cells < 0) {
       last = offsets[i];
       break;
@@ -259,7 +259,7 @@ void RunEvaluate(int start_pieces, const std::vector<int>& output_locations, boo
       std::vector<uint8_t> cnt(samples[g].size());
       for (size_t i = 0, idx = 0; i < offsets[g].size() - 1; i++) {
         for (; samples[g][idx].first < offsets[g][i+1] && idx < samples[g].size(); idx++) {
-          cnt[idx] = i * 10 + g * 2;
+          cnt[idx] = GetCellsByGroupOffset(i, g);
         }
       }
       auto cnt_fname = SVDSampleCountPath(g);
@@ -274,7 +274,7 @@ void RunEvaluate(int start_pieces, const std::vector<int>& output_locations, boo
   if (start_pieces == -1) {
     size_t max_cells = 0;
     for (int i = 0; i < kGroups; i++) {
-      max_cells = std::max(max_cells, (offsets[i].size() - 1) * 10 + i * 2);
+      max_cells = std::max(max_cells, (size_t)GetCellsByGroupOffset(offsets[i].size() - 1, i));
     }
     start_pieces = (kLineCap * 10 + max_cells + 3) / 4;
     int start_group = GetGroupByPieces(start_pieces);

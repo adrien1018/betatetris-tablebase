@@ -307,7 +307,7 @@ std::vector<size_t> GetBoardCountOffset(int group) {
 
   reader.Seek(num_boards - 1, 0);
   int max_count = Board(reader.ReadOne(0)).Count();
-  std::vector<size_t> ret(max_count / 10 + 2);
+  std::vector<size_t> ret(max_count / kGroupInterval + 2);
   ret.back() = num_boards;
 
   for (size_t i = 1; i < ret.size() - 1; i++) {
@@ -315,7 +315,7 @@ std::vector<size_t> GetBoardCountOffset(int group) {
     while (l + 1 < r) {
       size_t m = (l + r) / 2;
       reader.Seek(m - 1);
-      if ((size_t)Board(reader.ReadOne(0)).Count() >= i * 10) {
+      if ((size_t)Board(reader.ReadOne(0)).Count() >= i * kGroupInterval) {
         r = m;
       } else {
         l = m;
