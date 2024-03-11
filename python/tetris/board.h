@@ -15,8 +15,17 @@ struct PythonBoard {
   // a very simple heuristic to end early
   bool IsClean() const {
     int overhangs = board.NumOverhang();
+#ifdef TETRIS_ONLY
     if (overhangs >= 1) return false;
     auto heights = board.ColumnHeights();
+#else
+    if (overhangs >= 4) return false;
+    auto heights = board.ColumnHeights();
+    int max_height = *std::max_element(heights.begin(), heights.end());
+    if (overhangs >= 2) return max_height <= 3;
+    if (overhangs >= 1) return max_height <= 5;
+    if (max_height >= 12) return false;
+#endif
     int differences = 0, well = 0;
     for (int i = 0; i < 9; i++) differences += abs(heights[i] - heights[i+1]);
     if (heights[0] == 0) well = std::max(well, heights[1]);
@@ -28,6 +37,7 @@ struct PythonBoard {
   }
 
   bool IsCleanForPerfect() const {
+    // very simple flood fill for checking all empty cells are connected (no holes)
     uint32_t cols[12], map[12] = {};
     bool updated[12] = {};
     bool flag = false;
@@ -46,7 +56,6 @@ struct PythonBoard {
         updated[i+1] = false;
         uint32_t old = map[i+1];
         map[i+1] |= ((old + cols[i+1]) ^ old ^ cols[i+1]) >> 1;
-        //printf("%d %x->%x %x\n", i, old, map[i+1], cols[i+1]);
         old = map[i];
         map[i] = (map[i] | map[i+1]) & cols[i];
         updated[i] = map[i] != old;

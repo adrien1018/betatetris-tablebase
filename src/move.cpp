@@ -337,7 +337,7 @@ void MergeFullMoveRanges(int group, const std::vector<int>& sections, bool delet
         // for perfect play: lines always multiples of 4 so still okay
         static_assert(std::all_of(kLevelSpeedLines, kLevelSpeedLines + kLevels, [](int x){ return x % 2 == 0; }));
         Level start_level = GetLevelSpeedByLines(move.start * kGroupLineInterval);
-        Level end_level = GetLevelSpeedByLines((move.end - 1) * kGroupLineInterval - 1);
+        Level end_level = GetLevelSpeedByLines((move.end - 1) * kGroupLineInterval);
         for (int lvl = static_cast<int>(start_level); lvl <= static_cast<int>(end_level); lvl++) {
           uint8_t start_idx = std::max((kLevelSpeedLines[lvl] + kGroupLineInterval - 1) / kGroupLineInterval, (int)move.start);
           uint8_t end_idx = move.end;
@@ -345,7 +345,6 @@ void MergeFullMoveRanges(int group, const std::vector<int>& sections, bool delet
             end_idx = std::min((kLevelSpeedLines[lvl + 1] + kGroupLineInterval - 1) / kGroupLineInterval, (int)end_idx);
           }
           MovePositionRange item{start_idx, end_idx, {}};
-          //spdlog::info("{}-{} {}-{}", move.start, move.end, start_idx, end_idx); //
           if (ed[lvl].nexts.size()) {
             for (size_t j = 0; j < kPieces; j++) item.pos[j] = ed[lvl].nexts[move.idx[j]];
           } else {

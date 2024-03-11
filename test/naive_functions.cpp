@@ -122,31 +122,55 @@ void SimulateMove(
 
     int nrow = GetRow(frame+1, level);
     int mrow = nrow - row == 2 ? nrow-1 : nrow;
+#ifdef DOUBLE_TUCK
+    int n2row = GetRow(frame+2, level);
+    int m2row = n2row - nrow == 2 ? n2row-1 : n2row;
+#endif
     int arot = (rot+1)%b.size();
     int brot = (rot+b.size()-1)%b.size();
     if (col < 9 && b[rot][row][col+1]) {
       Insert(FreeDrop(b, rot, row, col+1));
       if (b.size() >= 2 && b[arot][row][col+1]) Insert(FreeDrop(b, arot, row, col+1));
       if (b.size() >= 4 && b[brot][row][col+1]) Insert(FreeDrop(b, brot, row, col+1));
-      if (b.size() >= 2 && nrow<20 && b[rot][mrow][col+1] && b[rot][nrow][col+1] && b[arot][nrow][col+1]) Insert(FreeDrop(b, arot, nrow, col+1));
-      if (b.size() >= 4 && nrow<20 && b[rot][mrow][col+1] && b[rot][nrow][col+1] && b[brot][nrow][col+1]) Insert(FreeDrop(b, brot, nrow, col+1));
+      if (nrow < 20 && b[rot][mrow][col+1] && b[rot][nrow][col+1]) {
+        if (b.size() >= 2 && b[arot][nrow][col+1]) Insert(FreeDrop(b, arot, nrow, col+1));
+        if (b.size() >= 4 && b[brot][nrow][col+1]) Insert(FreeDrop(b, brot, nrow, col+1));
+      }
+#ifdef DOUBLE_TUCK
+      if (n2row < 20 && col < 8 && b[rot][mrow][col+1] && b[rot][nrow][col+1] && b[rot][m2row][col+1] &&
+          b[rot][n2row][col+1] && b[rot][n2row][col+2]) {
+        Insert(FreeDrop(b, rot, n2row, col+2));
+      }
+#endif
     }
     if (col > 0 && b[rot][row][col-1]) {
       Insert(FreeDrop(b, rot, row, col-1));
       if (b.size() >= 2 && b[arot][row][col-1]) Insert(FreeDrop(b, arot, row, col-1));
       if (b.size() >= 4 && b[brot][row][col-1]) Insert(FreeDrop(b, brot, row, col-1));
-      if (b.size() >= 2 && nrow<20 && b[rot][mrow][col-1] && b[rot][nrow][col-1] && b[arot][nrow][col-1]) Insert(FreeDrop(b, arot, nrow, col-1));
-      if (b.size() >= 4 && nrow<20 && b[rot][mrow][col-1] && b[rot][nrow][col-1] && b[brot][nrow][col-1]) Insert(FreeDrop(b, brot, nrow, col-1));
+      if (nrow < 20 && b[rot][mrow][col-1] && b[rot][nrow][col-1]) {
+        if (b.size() >= 2 && b[arot][nrow][col-1]) Insert(FreeDrop(b, arot, nrow, col-1));
+        if (b.size() >= 4 && b[brot][nrow][col-1]) Insert(FreeDrop(b, brot, nrow, col-1));
+      }
+#ifdef DOUBLE_TUCK
+      if (n2row < 20 && col > 1 && b[rot][mrow][col-1] && b[rot][nrow][col-1] && b[rot][m2row][col-1] &&
+          b[rot][n2row][col-1] && b[rot][n2row][col-2]) {
+        Insert(FreeDrop(b, rot, n2row, col-2));
+      }
+#endif
     }
     if (b.size() >= 2 && b[arot][row][col]) {
       Insert(FreeDrop(b, arot, row, col));
-      if (nrow < 20 && col < 9 && b[arot][mrow][col] && b[arot][nrow][col] && b[arot][nrow][col+1]) Insert(FreeDrop(b, arot, nrow, col+1));
-      if (nrow < 20 && col > 0 && b[arot][mrow][col] && b[arot][nrow][col] && b[arot][nrow][col-1]) Insert(FreeDrop(b, arot, nrow, col-1));
+      if (nrow < 20 && b[arot][mrow][col] && b[arot][nrow][col]) {
+        if (col < 9 && b[arot][nrow][col+1]) Insert(FreeDrop(b, arot, nrow, col+1));
+        if (col > 0 && b[arot][nrow][col-1]) Insert(FreeDrop(b, arot, nrow, col-1));
+      }
     }
     if (b.size() >= 4 && b[brot][row][col]) {
       Insert(FreeDrop(b, brot, row, col));
-      if (nrow < 20 && col < 9 && b[brot][mrow][col] && b[brot][nrow][col] && b[brot][nrow][col+1]) Insert(FreeDrop(b, brot, nrow, col+1));
-      if (nrow < 20 && col > 0 && b[brot][mrow][col] && b[brot][nrow][col] && b[brot][nrow][col-1]) Insert(FreeDrop(b, brot, nrow, col-1));
+      if (nrow < 20 && b[brot][mrow][col] && b[brot][nrow][col]) {
+        if (col < 9 && b[brot][nrow][col+1]) Insert(FreeDrop(b, brot, nrow, col+1));
+        if (col > 0 && b[brot][nrow][col-1]) Insert(FreeDrop(b, brot, nrow, col-1));
+      }
     }
 
     if (IsDropFrame(frame, level)) {

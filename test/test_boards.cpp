@@ -175,7 +175,7 @@ const std::array<Board, 169> kTestBoards = {{
 
 using namespace std::literals;
 
-const std::array<TestSearchBoard, 26> kTestTuckBoards = {{
+const decltype(kTestTuckBoards) kTestTuckBoards = {{
   {Board("....XXX...\n"
          ".....X...."sv), 0, {2, 19, 7}, true, false}, // L
   {Board("....XXX...\n"
@@ -185,9 +185,6 @@ const std::array<TestSearchBoard, 26> kTestTuckBoards = {{
          ".....X....\n"
          ".....X...."sv), 3, {0, 18, 7}, true, true}, // L
   {Board("....XXX...\n"
-         "....X.....\n"
-         "....X....."sv), 3, {0, 18, 6}, false, false}, // L-/-L
-  {Board("....XXX...\n"
          ".....X...."sv), 0, {2, 19, 3}, true, false}, // R
   {Board("....XXX...\n"
          ".....X....\n"
@@ -195,9 +192,14 @@ const std::array<TestSearchBoard, 26> kTestTuckBoards = {{
   {Board("....XXX...\n"
          ".....X....\n"
          ".....X...."sv), 3, {0, 18, 4}, true, true}, // R
+#ifdef DOUBLE_TUCK
+  {Board("....XXX...\n"
+         "....X.....\n"
+         "....X....."sv), 3, {0, 18, 6}, false, false}, // L-/-L
   {Board("....XXX...\n"
          "......X...\n"
-         "......X..."sv), 3, {0, 18, 4}, false, false}, // R-/-R
+         "......X..."sv), 3, {0, 18, 5}, false, false}, // R-/-R
+#endif
   {Board("....XXX.XX\n"
          "....X....X\n"
          "XXXXXXX.XX"sv), 6, {0, 18, 7}, true, true}, // A

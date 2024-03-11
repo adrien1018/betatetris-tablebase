@@ -94,7 +94,7 @@ int main(int argc, char** argv) {
   };
   auto GroupArg = [](ArgumentParser& parser) {
     parser.add_argument("-g", "--group").required()
-      .help("Group (0-4)")
+      .help("Group (0-" + std::to_string(kGroups - 1) + ")")
       .metavar("GROUP")
       .scan<'i', int>();
   };
@@ -105,8 +105,13 @@ int main(int argc, char** argv) {
   };
   auto LevelArg = [](ArgumentParser& parser) {
     parser.add_argument("-l", "--level").required()
+#ifdef NO_2KS
+      .help("Level (18,19,29)")
+      .metavar("[18/19/29]")
+#else
       .help("Level (18,19,29,39)")
       .metavar("[18/19/29/39]")
+#endif
       .scan<'i', int>();
   };
   auto IOThreadsArg = [](ArgumentParser& parser) {
@@ -198,9 +203,9 @@ int main(int argc, char** argv) {
   DataDirArg(build_edges);
   ParallelArg(build_edges);
   build_edges.add_argument("-g", "--groups")
-    .help("The groups to build (0-4, comma-separated, support Python-like range)")
+    .help("The groups to build (0-" + std::to_string(kGroups - 1) + ", comma-separated, support Python-like range)")
     .metavar("GROUP")
-    .default_value("0:5");
+    .default_value("0:" + std::to_string(kGroups));
 
   ArgumentParser evaluate("evaluate", "", default_arguments::help);
   evaluate.add_description("Calculate values of every board");

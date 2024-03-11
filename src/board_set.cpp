@@ -50,13 +50,13 @@ void SplitBoards(const std::filesystem::path& fname) {
     num_boards = BoardCount(fname);
     spdlog::info("Board file contains {} boards", num_boards);
   } catch (std::exception&) {}
-  for (auto& i : boards) i.reserve(num_boards * 0.11 + 1);
+  for (auto& i : boards) i.reserve(num_boards * (1.0 / kGroups + 0.01) + 1);
   spdlog::info("Start reading board file");
   while (true) {
     auto chunk = reader.ReadBatch(kBlock);
     for (auto& i : chunk) {
       int cells = i.Count();
-      if (cells % 4 != 0) continue;
+      if (cells % kCellsMod != 0) continue;
       boards[GetGroupByCells(cells)].push_back(i);
     }
     if (chunk.size() < kBlock) break;
@@ -133,9 +133,12 @@ inline std::pair<EvaluateNodeEdges, PositionNodeEdges> GetEdges(
   }
   for (auto item = mp_next.begin(); item != mp_next.end();) {
     auto n_board = b.Place(piece, item->first.r, item->first.x, item->first.y).ClearLines();
+#ifdef TETRIS_ONLY
     if (n_board.first && n_board.first != 4) {
       item = mp_next.erase(item); // only tetrises are allowed
-    } else if (auto board_it = mp.find(n_board.second); board_it != mp.end()) {
+    } else // ... if
+#endif
+    if (auto board_it = mp.find(n_board.second); board_it != mp.end()) {
       item.value() = {board_it->second, n_board.first};
       ++item;
     } else {

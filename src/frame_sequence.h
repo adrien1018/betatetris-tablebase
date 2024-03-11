@@ -110,6 +110,7 @@ void GenerateSequence(
 
 template <int R>
 constexpr std::array<int, TuckTypes(R)> TuckSearchOrder() {
+#ifdef DOUBLE_TUCK
   if constexpr (R == 1) {
     return {{0, 1, 2, 3}};
   } else if constexpr (R == 2) {
@@ -117,6 +118,15 @@ constexpr std::array<int, TuckTypes(R)> TuckSearchOrder() {
   } else {
     return {{0, 1, 4, 9, 5, 6, 10, 11, 7, 8, 12, 13, 2, 3}};
   }
+#else
+  if constexpr (R == 1) {
+    return {{0, 1}};
+  } else if constexpr (R == 2) {
+    return {{0, 1, 2, 3, 4, 5, 6}};
+  } else {
+    return {{0, 1, 2, 7, 3, 4, 8, 9, 5, 6, 10, 11}};
+  }
+#endif
 }
 
 // should only be used for reachable positions; otherwise the result would probably be incorrect
@@ -160,24 +170,34 @@ NOINLINE int CalculateSequence(
     frame_mask_1 &= target_frames >> tuck.delta_frame;
     Frames frame_mask_2 = 0; // for tuck-spin on different frame
     int ret_taps = NumTaps<R>(initial_rot, initial_col, intermediate_rot, intermediate_col).TotalTaps();
-    switch (i) {
-      case 0: case 1: case 4: case 9: {
+#ifdef DOUBLE_TUCK
+    // 0 1  2  3 4 5 6 7 8 9 10 11 12 13 ->
+    // 0 1 12 13 2 3 4 5 6 7  8  9 10 11
+    //     ^^^^^ double tucks
+    int tuck_type_switch = i >= 2 ? (i >= 4 ? i - 2 : i + 10) : i;
+#else
+    int tuck_type_switch = i;
+#endif
+    switch (tuck_type_switch) {
+      case 0: case 1: case 2: case 7: {
         ret_taps += 1;
         break; // no intermediate
       }
-      case 5: case 6: case 10: case 11: {
+      case 3: case 4: case 8: case 9: {
         ret_taps += 2;
         frame_mask_1 &= ColumnToNormalFrameMask<level>(board[intermediate_rot].Column(target.y));
         break;
       }
-      case 2: case 3: {
+#ifdef DOUBLE_TUCK
+      case 12: case 13: {
         ret_taps += 2;
-        int pre_col = i == 2 ? intermediate_col - 1 : intermediate_col + 1;
+        int pre_col = tuck_type_switch == 12 ? intermediate_col - 1 : intermediate_col + 1;
         Frames pre_col_mask = ColumnToDropFrameMask<level>(board[target.r].Column(pre_col));
         frame_mask_1 &= pre_col_mask & pre_col_mask >> 1;
         break;
       }
-      case 7: case 8: case 12: case 13: {
+#endif
+      case 5: case 6: case 10: case 11: {
         ret_taps += 2;
         frame_mask_2 = frame_mask_1 & ColumnToDropFrameMask<level>(board[target.r].Column(intermediate_col)); // e.g. L-A
         frame_mask_1 &= ColumnToDropFrameMask<level>(board[intermediate_rot].Column(target.y)); // e.g. A-L
@@ -188,21 +208,21 @@ NOINLINE int CalculateSequence(
       if constexpr (!gen_seq) return ret_taps;
       int tuck_frame = ctz(frame_mask_1);
       GenerateSequence<R, Taps>(seq, initial_rot, initial_col, initial_frame, intermediate_rot, intermediate_col, tuck_frame);
-      switch (i) {
+      switch (tuck_type_switch) {
         case 0: seq.push_back(FrameInput::L); break;
         case 1: seq.push_back(FrameInput::R); break;
-        case 2: seq.push_back(FrameInput::L); seq.push_back(FrameInput{0}); seq.push_back(FrameInput::L); break;
-        case 3: seq.push_back(FrameInput::R); seq.push_back(FrameInput{0}); seq.push_back(FrameInput::R); break;
-        case 4: seq.push_back(FrameInput::A); break;
-        case 5: seq.push_back(FrameInput::L | FrameInput::A); break;
-        case 6: seq.push_back(FrameInput::R | FrameInput::A); break;
-        case 7: seq.push_back(FrameInput::L); seq.push_back(FrameInput::A); break;
-        case 8: seq.push_back(FrameInput::R); seq.push_back(FrameInput::A); break;
-        case 9: seq.push_back(FrameInput::B); break;
-        case 10: seq.push_back(FrameInput::L | FrameInput::B); break;
-        case 11: seq.push_back(FrameInput::R | FrameInput::B); break;
-        case 12: seq.push_back(FrameInput::L); seq.push_back(FrameInput::B); break;
-        case 13: seq.push_back(FrameInput::R); seq.push_back(FrameInput::B); break;
+        case 2: seq.push_back(FrameInput::A); break;
+        case 3: seq.push_back(FrameInput::L | FrameInput::A); break;
+        case 4: seq.push_back(FrameInput::R | FrameInput::A); break;
+        case 5: seq.push_back(FrameInput::L); seq.push_back(FrameInput::A); break;
+        case 6: seq.push_back(FrameInput::R); seq.push_back(FrameInput::A); break;
+        case 7: seq.push_back(FrameInput::B); break;
+        case 8: seq.push_back(FrameInput::L | FrameInput::B); break;
+        case 9: seq.push_back(FrameInput::R | FrameInput::B); break;
+        case 10: seq.push_back(FrameInput::L); seq.push_back(FrameInput::B); break;
+        case 11: seq.push_back(FrameInput::R); seq.push_back(FrameInput::B); break;
+        case 12: seq.push_back(FrameInput::L); seq.push_back(FrameInput{0}); seq.push_back(FrameInput::L); break;
+        case 13: seq.push_back(FrameInput::R); seq.push_back(FrameInput{0}); seq.push_back(FrameInput::R); break;
       }
       if (min_frames > seq.size()) seq.resize(min_frames, FrameInput{});
       return ret_taps;
@@ -211,11 +231,11 @@ NOINLINE int CalculateSequence(
       if constexpr (!gen_seq) return ret_taps;
       int tuck_frame = ctz(frame_mask_2);
       GenerateSequence<R, Taps>(seq, initial_rot, initial_col, initial_frame, intermediate_rot, intermediate_col, tuck_frame);
-      switch (i) {
-        case 7: seq.push_back(FrameInput::A); seq.push_back(FrameInput::L); break;
-        case 8: seq.push_back(FrameInput::A); seq.push_back(FrameInput::R); break;
-        case 12: seq.push_back(FrameInput::B); seq.push_back(FrameInput::L); break;
-        case 13: seq.push_back(FrameInput::B); seq.push_back(FrameInput::R); break;
+      switch (tuck_type_switch) {
+        case 5: seq.push_back(FrameInput::A); seq.push_back(FrameInput::L); break;
+        case 6: seq.push_back(FrameInput::A); seq.push_back(FrameInput::R); break;
+        case 10: seq.push_back(FrameInput::B); seq.push_back(FrameInput::L); break;
+        case 11: seq.push_back(FrameInput::B); seq.push_back(FrameInput::R); break;
       }
       if (min_frames > seq.size()) seq.resize(min_frames, FrameInput{});
       return ret_taps;

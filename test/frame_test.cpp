@@ -17,15 +17,27 @@ class FrameTest : public ::testing::Test {
 };
 
 void AssertTapSep(const FrameSequence& seq, int frames) {
-  frames = 2; // DOUBLE_TUCK
   int prev_ab = -100, prev_lr = -100;
+#ifdef DOUBLE_TUCK
+  bool prev_ok_ab = true, prev_ok_lr = true;
+#endif
   for (int i = 0; i < (int)seq.size(); i++) {
     if (seq[i].IsL() || seq[i].IsR()) {
+#ifdef DOUBLE_TUCK
+      ASSERT_TRUE(prev_ok_lr && i - prev_lr >= 2);
+      prev_ok_lr = i - prev_lr >= frames;
+#else
       ASSERT_TRUE(i - prev_lr >= frames);
+#endif
       prev_lr = i;
     }
     if (seq[i].IsA() || seq[i].IsB()) {
+#ifdef DOUBLE_TUCK
+      ASSERT_TRUE(prev_ok_ab && i - prev_ab >= 2);
+      prev_ok_ab = i - prev_ab >= frames;
+#else
       ASSERT_TRUE(i - prev_ab >= frames);
+#endif
       prev_ab = i;
     }
   }

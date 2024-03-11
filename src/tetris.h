@@ -55,16 +55,20 @@ class Tetris {
     }
 
     auto [lines, new_board] = before_clear.ClearLines();
+    int delta_score = Score(lines_, lines);
     lines_ += lines;
-    int delta_score = Score(lines, GetLevel());
     board_ = new_board;
     pieces_++;
     is_adj_ = false;
     initial_move_ = 0;
     now_piece_ = next_piece_;
     next_piece_ = next_piece;
-    if (lines_ >= kLineCap || (lines && lines != 4)) {
+    if (lines_ >= kLineCap) {
       game_over_ = true;
+#ifdef TETRIS_ONLY
+    } else if (lines && lines != 4) {
+      game_over_ = true;
+#endif
     } else {
       CalculateMoves_(true);
     }

@@ -23,6 +23,7 @@ clean_only = False
 sample_action = False
 board_file = None
 start_from_board = False
+compile_model = False
 
 class RNGGym:
     def __init__(self, seed=0):
@@ -297,6 +298,7 @@ if __name__ == "__main__":
     parser.add_argument('--sample-action', action='store_true')
     parser.add_argument('--board-file', type = str)
     parser.add_argument('--start-from-board', action='store_true')
+    parser.add_argument('--compile-model', action='store_true')
     args = parser.parse_args()
     print(args, file=sys.stderr)
 
@@ -311,6 +313,7 @@ if __name__ == "__main__":
     sample_action = args.sample_action
     board_file = args.board_file
     start_from_board = args.start_from_board
+    compile_model = args.compile_model
 
     torch.backends.cudnn.benchmark = True
     torch.set_float32_matmul_precision('high')
@@ -325,7 +328,8 @@ if __name__ == "__main__":
             model = Model(start_blocks, end_blocks, channels).to(device)
             model.load_state_dict(state_dict)
             model.eval()
-            model = torch.compile(model)
+            if compile_model:
+                model = torch.compile(model)
             models.append(model)
 
     Main(models)

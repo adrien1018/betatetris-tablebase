@@ -8,16 +8,25 @@ class PythonTetris {
  public:
   PyObject_HEAD
   static constexpr double kInvalidReward_ = -0.3;
+#ifdef TETRIS_ONLY
   static constexpr double kRewardMultiplier_ = 2e-5; // 20 per maxout
   static constexpr double kBottomMultiplier_ = 1.1;
   static constexpr double kGameOverMultiplier_ = 1. / 16;
+  static constexpr double kGameOverReward = -1.0;
   double step_reward_ = 5e-3;
+#else
+  static constexpr double kRewardMultiplier_ = 1e-5; // 10 per maxout
+  static constexpr double kBottomMultiplier_ = 1.2;
+  double step_reward_ = 5e-4;
+#endif
 
  private:
   std::mt19937_64 rng_;
   int next_piece_;
 
   int GenNextPiece_(int piece) {
+#ifdef TETRIS_ONLY
+    // generate more I pieces when training tetris only
     constexpr int kThresh[4] = {28, 24, 16, 8};
     constexpr double kAdd[4] = {0.035, 0.046, 0.06, 0.09};
     int level_int = static_cast<int>(tetris.LevelSpeed());
@@ -27,6 +36,7 @@ class PythonTetris {
       float prob = add * 0.3 + add * 0.7 * std::min((tetris.RunLines() - threshold) / (threshold * 0.5), 1.0);
       if (std::uniform_real_distribution<float>(0, 1)(rng_) < prob) return 6;
     }
+#endif
     return std::discrete_distribution<int>(
         kTransitionProbInt[piece], kTransitionProbInt[piece] + kPieces)(rng_);
   }
@@ -66,10 +76,12 @@ class PythonTetris {
       next_piece_ = GenNextPiece_(next_piece_);
       n_reward += step_reward_;
     }
+#ifdef TETRIS_ONLY
     if (lines && lines != 4) {
       n_reward *= kGameOverMultiplier_;
     }
-    if (tetris.IsOver()) n_reward -= 1.0;
+    if (tetris.IsOver()) n_reward += kGameOverReward;
+#endif
     return {n_reward, reward};
   }
 

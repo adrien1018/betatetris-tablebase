@@ -15,7 +15,17 @@ constexpr int kLineCap = 390;
 #endif
 #endif
 
+#ifdef DOUBLE_TUCK
+constexpr bool kDoubleTuckAllowed = true;
+#else
+constexpr bool kDoubleTuckAllowed = false;
+#endif
+
+#ifdef TETRIS_ONLY
 constexpr int kGroups = 10;
+#else
+constexpr int kGroups = 5;
+#endif
 
 enum Level {
   kLevel18,
@@ -74,29 +84,42 @@ constexpr Level GetLevelSpeedByLines(int lines) {
 }
 
 constexpr int Score(int base_lines, int lines) {
-  //constexpr int kTable[] = {0, 40, 100, 300, 1200};
-  //return kTable[lines] * (GetLevelByLines(base_lines + lines) + 1);
+#ifdef TETRIS_ONLY
   return base_lines < kLineCap && base_lines + lines >= kLineCap;
+#else
+  constexpr int kTable[] = {0, 40, 100, 300, 1200};
+  return kTable[lines] * (GetLevelByLines(base_lines + lines) + 1);
+#endif
 }
 
-constexpr int kGroupInterval = 40; // 10
-constexpr int kGroupLineInterval = 4; // 2
+#ifdef TETRIS_ONLY
+constexpr int kGroupInterval = 40;
+constexpr int kGroupLineInterval = 4;
+constexpr int kCellsMod = 4;
+#else
+constexpr int kGroupInterval = 10;
+constexpr int kGroupLineInterval = 2;
+constexpr int kCellsMod = 2;
+#endif
 
 constexpr int GetGroupByPieces(int pieces) {
-  return pieces % kGroups;
+  return pieces * 4 / kGroupLineInterval % kGroups;
 }
 
 constexpr int GetGroupByCells(int cells) {
-  return (cells >> 2) % 10;
+  return cells / kCellsMod % kGroups;
 }
 
 constexpr int GetCellsByGroupOffset(int offset, int group) {
-  return offset * kGroupInterval + group * 4;
-  // return offset * kGroupInterval + group * 2;
+  return offset * kGroupInterval + group * kCellsMod;
 }
 
 constexpr int NextGroup(int group) {
+#ifdef TETRIS_ONLY
   return (group + 1) % kGroups;
+#else
+  return (group + 2) % kGroups;
+#endif
 }
 
 // some testcases
@@ -109,6 +132,12 @@ static_assert(GetLevelByLines(kLevelSpeedLines[3]) == 39);
 #endif
 
 static_assert(GetGroupByPieces(0) == 0);
+#ifdef TETRIS_ONLY
 static_assert(GetGroupByPieces(1) == 1);
 static_assert(GetGroupByPieces(9) == 9);
 static_assert(GetGroupByPieces(16) == 6);
+#else
+static_assert(GetGroupByPieces(1) == 2);
+static_assert(GetGroupByPieces(4) == 3);
+static_assert(GetGroupByPieces(9) == 3);
+#endif
