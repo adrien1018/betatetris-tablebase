@@ -217,6 +217,7 @@ def Main(models):
                 if len(item) == 0: break
                 assert len(item) == 26
                 boards.append((item[:25], item[25] & 7))
+        random.shuffle(boards)
         boards = boards * (N // len(boards)) + random.sample(boards, N % len(boards))
     elif board_file and start_from_board and len(board_set) > 0:
         pn = int(N * 0.8)
@@ -249,11 +250,6 @@ def Main(models):
         while True:
             obs_torch = obs_to_torch([i[running] for i in obs_np])
 
-            if board_file:
-                boards = obs_torch[0][:,0].view(-1, 200).cpu().numpy().astype('bool')
-                boards = np.packbits(boards, axis=1, bitorder='little')
-                board_set.update(map(lambda x: x.tobytes(), boards))
-
             pi = torch.stack([model(obs_torch, pi_only=True)[0] for model in models]).mean(0)
             if sample_action:
                 pi = Categorical(logits=pi*0.75).sample()
@@ -263,6 +259,15 @@ def Main(models):
             pi_np[running] = pi.view(-1).cpu().numpy()
             for i in range(n_workers):
                 workers[i].child.send(('step', pi_np[i*q_size:(i+1)*q_size]))
+
+            if board_file:
+                boards = obs_torch[0][:,0].view(-1, 200).cpu().numpy().astype('bool')
+                boards = np.packbits(boards, axis=1, bitorder='little')
+                board_set.update(map(lambda x: x.tobytes(), boards))
+                if time.time() - last_save >= 5400:
+                    Save(board_file + f'.{save_num}')
+                    save_num = 1 - save_num
+
             to_end = True
             for i in range(n_workers):
                 info, is_running = workers[i].child.recv()
@@ -275,10 +280,6 @@ def Main(models):
                 if board_file: text += f'; {len(board_set)} boards collected'
                 print(text, file=sys.stderr)
             old_finished = len(info_arr)
-
-            if board_file and time.time() - last_save >= 5400:
-                Save(board_file + f'.{save_num}')
-                save_num = 1 - save_num
     finally:
         if board_file: Save(board_file)
 

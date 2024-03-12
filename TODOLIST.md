@@ -1,0 +1,7 @@
+- [ ] Prune boards
+    - [ ] ev less than a threshold
+    - [ ] move to index conversion
+    - [ ] reachable search
+- [ ] Do expansion then prune on perfect
+- [ ] Prune normal boards and run sampling
+- [ ] Add perfect boards to normal
