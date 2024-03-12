@@ -21,13 +21,19 @@
 namespace {
 
 struct Stats {
+#ifdef TETRIS_ONLY
+  static constexpr float kBucketSize = 1. / 65536;
+  static constexpr int kMaximum = 1;
+#else
   static constexpr int kBucketSize = 32;
   static constexpr int kMaximum = 2400000;
-  std::array<std::atomic_long, kMaximum / kBucketSize> distribution;
+#endif
+  static constexpr size_t kBuckets = kMaximum / kBucketSize + 1;
+  std::array<std::atomic_long, kBuckets> distribution;
   std::atomic<float> maximum;
 
   void Update(const float val) {
-    int bucket = (int)val / kBucketSize;
+    int bucket = (int)(val / kBucketSize);
     distribution[bucket]++;
     float prev_value = maximum;
     while (prev_value < val && !maximum.compare_exchange_weak(prev_value, val));
@@ -198,7 +204,7 @@ std::vector<NodeEval> CalculatePiece(
   {
     MkdirForFile(ValueStatsPath(pieces));
     std::ofstream fout(ValueStatsPath(pieces));
-    for (size_t i = 0; i <= (size_t)stats.maximum.load() / Stats::kBucketSize; i++) {
+    for (size_t i = 0; i <= (size_t)(stats.maximum.load() / Stats::kBucketSize); i++) {
       if (long x = stats.distribution[i].load()) {
         fout << i * Stats::kBucketSize << ' ' << x << '\n';
       }

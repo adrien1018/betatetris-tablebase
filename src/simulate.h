@@ -8,6 +8,7 @@ struct SimulateResult {
   uint64_t seed;
   int transitions[3];
   int lines, score;
+  int end_height;
 };
 
 std::vector<SimulateResult> Simulate(const std::vector<uint64_t>& seeds, bool gym_rng);

@@ -96,6 +96,7 @@ std::vector<SimulateResult> Simulate(const uint64_t seeds[], size_t num) {
       }
       prev_lines = game.GetLines();
     }
+    cur.end_height = game.GetBoard().Height();
     for (int i = 0; i < 3; i++) {
       if (kLevelSpeedLines[i+1] > game.GetLines()) {
         cur.transitions[i] = game.RunScore();
@@ -132,7 +133,7 @@ void OutputResult(std::basic_ostream<char>* out, const std::vector<SimulateResul
   for (auto& i : res) {
     *out << i.seed << ',';
     for (int j = 0; j < 3; j++) *out << i.transitions[j] << ',';
-    *out << i.score << ',' << i.lines << '\n';
+    *out << i.score << ',' << i.lines << ',' << i.end_height << '\n';
   }
 }
 

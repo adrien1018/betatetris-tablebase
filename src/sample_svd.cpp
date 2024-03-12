@@ -17,16 +17,21 @@
 
 namespace {
 
+#ifdef TETRIS_ONLY
+constexpr float kBucketSize = 1. / 65536;
+constexpr int kMaximum = 1;
+#else
 constexpr int kBucketSize = 32;
 constexpr int kMaximum = 2400000;
+#endif
 
 size_t GetBucket(float a) {
-  return (size_t)a / kBucketSize;
+  return (size_t)(a / kBucketSize);
 }
 
 std::vector<uint8_t> DoSample(const std::vector<NodeEval>& val, size_t num_samples, float smooth_pow, size_t seed) {
   if (val.size() >= (1ll << 32)) throw std::length_error("too large");
-  std::vector<size_t> distribution(kMaximum / kBucketSize);
+  std::vector<size_t> distribution(kMaximum / kBucketSize + 1);
   size_t nonzeros = 0;
   for (auto& i : val) {
     float ev[8];

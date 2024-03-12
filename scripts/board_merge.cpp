@@ -37,6 +37,16 @@ int main(int argc, char** argv) {
     while (fin.read((char*)b.data(), sizeof(b))) {
       cnt++;
       Insert(b);
+      if (false) {
+        Board nb(b);
+        uint32_t col0 = nb.Column(0);
+        int left_height = nb.ColumnHeights()[0];
+        if (__builtin_popcount(col0 + 1) == 1 && left_height < 16) {
+          Board sb(nb.b1 & ~(15 << (16 - left_height)), nb.b2, nb.b3, nb.b4);
+          auto fin = sb.ClearLines();
+          if (fin.first == 0 || fin.first == 4) Insert(fin.second.ToBytes());
+        }
+      }
       if (mirror) {
         Board nb(b);
         uint64_t v1 = nb.Column(9) | (uint64_t)nb.Column(8) << 22 | (uint64_t)nb.Column(7) << 44;
