@@ -16,12 +16,14 @@ N = 2000
 batch_size = 512
 n_workers = 2
 start_lines = 0
+max_lines = None
 output_file = None
 global_seed = 0
 gym_rng = False
 clean_only = False
 sample_action = False
 board_file = None
+sample_file = None
 start_from_board = False
 compile_model = False
 
@@ -99,10 +101,10 @@ class Game:
     def get_stats(self):
         return [self.seed] + self.stats + [self.env.GetLines()]
 
-    def reset(self, seed, board=None):
+    def reset(self, seed, board=None, now=None):
         self.seed = seed
         self.rng.reset(seed)
-        now = self.rng.spawn()
+        if now is None: now = self.rng.spawn()
         nxt = self.rng.spawn()
         if board:
             self.env.Reset(now, nxt, lines=start_lines, board=board)
@@ -124,7 +126,7 @@ def worker_process(remote, q_size, offset, seed_queue, shms):
         if reach_end:
             is_running[idx] = False
             return
-        seed, board = seed_queue.get()
+        seed, board, piece = seed_queue.get()
         if seed is None:
             reach_end = True
             is_running[idx] = False
@@ -132,7 +134,7 @@ def worker_process(remote, q_size, offset, seed_queue, shms):
         board = tetris.Board(board) if board else None
         if board and board.Count() % 4 != 0:
             board = None
-        games[idx].reset(seed, board)
+        games[idx].reset(seed, board, piece)
         if games[idx].env.IsOver():
             games[idx].reset(seed)
 
@@ -152,7 +154,8 @@ def worker_process(remote, q_size, offset, seed_queue, shms):
                 if not games[i].step(data[i]):
                     info.append(games[i].get_stats())
                     Reset(i)
-                if clean_only and not games[i].env.GetBoard().IsCleanForPerfect():
+                if ((clean_only and not games[i].env.GetBoard().IsCleanForPerfect()) or
+                        (max_lines and games[i].env.GetRunLines() >= max_lines)):
                     info.append(games[i].get_stats())
                     Reset(i)
 
@@ -206,14 +209,24 @@ def Main(models):
 
     random.seed(global_seed)
     seeds = random.sample(range(2 ** 24 if gym_rng else 2 ** 60), N)
-    if board_file and start_from_board and len(board_set) > 0:
+    if sample_file:
+        boards = []
+        with open(sample_file, 'rb', buffering=1048576) as f:
+            while True:
+                item = f.read(26)
+                if len(item) == 0: break
+                assert len(item) == 26
+                boards.append((item[:25], item[25] & 7))
+        boards = boards * (N // len(boards)) + random.sample(boards, N % len(boards))
+    elif board_file and start_from_board and len(board_set) > 0:
         pn = int(N * 0.8)
         boards = random.choices(list(board_set), k=pn) + [None] * (N - pn)
         random.shuffle(boards)
+        boards = [(i, None) for i in boards]
     else:
-        boards = [None] * N
-    for i in zip(seeds, boards): seed_queue.put(i)
-    for i in range(n_workers * 2): seed_queue.put((None, None))
+        boards = [(None, None)] * N
+    for i in zip(seeds, boards): seed_queue.put((i[0], *i[1]))
+    for i in range(n_workers * 2): seed_queue.put((None, None, None))
 
     def Save(fname, to_sort=False):
         nonlocal last_save
@@ -243,7 +256,7 @@ def Main(models):
 
             pi = torch.stack([model(obs_torch, pi_only=True)[0] for model in models]).mean(0)
             if sample_action:
-                pi = Categorical(logits=pi).sample()
+                pi = Categorical(logits=pi*0.75).sample()
             else:
                 pi = torch.argmax(pi, 1)
             pi_np = np.zeros(batch_size, dtype='int')
@@ -289,6 +302,7 @@ if __name__ == "__main__":
     parser.add_argument('models', nargs='+')
     parser.add_argument('-n', '--num', type=int, default=N)
     parser.add_argument('-l', '--start-lines', type=int, default=0)
+    parser.add_argument('-m', '--max-lines', type=int)
     parser.add_argument('-b', '--batch-size', type=int, default=batch_size)
     parser.add_argument('-w', '--workers', type=int, default=n_workers)
     parser.add_argument('-o', '--output', type=str)
@@ -297,6 +311,7 @@ if __name__ == "__main__":
     parser.add_argument('--clean-only', action='store_true')
     parser.add_argument('--sample-action', action='store_true')
     parser.add_argument('--board-file', type = str)
+    parser.add_argument('--sample-file', type = str)
     parser.add_argument('--start-from-board', action='store_true')
     parser.add_argument('--compile-model', action='store_true')
     args = parser.parse_args()
@@ -308,10 +323,12 @@ if __name__ == "__main__":
     output_file = args.output
     global_seed = args.seed
     start_lines = args.start_lines
+    max_lines = args.max_lines
     gym_rng = args.gym_rng
     clean_only = args.clean_only
     sample_action = args.sample_action
     board_file = args.board_file
+    sample_file = args.sample_file
     start_from_board = args.start_from_board
     compile_model = args.compile_model
 
