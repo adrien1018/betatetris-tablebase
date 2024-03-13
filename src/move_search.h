@@ -12,7 +12,7 @@
 class PossibleMoves {
   static void UniqueVector_(std::vector<Position>& p) {
     std::sort(p.begin(), p.end());
-    p.resize(std::unique(p.begin(), p.end()) - p.begin());
+    //p.resize(std::unique(p.begin(), p.end()) - p.begin());
   }
  public:
   std::vector<Position> non_adj;
@@ -119,6 +119,8 @@ struct TableEntry {
   // when it happens, `masks` should not be used
   bool cannot_finish;
   std::array<Board, R> masks, masks_nodrop;
+
+  bool operator<=>(const TableEntry<R>&) const = default;
 };
 
 template <Level level, int R, class Taps>
@@ -420,7 +422,7 @@ class Search {
   static constexpr Taps taps{};
   static constexpr Phase1Table<level, R, adj_frame, Taps> table{};
 
-  template <bool is_adj> NOINLINE constexpr void RunPhase2(
+  NOINLINE constexpr void RunPhase2(
       const Column cols[R][10],
       const TuckMasks<R> tuck_masks,
       const Column lock_positions_without_tuck[R][10],
@@ -518,7 +520,7 @@ class Search {
       }
     }
     if (phase_2_possible) {
-      RunPhase2<is_adj>(cols, tuck_masks, lock_positions_without_tuck, can_tuck_frame_masks, sz, positions);
+      RunPhase2(cols, tuck_masks, lock_positions_without_tuck, can_tuck_frame_masks, sz, positions);
     }
     return sz;
   }
