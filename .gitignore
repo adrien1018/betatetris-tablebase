@@ -1,5 +1,4 @@
-build
-build_debug
+build*
 test.cpp
 test.py
 *.swp

@@ -102,6 +102,8 @@ FetchContent_MakeAvailable_Exclude(argparse spdlog eigen sparse_map hopscotch_ma
 add_executable(random_boards scripts/random_boards.cpp)
 add_executable(board_merge scripts/board_merge.cpp)
 target_link_libraries(board_merge tsl::sparse_map)
+add_executable(test_speed scripts/test_speed.cpp)
+target_link_libraries(test_speed eigen)
 
 file(GLOB MAIN_SRC "src/*.cpp")
 add_executable(main ${MAIN_SRC})
