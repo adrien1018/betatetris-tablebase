@@ -5,16 +5,16 @@
 #include "test_boards.h"
 #include "printing.h"
 
-namespace {
-
-using mrand = std::uniform_int_distribution<int>;
-
 class FrameTest : public ::testing::Test {
  protected:
   std::mt19937_64 gen;
   void SetUp() {}
   void TearDown() override {}
 };
+
+namespace {
+
+using mrand = std::uniform_int_distribution<int>;
 
 void AssertTapSep(const FrameSequence& seq, int frames) {
   int prev_ab = -100, prev_lr = -100;
@@ -42,6 +42,8 @@ void AssertTapSep(const FrameSequence& seq, int frames) {
     }
   }
 }
+
+} // namespace
 
 template <Level level, int adj_delay, class Taps, class Rand>
 void RandTest(const Board& b, int piece, int frame_sep, Rand& gen) {
@@ -105,68 +107,3 @@ void PositionTest(const TestSearchBoard& b) {
   ASSERT_EQ(sim_pos, std::make_pair(b.pos, true))
       << b.board << b.pos << ' ' << b.piece << ' ' << level << ' ' << seq;
 }
-
-TEST_F(FrameTest, Test30Hz) {
-  SetUp();
-  for (auto& board : kTestBoards) {
-    RandTest<kLevel18, 18, Tap30Hz>(board, mrand(0, 6)(gen), 2, gen);
-    RandTest<kLevel19, 18, Tap30Hz>(board, mrand(0, 6)(gen), 2, gen);
-    RandTest<kLevel29, 18, Tap30Hz>(board, mrand(0, 6)(gen), 2, gen);
-    RandTest<kLevel39, 18, Tap30Hz>(board, mrand(0, 6)(gen), 2, gen);
-  }
-}
-
-TEST_F(FrameTest, Test12HzSmallAdj) {
-  SetUp();
-  for (auto& board : kTestBoards) {
-    RandTest<kLevel18, 12, Tap12Hz>(board, mrand(0, 6)(gen), 5, gen);
-    RandTest<kLevel19, 12, Tap12Hz>(board, mrand(0, 6)(gen), 5, gen);
-    RandTest<kLevel29, 12, Tap12Hz>(board, mrand(0, 6)(gen), 5, gen);
-    RandTest<kLevel39, 12, Tap12Hz>(board, mrand(0, 6)(gen), 5, gen);
-  }
-}
-
-TEST_F(FrameTest, TestTuck) {
-  SetUp();
-  for (auto& board : kTestTuckBoards) {
-    PositionTest<kLevel18>(board);
-    PositionTest<kLevel19>(board);
-    PositionTest<kLevel29>(board);
-    PositionTest<kLevel39>(board);
-  }
-}
-
-TEST_F(FrameTest, TestBestAdj) {
-  SetUp();
-  Board b = Board::Ones;
-  auto moves = MoveSearch<kLevel18, 18, Tap30Hz>(b, 0);
-  {
-    std::array<Position, 7> pos{{{2, 19, 3}, {2, 19, 3}, {2, 19, 3}, {2, 19, 3},
-                                 {2, 19, 5}, {2, 19, 5}, {2, 19, 5}}};
-    size_t idx = GetBestAdj<kLevel18, Tap30Hz>(b, 0, moves, 18, pos.data()).first;
-    ASSERT_EQ(moves.adj[idx].first, Position(2, 6, 4));
-  } {
-    std::array<Position, 7> pos{{{2, 19, 3}, {2, 19, 5}, {2, 19, 5}, {2, 19, 5},
-                                 {2, 19, 5}, {2, 19, 5}, {2, 19, 5}}};
-    size_t idx = GetBestAdj<kLevel18, Tap30Hz>(b, 0, moves, 18, pos.data()).first;
-    ASSERT_EQ(moves.adj[idx].first, Position(2, 6, 5));
-  } {
-    std::array<Position, 7> pos{{{0, 18, 5}, {0, 18, 5}, {0, 18, 5}, {0, 18, 5},
-                                 {2, 19, 5}, {2, 19, 5}, {2, 19, 5}}};
-    size_t idx = GetBestAdj<kLevel18, Tap30Hz>(b, 0, moves, 18, pos.data()).first;
-    ASSERT_TRUE(moves.adj[idx].first == Position(1, 6, 5) ||
-                moves.adj[idx].first == Position(3, 6, 5));
-  }
-  using namespace std::literals;
-  b = Board("....X.....\n"
-            ".....X...."sv);
-  moves = MoveSearch<kLevel18, 18, Tap30Hz>(b, 0);
-  {
-    std::array<Position, 7> pos{{{2, 19, 3}, {2, 19, 3}, {2, 19, 3}, {2, 19, 3},
-                                 {2, 19, 3}, {2, 19, 3}, {2, 19, 3}}};
-    size_t idx = GetBestAdj<kLevel18, Tap30Hz>(b, 0, moves, 18, pos.data()).first;
-    ASSERT_EQ(moves.adj[idx].first, Position(2, 6, 2));
-  }
-}
-
-} // namespace
