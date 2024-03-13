@@ -75,6 +75,7 @@ std::vector<SimulateResult> Simulate(const uint64_t seeds[], size_t num) {
   RNG rng;
   Play play;
   std::vector<SimulateResult> ret;
+  const char kPieceNames[] = "TJZOSLI";
   for (size_t i = 0; i < num; i++) {
     int seed = seeds[i];
     rng.Reset(seed);
@@ -84,11 +85,15 @@ std::vector<SimulateResult> Simulate(const uint64_t seeds[], size_t num) {
 
     SimulateResult cur;
     cur.seed = seed;
+    cur.piece_seq += kPieceNames[now_piece];
     int prev_lines = 0;
     while (!game.IsOver()) {
       auto strats = play.GetStrat(game);
       if (strats[0] == Position::Invalid) break;
-      game.DirectPlacement(strats[game.NextPiece()], rng.Spawn());
+      cur.piece_seq += kPieceNames[nxt_piece];
+      nxt_piece = rng.Spawn();
+      game.DirectPlacement(strats[game.NextPiece()], nxt_piece);
+      cur.lines_seq += '0' + (game.GetLines() - prev_lines);
       for (int i = 0; i < 3; i++) {
         if (prev_lines < kLevelSpeedLines[i+1] && kLevelSpeedLines[i+1] <= game.GetLines()) {
           cur.transitions[i] = game.RunScore();
@@ -133,7 +138,8 @@ void OutputResult(std::basic_ostream<char>* out, const std::vector<SimulateResul
   for (auto& i : res) {
     *out << i.seed << ',';
     for (int j = 0; j < 3; j++) *out << i.transitions[j] << ',';
-    *out << i.score << ',' << i.lines << ',' << i.end_height << '\n';
+    *out << i.score << ',' << i.lines << ',' << i.end_height << ','
+         << i.piece_seq << ',' << i.lines_seq << '\n';
   }
 }
 
