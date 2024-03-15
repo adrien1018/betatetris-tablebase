@@ -2,11 +2,26 @@
 
 import sys, os.path, socketserver, argparse, re, socket
 import numpy as np, torch
+import curses
 
 import tetris
 from model import Model, obs_to_torch
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+stdscr = None
+args = None
+thresholds = None
+
+
+def myprint(*pargs, posx=0, posy=0, clear=True, refresh=True):
+    if args.use_curses:
+        if clear: stdscr.clear()
+        pstr = ' '.join(map(str, pargs))
+        stdscr.addstr(posx, posy, pstr)
+        if refresh: stdscr.refresh()
+    else:
+        print(*pargs, flush=True)
+
 
 class GameConn(socketserver.BaseRequestHandler):
     def read_until(self, sz):
@@ -40,21 +55,33 @@ class GameConn(socketserver.BaseRequestHandler):
             action = torch.argmax(pi, 1).item()
             return (action // 200, action // 10 % 20, action % 10), v[0].item()
 
-    def print_status(self, strats, is_table, data):
+    def print_status(self, strats, is_table, data, refresh=True):
         def StratText(i):
             ntxt = f'({strats[i][0]},{strats[i][1]:2d},{strats[i][2]})'
             if not is_table:
                 ntxt += f' val {data[i]:6.3f}'
             return ntxt
-        txt = 'Tablebase' if is_table else 'Neural Net'
+        txt = 'Game #' + str(self.games) + '\n\n'
+        txt += 'Games to 19: ' + str(self.num_19) + '\n'
+        txt += 'Games to 29: ' + str(self.num_29) + '\n\nAgent: '
+        txt += 'Tablebase' if is_table else 'Neural Net'
         txt += '\nPlacements\n'
         for i in range(7):
             txt += 'TJZOSLI'[i] + ' ' + StratText(i) + '\n'
         if is_table:
             txt += f'confidence {data}\n'
+            if thresholds:
+                multiplier = (args.buckets - 2) / (args.ratio_high - args.ratio_low)
+                bias = 1 - args.ratio_low * multiplier
+                value_low = 0.0 if data == 0 else (data - bias) / multiplier
+                value_high = 1.0 if data == args.buckets - 1 else (data + 1 - bias) / multiplier
+                scale = thresholds[self.game.GetLines()] * 100
+                value_low *= scale
+                value_high *= scale
+                txt += f'(probability to 29:\n{value_low:6.2f}% -{value_high:6.2f}%)\n'
         else:
             txt += '\n'
-        print(txt, end='', flush=True)
+        myprint(txt, refresh=refresh)
 
     def get_adj_strat(self, pos):
         with torch.no_grad():
@@ -74,14 +101,15 @@ class GameConn(socketserver.BaseRequestHandler):
         result = self.board_conn.recv(22)
         level = result[21]
         adj_strats = [tuple(result[i:i+3]) for i in range(0, 21, 3)]
-        self.print_status(adj_strats, True, level)
+        self.print_status(adj_strats, True, level, refresh=False)
         return adj_strats, level
 
     def get_strat_all(self):
-        if self.game.GetLines() < 310 and self.board_conn:
+        if self.game.GetLines() < 230 and self.board_conn:
             # tablebase
             adj_strats, level = self.query_tablebase()
-            if not (adj_strats[0] == (0, 0, 0) or level < 6 or (level < 12 and self.game.GetLines() >= 230)):
+            if not adj_strats[0] == (0, 0, 0):
+                stdscr.refresh()
                 if self.game.IsNoAdjMove(*adj_strats[0]):
                     return False, adj_strats[0]
                 return True, adj_strats
@@ -157,7 +185,7 @@ class GameConn(socketserver.BaseRequestHandler):
         self.do_premove()
 
     def handle(self):
-        print('Connected')
+        myprint('Connected')
         self.game = tetris.Tetris()
         while True:
             try:
@@ -165,13 +193,17 @@ class GameConn(socketserver.BaseRequestHandler):
                 if data[0] == 0xff:
                     self.done = False
                     cur, nxt, _ = self.read_until(3)
+                    if self.games != 0:
+                        self.num_19 += int(self.game.GetLines() >= 130)
+                        self.num_29 += int(self.game.GetLines() >= 230)
+                    self.games += 1
                     self.game.Reset(cur, nxt)
-                    print('New game', (cur, nxt))
+                    myprint('New game', (cur, nxt))
                     self.first_piece()
                 elif data[0] == 0xfd:
                     r, x, y, nxt = self.read_until(4)
                     if (r, x, y) != self.prev_placement and not self.done:
-                        print(f'Error: unexpected placement {(r, x, y)}; expected {self.prev_placement}')
+                        myprint(f'Error: unexpected placement {(r, x, y)}; expected {self.prev_placement}')
                         self.done = True
                     self.finish_move(nxt)
                     self.do_premove()
@@ -185,6 +217,9 @@ def GenHandler(model, board_conn):
         def __init__(self, *args, **kwargs):
             self.model = model
             self.board_conn = board_conn
+            self.games = 0
+            self.num_19 = 0
+            self.num_29 = 0
             super().__init__(*args, **kwargs)
     return Handler
 
@@ -195,8 +230,17 @@ if __name__ == "__main__":
     parser.add_argument('-b', '--bind', type=str, default='0.0.0.0')
     parser.add_argument('-p', '--port', type=int, default=3456)
     parser.add_argument('-s', '--server', type=str)
+    parser.add_argument('-c', '--use-curses', action='store_true')
+    parser.add_argument('--threshold-file', type=str)
+    parser.add_argument('--ratio-low', type=float, default=0.01)
+    parser.add_argument('--ratio-high', type=float, default=1.0)
+    parser.add_argument('--buckets', type=float, default=256)
     args = parser.parse_args()
     print(args)
+
+    if args.threshold_file:
+        with open(args.threshold_file, 'r') as f:
+            thresholds = list(map(float, f.read().split()))
 
     with torch.no_grad():
         state_dict = torch.load(args.model)
@@ -218,11 +262,26 @@ if __name__ == "__main__":
     # load GPU first to reduce lag
     model(obs_to_torch(tetris.Tetris().GetState()), pi_only=True)
 
-    with socketserver.TCPServer((args.bind, args.port), GenHandler(model, board_conn)) as server:
-        server.model = model
-        print(f'Ready, listening on {args.bind}:{args.port}')
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            server.shutdown()
+    if args.use_curses:
+        stdscr = curses.initscr()
+        curses.noecho()
+        curses.curs_set(False)
+
+    try:
+        with socketserver.TCPServer((args.bind, args.port), GenHandler(model, board_conn)) as server:
+            server.model = model
+            myprint(f'Ready, listening on {args.bind}:{args.port}')
+            try:
+                server.serve_forever()
+            except KeyboardInterrupt:
+                server.shutdown()
+                if args.use_curses:
+                    curses.curs_set(True)
+                    curses.echo()
+                    curses.endwin()
+    except:
+        if args.use_curses:
+            curses.echo()
+            curses.endwin()
+        raise
 
