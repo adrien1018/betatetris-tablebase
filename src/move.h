@@ -8,7 +8,7 @@
 #include "io_helpers.h"
 
 // store range in uint8_t
-static_assert(kLineCap <= 255 * 2);
+static_assert(kLineCap <= 255 * kGroupLineInterval);
 
 using NodeMoveIndex = SimpleIOArray<uint8_t, 7>;
 
@@ -142,7 +142,7 @@ struct NodePartialThreshold {
   }
 };
 
-using NodeThreshold = SimpleIOArray<uint8_t, (kLineCap + 1) / 2>;
+using NodeThreshold = SimpleIOArray<uint8_t, (kLineCap + kGroupLineInterval - 1) / kGroupLineInterval>;
 
 void RunCalculateMoves(int start_pieces, int end_pieces);
 void MergeMoveRanges(int pieces_l, int pieces_r, bool delete_after);

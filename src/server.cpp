@@ -220,7 +220,7 @@ class BoardConnection : public std::enable_shared_from_this<BoardConnection>, pu
         }
         if (strats[0] != Position::Invalid) {
           readers[group].Seek(move_idx);
-          out_ptr[21] = readers[group].ReadOne(1, 0)[lines / 2];
+          out_ptr[21] = readers[group].ReadOne(1, 0)[lines / kGroupLineInterval];
         }
       }
       Send(reinterpret_cast<const char*>(send_buf.data()), send_buf.size());
