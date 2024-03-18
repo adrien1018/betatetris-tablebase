@@ -56,20 +56,34 @@ class GameConn(socketserver.BaseRequestHandler):
             return (action // 200, action // 10 % 20, action % 10), v[0].item()
 
     def print_status(self, strats, is_table, data, refresh=True):
-        def StratText(i):
-            ntxt = f'({strats[i][0]},{strats[i][1]:2d},{strats[i][2]})'
+        def StratText(i, cur_piece):
+            PIECE_TABLE = 'TJZOSLI'
+            ROT_TABLE = ['dlur', 'dlur', ['',''], [''], ['', ''], 'dlur', ['', '']]
+            COL_TABLE = [[(-1,2),(-1,1),(-1,2),(0,2)],
+                         [(-1,2),(-1,1),(-1,2),(0,2)],
+                         [(-1,2),(0,2)],
+                         [(-1,1)],
+                         [(-1,2),(0,2)],
+                         [(-1,2),(-1,1),(-1,2),(0,2)],
+                         [(-2,2),(0,1)]]
+            r,x,y = strats[i]
+            ori = PIECE_TABLE[cur_piece] + ROT_TABLE[cur_piece][r] + '-'
+            for j in range(*COL_TABLE[cur_piece][r]):
+                ori += str(j + y + 1)[-1]
+            ntxt = f'{ori:6s}@row {20-x:2d}'
             if not is_table:
-                ntxt += f' val {data[i]:6.3f}'
+                ntxt += f'; val {data[i]:6.3f}'
             return ntxt
-        txt = 'Game #' + str(self.games) + '\n\n'
+
+        txt = 'Game #' + str(self.games) + '\n'
         txt += 'Games to 19: ' + str(self.num_19) + '\n'
         txt += 'Games to 29: ' + str(self.num_29) + '\n\nAgent: '
         txt += 'Tablebase' if is_table else 'Neural Net'
-        txt += '\nPlacements\n'
+        txt += '\nPlacements: (where to place\n the upcoming piece based on\n its next piece)\n'
         for i in range(7):
-            txt += 'TJZOSLI'[i] + ' ' + StratText(i) + '\n'
+            txt += 'TJZOSLI'[i] + ': ' + StratText(i, self.game.GetNowPiece()) + '\n'
         if is_table:
-            txt += f'confidence {data}\n'
+            txt += f'confidence {data}'
             if thresholds:
                 multiplier = (args.buckets - 2) / (args.ratio_high - args.ratio_low)
                 bias = 1 - args.ratio_low * multiplier
@@ -78,9 +92,8 @@ class GameConn(socketserver.BaseRequestHandler):
                 scale = thresholds[self.game.GetLines()] * 100
                 value_low *= scale
                 value_high *= scale
-                txt += f'(probability to 29:\n{value_low:6.2f}% -{value_high:6.2f}%)\n'
-        else:
-            txt += '\n'
+                txt += f' (pure tablebase\n probability to 29:\n{value_low:6.2f}% -{value_high:6.2f}%)'
+        txt += '\n'
         myprint(txt, refresh=refresh)
 
     def get_adj_strat(self, pos):
