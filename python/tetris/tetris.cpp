@@ -85,6 +85,15 @@ std::optional<FrameSequence> ArrayToFrameSequence(PyObject* obj) {
   return seq;
 }
 
+PyObject* GetRewardObj(double reward, double raw_reward) {
+  PyObject* r1 = PyFloat_FromDouble(reward);
+  PyObject* r2 = PyFloat_FromDouble(raw_reward);
+  PyObject* ret = PyTuple_Pack(2, r1, r2);
+  Py_DECREF(r1);
+  Py_DECREF(r2);
+  return ret;
+}
+
 /// -------- impl --------
 
 void TetrisDealloc(PythonTetris* self) {
@@ -115,12 +124,17 @@ PyObject* Tetris_InputPlacement(PythonTetris* self, PyObject* args, PyObject* kw
     return nullptr;
   }
   auto [reward, raw_reward] = self->InputPlacement(pos);
-  PyObject* r1 = PyFloat_FromDouble(reward);
-  PyObject* r2 = PyFloat_FromDouble(raw_reward);
-  PyObject* ret = PyTuple_Pack(2, r1, r2);
-  Py_DECREF(r1);
-  Py_DECREF(r2);
-  return ret;
+  return GetRewardObj(reward, raw_reward);
+}
+
+PyObject* Tetris_DirectPlacement(PythonTetris* self, PyObject* args, PyObject* kwds) {
+  static const char* kwlist[] = {"rotate", "x", "y", nullptr};
+  Position pos;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "iii", (char**)kwlist, &pos.r, &pos.x, &pos.y)) {
+    return nullptr;
+  }
+  auto [reward, raw_reward] = self->DirectPlacement(pos);
+  return GetRewardObj(reward, raw_reward);
 }
 
 PyObject* Tetris_SetNextPiece(PythonTetris* self, PyObject* args, PyObject* kwds) {
@@ -416,6 +430,8 @@ PyMethodDef py_tetris_class_methods[] = {
      "Check whether the game is over"},
     {"InputPlacement", (PyCFunction)Tetris_InputPlacement, METH_VARARGS | METH_KEYWORDS,
      "Input a placement and return the reward"},
+    {"DirectPlacement", (PyCFunction)Tetris_DirectPlacement, METH_VARARGS | METH_KEYWORDS,
+     "Input a placement (skip pre-adj) and return the reward"},
     {"SetNextPiece", (PyCFunction)Tetris_SetNextPiece, METH_VARARGS | METH_KEYWORDS,
      "Set the next piece"},
     {"Reset", (PyCFunction)Tetris_Reset, METH_VARARGS | METH_KEYWORDS,

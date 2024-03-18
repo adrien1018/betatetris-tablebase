@@ -105,7 +105,7 @@ class Tetris {
     return move_map_[pos.r][pos.x][pos.y] == kHasAdj;
   }
 
-  void DirectPlacement(const Position& pos, int next_piece) {
+  std::pair<int, int> DirectPlacement(const Position& pos, int next_piece) {
     if (game_over_) throw std::logic_error("already game over");
     if (next_piece < 0 || next_piece >= (int)kPieces) throw std::range_error("Invalid piece");
     uint8_t location = move_map_[pos.r][pos.x][pos.y];
@@ -113,12 +113,11 @@ class Tetris {
             return std::find(i.second.begin(), i.second.end(), pos) != i.second.end();
           }))) {
       game_over_ = true;
-      return;
+      return {-1, 0};
     }
-    if (StepGame_(pos, next_piece).first == -1) {
-      game_over_ = true;
-      return;
-    }
+    auto ret = StepGame_(pos, next_piece);
+    if (ret.first == -1) game_over_ = true;
+    return ret;
   }
 
   // (score, lines)

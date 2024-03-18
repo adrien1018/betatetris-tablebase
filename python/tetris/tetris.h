@@ -41,6 +41,24 @@ class PythonTetris {
         kTransitionProbInt[piece], kTransitionProbInt[piece] + kPieces)(rng_);
   }
 
+  std::pair<double, double> StepAndCalculateReward_(const Position& pos, int score, int lines) {
+    if (score == -1) return {kInvalidReward_, 0.0f};
+    double reward = score * kRewardMultiplier_;
+    double n_reward = reward;
+    if (lines == 4 && pos.x >= 18) n_reward *= kBottomMultiplier_;
+    if (!tetris.IsAdj()) {
+      next_piece_ = GenNextPiece_(next_piece_);
+      n_reward += step_reward_;
+    }
+#ifdef TETRIS_ONLY
+    if (lines && lines != 4) {
+      n_reward *= kGameOverMultiplier_;
+    }
+    if (tetris.IsOver()) n_reward += kGameOverReward;
+#endif
+    return {n_reward, reward};
+  }
+
  public:
   Tetris tetris;
 
@@ -66,23 +84,14 @@ class PythonTetris {
     next_piece_ = GenNextPiece_(next_piece);
   }
 
+  std::pair<double, double> DirectPlacement(const Position& pos) {
+    auto [score, lines] = tetris.DirectPlacement(pos, next_piece_);
+    return StepAndCalculateReward_(pos, score, lines);
+  }
+
   std::pair<double, double> InputPlacement(const Position& pos) {
     auto [score, lines] = tetris.InputPlacement(pos, next_piece_);
-    if (score == -1) return {kInvalidReward_, 0.0f};
-    double reward = score * kRewardMultiplier_;
-    double n_reward = reward;
-    if (lines == 4 && pos.x >= 18) n_reward *= kBottomMultiplier_;
-    if (!tetris.IsAdj()) {
-      next_piece_ = GenNextPiece_(next_piece_);
-      n_reward += step_reward_;
-    }
-#ifdef TETRIS_ONLY
-    if (lines && lines != 4) {
-      n_reward *= kGameOverMultiplier_;
-    }
-    if (tetris.IsOver()) n_reward += kGameOverReward;
-#endif
-    return {n_reward, reward};
+    return StepAndCalculateReward_(pos, score, lines);
   }
 
   struct State {
