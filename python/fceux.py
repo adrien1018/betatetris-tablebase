@@ -77,7 +77,8 @@ class GameConn(socketserver.BaseRequestHandler):
 
         txt = 'Game #' + str(self.games) + '\n'
         txt += 'Games to 19: ' + str(self.num_19) + '\n'
-        txt += 'Games to 29: ' + str(self.num_29) + '\n\nAgent: '
+        txt += 'Games to 29: ' + str(self.num_29) + '\n'
+        txt += 'Drought: ' + str(self.drought) + '\nAgent: '
         txt += 'Tablebase' if is_table else 'Neural Net'
         txt += '\nPlacements: (where to place\n the upcoming piece based on\n its next piece)\n'
         for i in range(7):
@@ -203,18 +204,24 @@ class GameConn(socketserver.BaseRequestHandler):
         while True:
             try:
                 data = self.read_until(1)
-                if data[0] == 0xff:
+                if data[0] == 0xff or data[0] == 0xef:
+                    if data[0] == 0xef:
+                        self.num_19 = 0
+                        self.num_29 = 0
+                        self.games = 0
                     self.done = False
                     cur, nxt, _ = self.read_until(3)
-                    if self.games != 0:
-                        self.num_19 += int(self.game.GetLines() >= 130)
-                        self.num_29 += int(self.game.GetLines() >= 230)
+                    self.drought = 0
+                    self.num_19 += int(self.game.GetLines() >= 130)
+                    self.num_29 += int(self.game.GetLines() >= 230)
                     self.games += 1
                     self.game.Reset(cur, nxt)
                     myprint('New game', (cur, nxt))
                     self.first_piece()
                 elif data[0] == 0xfd:
                     r, x, y, nxt = self.read_until(4)
+                    if nxt != 6: self.drought += 1
+                    else: self.drought = 0
                     if (r, x, y) != self.prev_placement and not self.done:
                         myprint(f'Error: unexpected placement {(r, x, y)}; expected {self.prev_placement}')
                         self.done = True
@@ -233,6 +240,7 @@ def GenHandler(model, board_conn):
             self.games = 0
             self.num_19 = 0
             self.num_29 = 0
+            self.drought = 0
             super().__init__(*args, **kwargs)
     return Handler
 
