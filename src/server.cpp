@@ -202,7 +202,6 @@ class BoardConnection : public std::enable_shared_from_this<BoardConnection>, pu
     while (true) {
       uint32_t num_boards = ReadUntil(1)[0];
       auto data = ReadUntil(kReceiveSize * num_boards);
-      // send: 21 bytes position ((r,x,y)*7) + 1 byte threshold
       std::vector<uint8_t> send_buf(kSendSize * num_boards);
       for (size_t i = 0; i < num_boards; i++) {
         const uint8_t* in_ptr = data.data() + kReceiveSize * i;
@@ -219,7 +218,7 @@ class BoardConnection : public std::enable_shared_from_this<BoardConnection>, pu
           out_ptr[j*3+2] = strats[j].y;
         }
         if (strats[0] != Position::Invalid) {
-          readers[group].Seek(move_idx);
+          readers[group].Seek(move_idx, 0, 0);
           out_ptr[21] = readers[group].ReadOne(1, 0)[lines / kGroupLineInterval];
         }
       }
