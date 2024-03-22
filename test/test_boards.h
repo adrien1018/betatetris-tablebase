@@ -13,7 +13,7 @@ struct TestSearchBoard {
 };
 
 #ifdef DOUBLE_TUCK
-extern const std::array<TestSearchBoard, 26> kTestTuckBoards;
+extern const std::array<TestSearchBoard, 28> kTestTuckBoards;
 #else
-extern const std::array<TestSearchBoard, 24> kTestTuckBoards;
+extern const std::array<TestSearchBoard, 26> kTestTuckBoards;
 #endif

@@ -184,6 +184,11 @@ const decltype(kTestTuckBoards) kTestTuckBoards = {{
   {Board("....XXX...\n"
          ".....X....\n"
          ".....X...."sv), 3, {0, 18, 7}, true, true}, // L
+  {Board(".......XX.\n"
+         ".......X..\n"
+         ".......X..\n"
+         ".......X..\n"
+         ".......X.."sv), 6, {1, 18, 8}, true, true}, // L
   {Board("....XXX...\n"
          ".....X...."sv), 0, {2, 19, 3}, true, false}, // R
   {Board("....XXX...\n"
@@ -192,6 +197,11 @@ const decltype(kTestTuckBoards) kTestTuckBoards = {{
   {Board("....XXX...\n"
          ".....X....\n"
          ".....X...."sv), 3, {0, 18, 4}, true, true}, // R
+  {Board(".XX.......\n"
+         "..X.......\n"
+         "..X.......\n"
+         "..X.......\n"
+         "..X......."sv), 6, {1, 18, 1}, true, false}, // R
 #ifdef DOUBLE_TUCK
   {Board("....XXX...\n"
          "....X.....\n"
