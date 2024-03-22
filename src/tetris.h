@@ -164,6 +164,13 @@ class Tetris {
     next_piece_ = piece;
   }
 
+  void SetLines(int lines) {
+    if (GetLevelSpeed(GetLevelByLines(lines)) != LevelSpeed()) {
+      throw std::range_error("Cannot set lines to different speed");
+    }
+    lines_ = lines;
+  }
+
   const MoveMap& GetPossibleMoveMap() const { return move_map_; }
   const Board& GetBoard() const { return board_; }
 

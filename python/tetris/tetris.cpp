@@ -149,6 +149,20 @@ PyObject* Tetris_SetNextPiece(PythonTetris* self, PyObject* args, PyObject* kwds
   Py_RETURN_NONE;
 }
 
+PyObject* Tetris_SetLines(PythonTetris* self, PyObject* args, PyObject* kwds) {
+  static const char* kwlist[] = {"lines", nullptr};
+  int lines;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "i", (char**)kwlist, &lines)) {
+    return nullptr;
+  }
+  try {
+    self->tetris.SetLines(lines);
+    Py_RETURN_NONE;
+  } catch (std::range_error& e) {
+    return nullptr;
+  }
+}
+
 PyObject* Tetris_Reset(PythonTetris* self, PyObject* args, PyObject* kwds) {
   static const char* kwlist[] = {
     "now_piece", "next_piece", "lines", "board",
@@ -434,6 +448,8 @@ PyMethodDef py_tetris_class_methods[] = {
      "Input a placement (skip pre-adj) and return the reward"},
     {"SetNextPiece", (PyCFunction)Tetris_SetNextPiece, METH_VARARGS | METH_KEYWORDS,
      "Set the next piece"},
+    {"SetLines", (PyCFunction)Tetris_SetLines, METH_VARARGS | METH_KEYWORDS,
+     "Set lines"},
     {"Reset", (PyCFunction)Tetris_Reset, METH_VARARGS | METH_KEYWORDS,
      "Reset game and assign pieces randomly"},
     {"ResetRandom", (PyCFunction)Tetris_ResetRandom, METH_VARARGS | METH_KEYWORDS,

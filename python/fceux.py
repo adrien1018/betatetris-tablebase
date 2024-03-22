@@ -183,8 +183,6 @@ class GameConn(socketserver.BaseRequestHandler):
                 pos, _ = self.game.GetAdjPremove(strat)
                 strat = strat[self.game.GetNextPiece()]
                 self.step_game(pos)
-            else:
-                strat = adj_strats
             seq = self.game.GetSequence(*strat)
         else:
             strat, _ = self.get_strat()
@@ -198,6 +196,28 @@ class GameConn(socketserver.BaseRequestHandler):
         self.send_seq(seq)
         self.do_premove()
 
+    def start_lines(self):
+        if self.start_level <= 18: return 0
+        if self.start_level <= 28: return 130
+        if self.start_level <= 38: return 230
+        return 330
+
+    def set_effective_lines(self):
+        if self.start_level <= 18: return
+        lines = self.game.GetRunLines()
+        if self.start_level <= 28:
+            if lines >= 144: return
+            lines = 144 + (lines % 4)
+        elif self.start_level <= 38:
+            if 244 <= lines < 256: return
+            if lines < 244: lines = 244 + (lines % 4)
+            else: lines = 256 + (lines % 4)
+        else:
+            if 344 <= lines < 356: return
+            if lines < 344: lines = 344 + (lines % 4)
+            else: lines = 356 + (lines % 4)
+        self.game.SetLines(lines)
+
     def handle(self):
         myprint('Connected')
         self.game = tetris.Tetris()
@@ -210,12 +230,12 @@ class GameConn(socketserver.BaseRequestHandler):
                         self.num_29 = 0
                         self.games = 0
                     self.done = False
-                    cur, nxt, _ = self.read_until(3)
+                    cur, nxt, self.start_level = self.read_until(3)
                     self.drought = 0
                     self.num_19 += int(self.game.GetLines() >= 130)
                     self.num_29 += int(self.game.GetLines() >= 230)
                     self.games += 1
-                    self.game.Reset(cur, nxt)
+                    self.game.Reset(cur, nxt, lines=self.start_lines())
                     myprint('New game', (cur, nxt))
                     self.first_piece()
                 elif data[0] == 0xfd:
@@ -226,8 +246,12 @@ class GameConn(socketserver.BaseRequestHandler):
                         myprint(f'Error: unexpected placement {(r, x, y)}; expected {self.prev_placement}')
                         self.done = True
                     self.finish_move(nxt)
+                    self.set_effective_lines()
                     self.do_premove()
             except ConnectionResetError:
+                self.request.close()
+                break
+            except IOError:
                 self.request.close()
                 break
 
