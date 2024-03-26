@@ -10,16 +10,16 @@
 #include "constexpr_helpers.h"
 
 class PossibleMoves {
-  static void UniqueVector_(std::vector<Position>& p) {
+  static void UniqueVector_(std::vector<Position>& p, bool unique) {
     std::sort(p.begin(), p.end());
-    //p.resize(std::unique(p.begin(), p.end()) - p.begin());
+    p.resize(std::unique(p.begin(), p.end()) - p.begin());
   }
  public:
   std::vector<Position> non_adj;
   std::vector<std::pair<Position, std::vector<Position>>> adj;
-  void Normalize() {
-    UniqueVector_(non_adj);
-    for (auto& i : adj) UniqueVector_(i.second);
+  void Normalize(bool unique = false) {
+    UniqueVector_(non_adj, unique);
+    for (auto& i : adj) UniqueVector_(i.second, unique);
     std::sort(adj.begin(), adj.end());
   }
 };

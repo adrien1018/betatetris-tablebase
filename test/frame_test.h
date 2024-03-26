@@ -86,11 +86,11 @@ void PositionTest(const TestSearchBoard& b) {
   FrameSequence seq;
   std::pair<Position, bool> sim_pos;
   if constexpr (level == kLevel18 || level == kLevel19) {
-    auto moves = MoveSearch<level, 18, Tap15Hz>(b.board, b.piece);
+    auto moves = MoveSearch<level, 18, Tap20Hz>(b.board, b.piece);
     for (auto& i : moves.adj) {
       if (std::find(i.second.begin(), i.second.end(), b.pos) == i.second.end()) continue;
-      seq = GetFrameSequenceStart<level, Tap15Hz>(b.board, b.piece, 18, i.first);
-      GetFrameSequenceAdj<level, Tap15Hz>(seq, b.board, b.piece, i.first, b.pos);
+      seq = GetFrameSequenceStart<level, Tap20Hz>(b.board, b.piece, 18, i.first);
+      GetFrameSequenceAdj<level, Tap20Hz>(seq, b.board, b.piece, i.first, b.pos);
       sim_pos = SimulateMove<level>(b.board, b.piece, seq, true);
       ASSERT_EQ(sim_pos, std::make_pair(b.pos, true))
           << b.board << b.pos << ' ' << b.piece << ' ' << level << ' ' << seq;
@@ -100,8 +100,8 @@ void PositionTest(const TestSearchBoard& b) {
     seq = GetFrameSequenceStart<level, Tap30Hz>(b.board, b.piece, 18, b.pos);
     AssertTapSep(seq, 2);
   } else {
-    seq = GetFrameSequenceStart<level, Tap15Hz>(b.board, b.piece, 61, b.pos);
-    AssertTapSep(seq, 4);
+    seq = GetFrameSequenceStart<level, Tap20Hz>(b.board, b.piece, 61, b.pos);
+    AssertTapSep(seq, 3);
   }
   sim_pos = SimulateMove<level>(b.board, b.piece, seq, true);
   ASSERT_EQ(sim_pos, std::make_pair(b.pos, true))

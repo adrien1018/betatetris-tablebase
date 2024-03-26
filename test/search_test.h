@@ -21,7 +21,7 @@ void TestSearch(const Board& b) {
     auto board_map = b.PieceMap<piece>();
     auto m1 = NaiveGetPossibleMoves(byte_map, level, adj_delay, taps_obj.data());
     auto m2 = MoveSearch<level, Board::NumRotations(piece), adj_delay, Taps>(board_map);
-    m1.Normalize();
+    m1.Normalize(true);
     size_t old_sz = m2.non_adj.size() + m2.adj.size();
     for (auto& i : m2.adj) old_sz += i.second.size();
     m2.Normalize();
