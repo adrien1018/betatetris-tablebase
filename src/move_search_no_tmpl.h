@@ -72,39 +72,12 @@ constexpr int GetLastFrameOnRow(int row, Level level) {
   unreachable();
 }
 
-template <
-    int tap1, int tap2, int tap3, int tap4, int tap5,
-    int tap6, int tap7, int tap8, int tap9, int tap10>
-class TapTable {
-  int t[10];
- public:
-  constexpr TapTable() : t{tap1, tap2, tap3, tap4, tap5, tap6, tap7, tap8, tap9, tap10} {
-    static_assert(
-        tap1 >= 0 && tap2 >= 2 && tap3 >= 2 && tap4 >= 2 && tap5 >= 2 &&
-        tap6 >= 2 && tap7 >= 2 && tap8 >= 2 && tap9 >= 2 && tap10 >= 2,
-        "each tap must be at least 2 frames apart");
-    for (int i = 1; i < 10; i++) t[i] += t[i - 1];
-  }
-  constexpr int operator[](int x) const { return t[x]; }
-  constexpr int* data() { return t; }
-  constexpr const int* data() const { return t; }
-};
-
-template <class T> struct IsTapTable : std::false_type {};
-template <int... args> struct IsTapTable<TapTable<args...>> : std::true_type {};
-
 constexpr int abs(int x) { return x < 0 ? -x : x; }
 constexpr int sgn(int x) {
   return x == 0 ? 0 : x > 0 ? 1 : -1;
 }
 
 // Check each bit in mask is set in board
-template <int R>
-constexpr bool Contains(const std::array<Board, R>& board, const std::array<Board, R>& mask) {
-  bool ret = true;
-  for (int i = 0; i < R; i++) ret &= (board[i] & mask[i]) == mask[i];
-  return ret;
-}
 template <int R>
 constexpr bool Contains4(const std::array<Board, R>& board, const std::array<Board, 4>& mask) {
   bool ret = true;
@@ -619,34 +592,16 @@ class PrecomputedTableTuple {
 inline PossibleMoves MoveSearch(
     Level level, int adj_frame, const int taps[], const PrecomputedTableTuple& table,
     const Board& b, int piece) {
-  switch (piece) {
-#define ONE_CASE(x, y) \
-    case x: return MoveSearch<Board::NumRotations(x)>(level, adj_frame, taps, table[Board::NumRotations(x)], y);
-    ONE_CASE(0, b.TMap());
-    ONE_CASE(1, b.JMap());
-    ONE_CASE(2, b.ZMap());
-    ONE_CASE(3, b.OMap());
-    ONE_CASE(4, b.SMap());
-    ONE_CASE(5, b.LMap());
-    ONE_CASE(6, b.IMap());
+#define ONE_CASE(x) \
+    case x: return MoveSearch<Board::NumRotations(x)>(level, adj_frame, taps, table[Board::NumRotations(x)], b.PieceMap<x>());
+  DO_PIECE_CASE(piece);
 #undef ONE_CASE
-  }
-  unreachable();
 }
 
 template <class Taps>
 inline PossibleMoves MoveSearch(Level level, int adj_frame, const Board& b, int piece) {
-  switch (piece) {
-#define ONE_CASE(x, y) \
-    case x: return MoveSearch<Board::NumRotations(x), Taps>(level, adj_frame, y);
-    ONE_CASE(0, b.TMap());
-    ONE_CASE(1, b.JMap());
-    ONE_CASE(2, b.ZMap());
-    ONE_CASE(3, b.OMap());
-    ONE_CASE(4, b.SMap());
-    ONE_CASE(5, b.LMap());
-    ONE_CASE(6, b.IMap());
+#define ONE_CASE(x) \
+    case x: return MoveSearch<Board::NumRotations(x), Taps>(level, adj_frame, b.PieceMap<x>());
+  DO_PIECE_CASE(piece);
 #undef ONE_CASE
-  }
-  unreachable();
 }

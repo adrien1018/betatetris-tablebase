@@ -47,7 +47,8 @@ void AssertTapSep(const FrameSequence& seq, int frames) {
 
 template <Level level, int adj_delay, class Taps, class Rand>
 void RandTest(const Board& b, int piece, int frame_sep, Rand& gen) {
-  auto moves = MoveSearch<level, adj_delay, Taps>(b, piece);
+  //auto moves = MoveSearch<level, adj_delay, Taps>(b, piece);
+  auto moves = MoveSearch<Taps>(level, adj_delay, b, piece);
   for (auto& i : moves.non_adj) {
     auto seq = GetFrameSequenceStart<level, Taps>(b, piece, adj_delay, i);
     ASSERT_TRUE(seq.size() >= adj_delay)
@@ -86,7 +87,8 @@ void PositionTest(const TestSearchBoard& b) {
   FrameSequence seq;
   std::pair<Position, bool> sim_pos;
   if constexpr (level == kLevel18 || level == kLevel19) {
-    auto moves = MoveSearch<level, 18, Tap20Hz>(b.board, b.piece);
+    //auto moves = MoveSearch<level, 18, Tap20Hz>(b.board, b.piece);
+    auto moves = MoveSearch<Tap20Hz>(level, 18, b.board, b.piece);
     for (auto& i : moves.adj) {
       if (std::find(i.second.begin(), i.second.end(), b.pos) == i.second.end()) continue;
       seq = GetFrameSequenceStart<level, Tap20Hz>(b.board, b.piece, 18, i.first);

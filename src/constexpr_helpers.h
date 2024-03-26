@@ -192,15 +192,9 @@ auto make_copyable_function(F&& f) {
   };
 }
 
-#define DO_PIECE_CASE(func, b) \
+#define DO_PIECE_CASE(piece) \
   switch (piece) { \
-    case 0: return func<level, Board::NumRotations(0) PIECE_CASE_TMPL_ARGS>(b.TMap() PIECE_CASE_ARGS); \
-    case 1: return func<level, Board::NumRotations(1) PIECE_CASE_TMPL_ARGS>(b.JMap() PIECE_CASE_ARGS); \
-    case 2: return func<level, Board::NumRotations(2) PIECE_CASE_TMPL_ARGS>(b.ZMap() PIECE_CASE_ARGS); \
-    case 3: return func<level, Board::NumRotations(3) PIECE_CASE_TMPL_ARGS>(b.OMap() PIECE_CASE_ARGS); \
-    case 4: return func<level, Board::NumRotations(4) PIECE_CASE_TMPL_ARGS>(b.SMap() PIECE_CASE_ARGS); \
-    case 5: return func<level, Board::NumRotations(5) PIECE_CASE_TMPL_ARGS>(b.LMap() PIECE_CASE_ARGS); \
-    case 6: return func<level, Board::NumRotations(6) PIECE_CASE_TMPL_ARGS>(b.IMap() PIECE_CASE_ARGS); \
+    ONE_CASE(0) ONE_CASE(1) ONE_CASE(2) ONE_CASE(3) ONE_CASE(4) ONE_CASE(5) ONE_CASE(6) \
   } \
   unreachable();
 

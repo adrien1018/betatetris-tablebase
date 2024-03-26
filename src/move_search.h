@@ -4,6 +4,34 @@
 
 namespace move_search {
 
+template <
+    int tap1, int tap2, int tap3, int tap4, int tap5,
+    int tap6, int tap7, int tap8, int tap9, int tap10>
+class TapTable {
+  int t[10];
+ public:
+  constexpr TapTable() : t{tap1, tap2, tap3, tap4, tap5, tap6, tap7, tap8, tap9, tap10} {
+    static_assert(
+        tap1 >= 0 && tap2 >= 2 && tap3 >= 2 && tap4 >= 2 && tap5 >= 2 &&
+        tap6 >= 2 && tap7 >= 2 && tap8 >= 2 && tap9 >= 2 && tap10 >= 2,
+        "each tap must be at least 2 frames apart");
+    for (int i = 1; i < 10; i++) t[i] += t[i - 1];
+  }
+  constexpr int operator[](int x) const { return t[x]; }
+  constexpr int* data() { return t; }
+  constexpr const int* data() const { return t; }
+};
+
+template <int R>
+constexpr bool Contains(const std::array<Board, R>& board, const std::array<Board, R>& mask) {
+  bool ret = true;
+  for (int i = 0; i < R; i++) ret &= (board[i] & mask[i]) == mask[i];
+  return ret;
+}
+
+template <class T> struct IsTapTable : std::false_type {};
+template <int... args> struct IsTapTable<TapTable<args...>> : std::true_type {};
+
 template <int R>
 struct TableEntry {
   // Each entry corresponds to a (rot, col) that is possible to reach
@@ -147,11 +175,10 @@ NOINLINE PossibleMoves MoveSearch(const std::array<Board, R>& board) {
 
 template <Level level, int adj_frame, class Taps>
 PossibleMoves MoveSearch(const Board& b, int piece) {
-#define PIECE_CASE_TMPL_ARGS ,adj_frame,Taps
-#define PIECE_CASE_ARGS
-  DO_PIECE_CASE(MoveSearch, b);
-#undef PIECE_CASE_TMPL_ARGS
-#undef PIECE_CASE_ARGS
+#define ONE_CASE(x) \
+    case x: return MoveSearch<level, Board::NumRotations(x), adj_frame, Taps>(b.PieceMap<x>());
+  DO_PIECE_CASE(piece);
+#undef ONE_CASE
 }
 
 template <int adj_frame, class Taps>

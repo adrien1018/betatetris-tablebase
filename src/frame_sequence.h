@@ -258,11 +258,10 @@ FrameSequence GetFrameSequence(
 
 template <Level level, class Taps>
 FrameSequence GetFrameSequenceStart(const Board& b, int piece, int adj_delay, const Position& target) {
-#define PIECE_CASE_TMPL_ARGS ,Taps
-#define PIECE_CASE_ARGS ,0,Position::Start.y,0,target,adj_delay
-  DO_PIECE_CASE(GetFrameSequence, b);
-#undef PIECE_CASE_TMPL_ARGS
-#undef PIECE_CASE_ARGS
+#define ONE_CASE(x) \
+    case x: return GetFrameSequence<level, Board::NumRotations(x), Taps>(b.PieceMap<x>(), 0, Position::Start.y, 0, target, adj_delay);
+  DO_PIECE_CASE(piece);
+#undef ONE_CASE
 }
 
 template <class Taps>
@@ -276,11 +275,11 @@ template <Level level, class Taps, bool gen_seq = true>
 int GetFrameSequenceAdj(
     FrameSequence& seq, const Board& b, int piece, const Position& premove,
     const Position& target) {
-#define PIECE_CASE_TMPL_ARGS ,Taps,gen_seq
-#define PIECE_CASE_ARGS ,seq,premove.r,premove.y,seq.size(),target,0
-  DO_PIECE_CASE(move_search::CalculateSequence, b);
-#undef PIECE_CASE_TMPL_ARGS
-#undef PIECE_CASE_ARGS
+#define ONE_CASE(x) \
+    case x: return move_search::CalculateSequence<level, Board::NumRotations(x), Taps, gen_seq>( \
+                b.PieceMap<x>(), seq, premove.r, premove.y, seq.size(), target, 0);
+  DO_PIECE_CASE(piece);
+#undef ONE_CASE
 }
 
 template <class Taps, bool gen_seq = true>
@@ -344,11 +343,10 @@ std::pair<Position, bool> SimulateMove(const std::array<Board, R>& board, const 
 
 template <Level level>
 std::pair<Position, bool> SimulateMove(const Board& b, int piece, const FrameSequence& seq, bool until_lock) {
-#define PIECE_CASE_TMPL_ARGS
-#define PIECE_CASE_ARGS ,seq,until_lock
-  DO_PIECE_CASE(SimulateMove, b);
-#undef PIECE_CASE_TMPL_ARGS
-#undef PIECE_CASE_ARGS
+#define ONE_CASE(x) \
+    case x: return SimulateMove<level, Board::NumRotations(x)>(b.PieceMap<x>(), seq, until_lock);
+  DO_PIECE_CASE(piece);
+#undef ONE_CASE
 }
 
 namespace {
