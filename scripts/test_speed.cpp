@@ -6,11 +6,7 @@
 #include "../src/utils.h"
 //#include "src/old/search.h"
 
-//Phase1Table<kLevel18, 4, 18,
-//  0, 2, 2, 2, 2, 2, 2, 2, 2, 2> table;
-
 constexpr Level kLevel = kLevel18;
-constexpr int kAdjDelay = 0;
 
 constexpr int kFramesPerDrop = kLevel == kLevel18 ? 3 : kLevel == kLevel19 ? 2 : 1;
 constexpr int kV = 2; // frames per tap
@@ -62,16 +58,56 @@ __attribute__((optimize("O1"))) int main() {
       boards[i] = Board(buf);
     }
 
-    int N = 16384;
-    start = steady_clock::now();
-    for (int i = 0; i < N; i++) {
-      auto a = MoveSearch<kLevel, 4, kAdjDelay, TapSpeed>(boards[i].TMap());
-      cnt += a.adj.size() + a.non_adj.size();
-      cnt2 += a.non_adj.size();
-      for (auto& x : a.adj) cnt2 += x.second.size();
+    for (int iter = 0; iter < 5; iter++) {
+      start = steady_clock::now();
+      for (int i = 0; i < N; i++) {
+        auto a = MoveSearch<kLevel, 4, 61, TapSpeed>(boards[i].TMap());
+        cnt += a.adj.size() + a.non_adj.size();
+        cnt2 += a.non_adj.size();
+        for (auto& x : a.adj) cnt2 += x.second.size();
+      }
+      diff = steady_clock::now() - start;
+      std::cout << "New: " << N << " no-adj searches in " << diff.count() << "s (" << diff.count() / N * 1e6 << "us/search)\n";
     }
-    diff = steady_clock::now() - start;
-    std::cout << "New: " << N << " searches in " << diff.count() << "s (" << diff.count() / N * 1e6 << "us/search)\n";
+
+    for (int iter = 0; iter < 5; iter++) {
+      start = steady_clock::now();
+      for (int i = 0; i < N; i++) {
+        auto a = MoveSearch<kLevel, 4, 18, TapSpeed>(boards[i].TMap());
+        cnt += a.adj.size() + a.non_adj.size();
+        cnt2 += a.non_adj.size();
+        for (auto& x : a.adj) cnt2 += x.second.size();
+      }
+      diff = steady_clock::now() - start;
+      std::cout << "New: " << N << " with-adj searches in " << diff.count() << "s (" << diff.count() / N * 1e6 << "us/search)\n";
+    }
+
+    TapSpeed taps_obj;
+    for (int iter = 0; iter < 5; iter++) {
+      PrecomputedTable table(kLevel, 4, 61, taps_obj.data());
+      start = steady_clock::now();
+      for (int i = 0; i < N; i++) {
+        auto a = MoveSearch<4>(kLevel, 61, taps_obj.data(), table, boards[i].TMap());
+        cnt += a.adj.size() + a.non_adj.size();
+        cnt2 += a.non_adj.size();
+        for (auto& x : a.adj) cnt2 += x.second.size();
+      }
+      diff = steady_clock::now() - start;
+      std::cout << "New: " << N << " no-adj searches in " << diff.count() << "s (" << diff.count() / N * 1e6 << "us/search)\n";
+    }
+
+    for (int iter = 0; iter < 5; iter++) {
+      PrecomputedTable table(kLevel, 4, 18, taps_obj.data());
+      start = steady_clock::now();
+      for (int i = 0; i < N; i++) {
+        auto a = MoveSearch<4>(kLevel, 18, taps_obj.data(), table, boards[i].TMap());
+        cnt += a.adj.size() + a.non_adj.size();
+        cnt2 += a.non_adj.size();
+        for (auto& x : a.adj) cnt2 += x.second.size();
+      }
+      diff = steady_clock::now() - start;
+      std::cout << "New: " << N << " with-adj searches in " << diff.count() << "s (" << diff.count() / N * 1e6 << "us/search)\n";
+    }
 
     /*
     cnt = cnt2 = 0;

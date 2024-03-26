@@ -15,31 +15,37 @@ class SearchTest : public ::testing::Test {
 template <Level level, int adj_delay, class Taps>
 void TestSearch(const Board& b) {
   constexpr Taps taps_obj;
+  PrecomputedTableTuple tables(level, adj_delay, taps_obj.data());
   For<7>([&](auto i_obj) {
     constexpr int piece = i_obj.value;
     auto byte_map = GetPieceMap(b.ToByteBoard(), piece);
     auto board_map = b.PieceMap<piece>();
     auto m1 = NaiveGetPossibleMoves(byte_map, level, adj_delay, taps_obj.data());
-    auto m2 = MoveSearch<level, Board::NumRotations(piece), adj_delay, Taps>(board_map);
     m1.Normalize(true);
-    size_t old_sz = m2.non_adj.size() + m2.adj.size();
-    for (auto& i : m2.adj) old_sz += i.second.size();
-    m2.Normalize();
-    size_t new_sz = m2.non_adj.size() + m2.adj.size();
-    for (auto& i : m2.adj) new_sz += i.second.size();
-    EXPECT_EQ(old_sz, new_sz);
-    std::stringstream ss;
-    using ::testing::PrintToString;
-    ss << "{level=" << PrintToString(level) << ",adj_delay=" << PrintToString(adj_delay) << ",piece=" << PrintToString(piece) << "}\n";
-    PrintTo(b, &ss);
-    const std::string info = ss.str();
-    // check separately for better printing
-    EXPECT_EQ(m1.non_adj, m2.non_adj) << info;
-    EXPECT_EQ(m1.adj.size(), m2.adj.size()) << info;
-    for (size_t i = 0; i < std::min(m1.adj.size(), m2.adj.size()); i++) {
-      EXPECT_EQ(m1.adj[i].second.size(), m2.adj[i].second.size()) << info;
-      EXPECT_EQ(m1.adj[i], m2.adj[i]) << info;
-    }
+    size_t old_sz = m1.non_adj.size() + m1.adj.size();
+    for (auto& i : m1.adj) old_sz += i.second.size();
+    auto Check = [&](PossibleMoves&& m2, const std::string& type) {
+      m2.Normalize();
+      size_t new_sz = m2.non_adj.size() + m2.adj.size();
+      for (auto& i : m2.adj) new_sz += i.second.size();
+      EXPECT_EQ(old_sz, new_sz);
+      std::stringstream ss;
+      using ::testing::PrintToString;
+      ss << "{type=" << type << ",level=" << PrintToString(level) << ",adj_delay=" << PrintToString(adj_delay)
+         << ",piece=" << PrintToString(piece) << "}\n";
+      PrintTo(b, &ss);
+      const std::string info = ss.str();
+      // check separately for better printing
+      EXPECT_EQ(m1.non_adj, m2.non_adj) << info;
+      EXPECT_EQ(m1.adj.size(), m2.adj.size()) << info;
+      for (size_t i = 0; i < std::min(m1.adj.size(), m2.adj.size()); i++) {
+        EXPECT_EQ(m1.adj[i].second.size(), m2.adj[i].second.size()) << info;
+        EXPECT_EQ(m1.adj[i], m2.adj[i]) << info;
+      }
+    };
+    constexpr int rot = Board::NumRotations(piece);
+    Check(MoveSearch<level, rot, adj_delay, Taps>(board_map), "tmpl");
+    Check(MoveSearch<rot>(level, adj_delay, taps_obj.data(), tables[rot], board_map), "notmpl");
   });
 }
 
@@ -48,15 +54,18 @@ void TestSearchPosition(const TestSearchBoard& b) {
   PossibleMoves moves;
   if constexpr (level == kLevel18 || level == kLevel19) {
     bool expected = level == kLevel18 || b.lvl_19_ok;
-    moves = MoveSearch<level, 18, Tap20Hz>(b.board, b.piece);
+    //moves = MoveSearch<level, 18, Tap20Hz>(b.board, b.piece);
+    moves = MoveSearch<Tap20Hz>(level, 18, b.board, b.piece);
     EXPECT_EQ(std::any_of(moves.adj.begin(), moves.adj.end(), [&b](const auto& q) {
             return std::find(q.second.begin(), q.second.end(), b.pos) != q.second.end();
           }), expected) << b.board.ToString() << "adj," << (int)level;
   }
   if constexpr (level == kLevel39) {
-    moves = MoveSearch<level, 18, Tap30Hz>(b.board, b.piece);
+    //moves = MoveSearch<level, 18, Tap30Hz>(b.board, b.piece);
+    moves = MoveSearch<Tap30Hz>(level, 18, b.board, b.piece);
   } else {
-    moves = MoveSearch<level, 61, Tap20Hz>(b.board, b.piece);
+    //moves = MoveSearch<level, 61, Tap20Hz>(b.board, b.piece);
+    moves = MoveSearch<Tap20Hz>(level, 61, b.board, b.piece);
   }
   bool expected = level == kLevel18 || (b.lvl_19_ok && (level != kLevel39 || b.lvl_39_ok));
   EXPECT_EQ(std::find(moves.non_adj.begin(), moves.non_adj.end(), b.pos) != moves.non_adj.end(), expected)

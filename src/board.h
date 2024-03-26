@@ -585,6 +585,14 @@ class alignas(32) Board {
 
   constexpr bool operator==(const Board& x) const = default;
   constexpr bool operator!=(const Board& x) const = default;
+  constexpr Board& operator|=(const Board& x) {
+    b1 |= x.b1; b2 |= x.b2; b3 |= x.b3; b4 |= x.b4;
+    return *this;
+  }
+  constexpr Board& operator&=(const Board& x) {
+    b1 &= x.b1; b2 &= x.b2; b3 &= x.b3; b4 &= x.b4;
+    return *this;
+  }
 
   std::string ToString(bool invert = false, bool compact = true, bool row_numbers = true) const {
     Board obj = invert ? ~*this : *this;

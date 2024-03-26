@@ -185,22 +185,22 @@ NOINLINE int CalculateSequence(
       }
       case 3: case 4: case 8: case 9: {
         ret_taps += 2;
-        frame_mask_1 &= ColumnToNormalFrameMask<level>(board[intermediate_rot].Column(target.y));
+        frame_mask_1 &= ColumnToNormalFrameMask(level, board[intermediate_rot].Column(target.y));
         break;
       }
 #ifdef DOUBLE_TUCK
       case 12: case 13: {
         ret_taps += 2;
         int pre_col = tuck_type_switch == 12 ? intermediate_col - 1 : intermediate_col + 1;
-        Frames pre_col_mask = ColumnToDropFrameMask<level>(board[target.r].Column(pre_col));
+        Frames pre_col_mask = ColumnToDropFrameMask(level, board[target.r].Column(pre_col));
         frame_mask_1 &= pre_col_mask & pre_col_mask >> 1;
         break;
       }
 #endif
       case 5: case 6: case 10: case 11: {
         ret_taps += 2;
-        frame_mask_2 = frame_mask_1 & ColumnToDropFrameMask<level>(board[target.r].Column(intermediate_col)); // e.g. L-A
-        frame_mask_1 &= ColumnToDropFrameMask<level>(board[intermediate_rot].Column(target.y)); // e.g. A-L
+        frame_mask_2 = frame_mask_1 & ColumnToDropFrameMask(level, board[target.r].Column(intermediate_col)); // e.g. L-A
+        frame_mask_1 &= ColumnToDropFrameMask(level, board[intermediate_rot].Column(target.y)); // e.g. A-L
         break;
       }
     }
