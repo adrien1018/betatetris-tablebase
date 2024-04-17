@@ -11,7 +11,7 @@ void WriteHashMap(const std::string& fname, std::vector<std::pair<Key, Val>>&& v
 
   Hash hash;
   auto nhash = [&hash,num_buckets](const Key& k) { return hash(k) % num_buckets; };
-  std::sort(vals.begin(), vals.end(), [&nhash](auto a, auto b) {
+  std::sort(vals.begin(), vals.end(), [&nhash](const auto& a, const auto& b) {
     return nhash(a.first) < nhash(b.first);
   });
 

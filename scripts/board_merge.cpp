@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     while (fin.read((char*)b.data(), sizeof(b))) {
       cnt++;
       Insert(b);
-      if (false) {
+      if (false) { // high col0
         Board nb(b);
         uint32_t col0 = nb.Column(0);
         int left_height = nb.ColumnHeights()[0];
@@ -45,6 +45,21 @@ int main(int argc, char** argv) {
           Board sb(nb.b1 & ~(15 << (16 - left_height)), nb.b2, nb.b3, nb.b4);
           auto fin = sb.ClearLines();
           if (fin.first == 0 || fin.first == 4) Insert(fin.second.ToBytes());
+        }
+      }
+      if (false) { // vits
+        Board nb(b);
+        uint32_t col7 = nb.Column(7), col8 = nb.Column(8), col9 = nb.Column(9);
+        if (std::has_single_bit(col8 + 1) && col9 == 0xfffff) {
+          int right_height = std::min(nb.ColumnHeights()[8], nb.ColumnHeights()[7]);
+          for (int i = 0; i + 4 < right_height; i++) {
+            if (nb.b3 & (15ll << (44 + 16 - i))) {
+              std::cout << nb.ToString() << ' ' << right_height << '\n';
+              throw;
+            }
+            Board sb(nb.b1, nb.b2, nb.b3 | (15ll << (44 + 16 - i)), nb.b4);
+            Insert(sb.ToBytes());
+          }
         }
       }
       if (mirror) {

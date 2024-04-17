@@ -150,7 +150,7 @@ class FCEUXConnection : public std::enable_shared_from_this<FCEUXConnection>, pu
   void DoWork() {
     while (true) {
       uint8_t op = ReadUntil(1)[0];
-      if (op == 0xff) {
+      if (op == 0xff || op == 0xef) {
         auto data = ReadUntil(3);
         spdlog::info("New game: {}, {}", (int)data[0], (int)data[1]);
         done = false;
