@@ -135,6 +135,8 @@ class NodeEval : public MoveEval {
 
 std::vector<NodeEval> CalculatePiece(
     int pieces, const std::vector<NodeEval>& prev, const std::vector<size_t>& offsets);
+std::vector<MoveEval> CalculatePiece( // implemented in move.cpp
+    int pieces, const std::vector<MoveEval>& prev, const std::vector<size_t>& offsets);
 std::vector<NodeEval> ReadValues(int pieces, size_t total_size = 0);
 std::vector<MoveEval> ReadValuesEvOnly(int pieces, size_t total_size = 0);
 void RunEvaluate(int start_pieces, const std::vector<int>& output_locations, bool sample);

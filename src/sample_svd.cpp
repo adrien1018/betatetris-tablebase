@@ -29,7 +29,7 @@ size_t GetBucket(float a) {
   return (size_t)(a / kBucketSize);
 }
 
-std::vector<uint8_t> DoSample(const std::vector<NodeEval>& val, size_t num_samples, float smooth_pow, size_t seed) {
+std::vector<uint8_t> DoSample(const std::vector<MoveEval>& val, size_t num_samples, float smooth_pow, size_t seed) {
   if (val.size() >= (1ll << 32)) throw std::length_error("too large");
   std::vector<size_t> distribution(kMaximum / kBucketSize + 1);
   size_t nonzeros = 0;
@@ -221,7 +221,7 @@ void OutputStats(const MatrixSVD& original, const MatrixSVD& reconstruct,
 } // namespace
 
 std::vector<uint8_t> SampleFromEval(
-    const std::vector<NodeEval>& val, size_t num_samples, float smooth_pow, size_t seed) {
+    const std::vector<MoveEval>& val, size_t num_samples, float smooth_pow, size_t seed) {
   return DoSample(val, num_samples, smooth_pow, seed);
 }
 
@@ -241,9 +241,9 @@ void RunSample(int start_pieces, size_t num_samples, float smooth_pow, size_t se
     smooth_pow = 1;
   }
   spdlog::info("Start sampling about {} samples from each group", num_samples);
-  std::vector<NodeEval> values;
+  std::vector<MoveEval> values;
   try {
-    values = ReadValues(start_pieces);
+    values = ReadValuesEvOnly(start_pieces);
   } catch (std::length_error&) {
     spdlog::error("Length error on value file. Does the evaluate file exist?");
     return;

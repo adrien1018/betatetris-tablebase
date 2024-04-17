@@ -18,7 +18,7 @@ struct SampleItem {
   }
 };
 
-void SampleZeros(const std::vector<NodeEval>& val, size_t num_samples, float high_ratio, size_t seed,
+void SampleZeros(const std::vector<MoveEval>& val, size_t num_samples, float high_ratio, size_t seed,
                  std::vector<uint8_t>& mask) {
   if (val.size() >= (1ll << 32)) throw std::length_error("too large");
   float ev[8];
@@ -79,9 +79,9 @@ void SampleTrainingBoards(
   }
   for (size_t lgroup = 0; lgroup < start_pieces_group.size(); lgroup++) {
     int start_pieces = start_pieces_group[lgroup];
-    std::vector<NodeEval> values;
+    std::vector<MoveEval> values;
     try {
-      values = ReadValues(start_pieces);
+      values = ReadValuesEvOnly(start_pieces);
     } catch (std::length_error&) {
       spdlog::error("Length error on value file. Does the evaluate file exist?");
       return;

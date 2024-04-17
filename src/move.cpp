@@ -462,6 +462,11 @@ void WriteThreshold(int pieces, const std::vector<size_t>& offset, const std::ve
 
 } // namespace
 
+std::vector<MoveEval> CalculatePiece(
+    int pieces, const std::vector<MoveEval>& prev, const std::vector<size_t>& offsets) {
+  return CalculatePieceMoves<false>(pieces, prev, offsets);
+}
+
 void RunCalculateMoves(int start_pieces, int end_pieces) {
   std::vector<size_t> offsets[kGroups];
   for (int i = 0; i < kGroups; i++) offsets[i] = GetBoardCountOffset(i);
