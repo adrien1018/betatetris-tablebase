@@ -248,7 +248,7 @@ class ClassWriter : public io_internal::ClassWriterImpl<T> {
     }
     current++;
     size_t sz = item.NumBytes();
-    if (!kIsConstSize && kSizeNumberBytes < 8 && sz >= (1ll << (8 * kSizeNumberBytes))) {
+    if (!kIsConstSize && SizeRangeOverflow<kSizeNumberBytes>(sz)) {
       throw std::out_of_range("output size too large");
     }
     io_internal::WriteToBuf(buf, item);
@@ -469,7 +469,7 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
   void Write(const T& item) {
     current++;
     size_t sz = item.NumBytes();
-    if (!kIsConstSize && kSizeNumberBytes < 8 && sz >= (1ll << (8 * kSizeNumberBytes))) {
+    if (!kIsConstSize && SizeRangeOverflow<kSizeNumberBytes>(sz)) {
       throw std::out_of_range("output size too large");
     }
     io_internal::WriteToBuf(compress_buf, item);
@@ -490,7 +490,7 @@ class CompressedClassWriter : public io_internal::ClassWriterImpl<T> {
   void WriteRaw(const std::vector<uint8_t>& item) {
     current++;
     size_t sz = item.size();
-    if (!kIsConstSize && kSizeNumberBytes < 8 && sz >= (1ll << (8 * kSizeNumberBytes))) {
+    if (!kIsConstSize && SizeRangeOverflow<kSizeNumberBytes>(sz)) {
       throw std::out_of_range("output size too large");
     }
     io_internal::WriteToBufRaw<T>(compress_buf, item);

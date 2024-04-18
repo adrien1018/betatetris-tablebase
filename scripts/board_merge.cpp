@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
       }
       if (false) { // vits
         Board nb(b);
-        uint32_t col7 = nb.Column(7), col8 = nb.Column(8), col9 = nb.Column(9);
+        uint32_t col8 = nb.Column(8), col9 = nb.Column(9);
         if (std::has_single_bit(col8 + 1) && col9 == 0xfffff) {
           int right_height = std::min(nb.ColumnHeights()[8], nb.ColumnHeights()[7]);
           for (int i = 0; i + 4 < right_height; i++) {

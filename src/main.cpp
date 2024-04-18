@@ -6,6 +6,7 @@
 
 #include "move.h"
 #include "files.h"
+#include "prune.h"
 #include "config.h"
 #include "server.h"
 #include "inspect.h"
@@ -143,7 +144,7 @@ int main(int argc, char** argv) {
   auto PowArg = [](ArgumentParser& parser) {
     parser.add_argument("--pow")
       .help("Exponent used for scaling to get more high-valued samples")
-      .scan<'f', float>()
+      .scan<'g', float>()
       .default_value(0.5f);
   };
   auto SeedArg = [](ArgumentParser& parser) {
@@ -248,10 +249,10 @@ int main(int argc, char** argv) {
     .help("Threshold file (contains base value of each lines)");
   threshold_cal.add_argument("-l", "--ratio-low").required()
     .help("Ratio of level 0")
-    .scan<'f', float>();
+    .scan<'g', float>();
   threshold_cal.add_argument("-h", "--ratio-high").required()
     .help("Ratio of level (buckets-1)")
-    .scan<'f', float>();
+    .scan<'g', float>();
   threshold_cal.add_argument("name").required()
     .help("Name of this threshold");
 
@@ -262,6 +263,22 @@ int main(int argc, char** argv) {
   MergeArgs(threshold_merge);
   threshold_merge.add_argument("name").required()
     .help("Name of this threshold");
+
+  ArgumentParser mask_threshold("mask-threshold", "", default_arguments::help);
+  mask_threshold.add_description("Get prune mask from values");
+  DataDirArg(mask_threshold);
+  ParallelArg(mask_threshold);
+  IOThreadsArg(mask_threshold);
+  ResumeArg(mask_threshold);
+  UntilArg(mask_threshold);
+  mask_threshold.add_argument("-f", "--start-mask-file")
+    .help("Start mask file")
+    .default_value("");
+  mask_threshold.add_argument("-t", "--threshold").required()
+    .help("Threshold value")
+    .scan<'g', float>();
+  mask_threshold.add_argument("mask_file").required()
+    .help("Mask file");
 
   ArgumentParser sample_svd("sample-svd", "", default_arguments::help);
   sample_svd.add_description("Sample boards for SVD");
@@ -283,7 +300,7 @@ int main(int argc, char** argv) {
     .default_value("1:65");
   svd.add_argument("-t", "--training-split")
     .help("Portion of training data")
-    .scan<'f', float>()
+    .scan<'g', float>()
     .default_value(0.5f);
   SeedArg(svd);
   svd.add_argument("ev_var").required()
@@ -302,11 +319,11 @@ int main(int argc, char** argv) {
     .help("Output file");
   sample_train.add_argument("-z", "--zero-ratio")
     .help("Portion of samples sampled from ev=0 nodes")
-    .scan<'f', float>()
+    .scan<'g', float>()
     .default_value(0.5f);
   sample_train.add_argument("-h", "--zero-high-ratio")
     .help("Portion of ev=0 samples sampled from nodes with the largest other-piece ev")
-    .scan<'f', float>()
+    .scan<'g', float>()
     .default_value(0.4f);
   NumSamplesArg(sample_train);
   PowArg(sample_train);
@@ -392,6 +409,7 @@ int main(int argc, char** argv) {
   program.add_subparser(move_merge);
   program.add_subparser(threshold_cal);
   program.add_subparser(threshold_merge);
+  program.add_subparser(mask_threshold);
   program.add_subparser(sample_svd);
   program.add_subparser(svd);
   program.add_subparser(sample_train);
@@ -420,6 +438,8 @@ int main(int argc, char** argv) {
       std::cerr << threshold_cal;
     } else if (program.is_subcommand_used("threshold-merge")) {
       std::cerr << threshold_merge;
+    } else if (program.is_subcommand_used("mask-threshold")) {
+      std::cerr << mask_threshold;
     } else if (program.is_subcommand_used("sample-svd")) {
       std::cerr << sample_svd;
     } else if (program.is_subcommand_used("svd")) {
@@ -562,6 +582,19 @@ int main(int argc, char** argv) {
       } else {
         throw std::runtime_error("start / end not given");
       }
+    } else if (program.is_subcommand_used("mask-threshold")) {
+      auto& args = program.at<ArgumentParser>("mask-threshold");
+      SetParallel(args);
+      SetDataDir(args);
+      SetIOThreads(args);
+      int resume = GetResume(args);
+      int until = args.get<int>("--until");
+      std::string start_mask_path = args.get<std::string>("--start-mask-file");
+      std::string mask_path = args.get<std::string>("mask_file");
+      float threshold = args.get<float>("--threshold");
+      ThresholdMask(
+          start_mask_path == "" ? SameValueMask(kAllZeroValue) : ReadMask(start_mask_path),
+          resume, until, threshold, mask_path);
     } else if (program.is_subcommand_used("sample-svd")) {
       auto& args = program.at<ArgumentParser>("sample-svd");
       SetParallel(args);

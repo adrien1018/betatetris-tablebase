@@ -166,6 +166,12 @@ constexpr T abs(T x) {
   return x >= 0 ? x : -x;
 }
 
+template <size_t size_bytes>
+constexpr bool SizeRangeOverflow(size_t sz) {
+  static_assert(size_bytes <= 8);
+  return size_bytes < 8 && sz >= (1ull << std::min((size_t)63, 8 * size_bytes));
+}
+
 // constexpr loop
 template<size_t N>
 struct TemplateNum { static const constexpr auto value = N; };
