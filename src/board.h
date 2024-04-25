@@ -235,6 +235,24 @@ class alignas(32) Board {
     unreachable();
   }
 
+  constexpr uint32_t Row(int r) const {
+    constexpr uint64_t kRowMask = 0x100000400001;
+    return pext(b1 >> r, kRowMask) | pext(b2 >> r, kRowMask) << 3 |
+        pext(b3 >> r, kRowMask) << 6 | pext(b4 >> r, kRowMask) << 9;
+  }
+
+  constexpr std::array<uint32_t, 10> Columns() const {
+    std::array<uint32_t, 10> arr;
+    for (int i = 0; i < 10; i++) arr[i] = Column(i);
+    return arr;
+  }
+
+  constexpr std::array<uint32_t, 20> Rows() const {
+    std::array<uint32_t, 20> arr;
+    for (int i = 0; i < 20; i++) arr[i] = Row(i);
+    return arr;
+  }
+
   constexpr bool Cell(int x, int y) const {
     return Column(y) >> x & 1;
   }
@@ -488,6 +506,32 @@ class alignas(32) Board {
   std::vector<Board> PieceMap(int piece) const {
     switch (piece) {
 #define ONECASE(x) case x: { auto b = PieceMap<x>(); return std::vector<Board>(b.begin(), b.end()); }
+      ONECASE(0)
+      ONECASE(1)
+      ONECASE(2)
+      ONECASE(3)
+      ONECASE(4)
+      ONECASE(5)
+      ONECASE(6)
+#undef ONECASE
+    }
+    unreachable();
+  }
+
+  template <int piece> constexpr Board PieceMapNoro() const {
+    if constexpr (piece == 0) return TMap()[0];
+    if constexpr (piece == 1) return JMap()[0];
+    if constexpr (piece == 2) return ZMap()[0];
+    if constexpr (piece == 3) return OMap()[0];
+    if constexpr (piece == 4) return SMap()[0];
+    if constexpr (piece == 5) return LMap()[0];
+    if constexpr (piece == 6) return IMap()[0];
+    unreachable();
+  }
+
+  constexpr Board PieceMapNoro(int piece) const {
+    switch (piece) {
+#define ONECASE(x) case x: return PieceMapNoro<x>();
       ONECASE(0)
       ONECASE(1)
       ONECASE(2)

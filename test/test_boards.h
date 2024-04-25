@@ -4,6 +4,7 @@
 #include "../src/position.h"
 
 extern const std::array<Board, 169> kTestBoards;
+extern const std::array<Board, 164> kTestNoroBoards;
 
 struct TestSearchBoard {
   Board board;
