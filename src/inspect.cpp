@@ -13,6 +13,7 @@
 
 #include "io.h"
 #include "edge.h"
+#include "play.h"
 #include "board.h"
 #include "files.h"
 #include "config.h"
@@ -171,4 +172,25 @@ void InspectValue(int pieces, const std::vector<long>& board_idx) {
     val.GetVar(var.data());
     std::cout << fmt::format("{} {} {}\n", id, ev, var);
   }
+}
+
+void InspectBoard(const std::string& str) {
+  Play play;
+  Board b(str);
+  size_t res = play.GetID(b.ToBytes());
+  if (res == std::string::npos) {
+    std::cout << "Board not found\n";
+  } else {
+    std::cout << GetGroupByCells(b.Count()) << ' ' << res << std::endl;
+  }
+}
+
+void InspectMove(const std::string& str, int now_piece, int lines) {
+  Play play;
+  Board b(str);
+  auto res = play.GetStrat(b.ToBytes(), now_piece, lines);
+  for (size_t i = 0; i < kPieces; i++) {
+    std::cout << res[i].r << ' ' << res[i].x << ' ' << res[i].y << '\n';
+  }
+  std::cout << std::flush;
 }

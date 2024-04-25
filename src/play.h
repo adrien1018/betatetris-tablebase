@@ -10,6 +10,13 @@ class Play {
   std::vector<HashMapReader<CompactBoard, BasicIOType<uint32_t>>> board_hash;
   std::vector<CompressedClassReader<NodeMovePositionRange>> move_readers;
  public:
+  size_t GetID(const CompactBoard& board) {
+    int group = GetGroupByCells(board.Count());
+    auto idx = board_hash[group][board];
+    if (!idx) return std::string::npos;
+    return idx.value();
+  }
+
   std::array<Position, 7> GetStrat(const CompactBoard& board, int now_piece, int lines, size_t* move_idx_ptr = nullptr) {
     int group = GetGroupByCells(board.Count());
     auto idx = board_hash[group][board];

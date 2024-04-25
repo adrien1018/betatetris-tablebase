@@ -21,13 +21,17 @@ constexpr Board operator&(const Board& x, const Board& y);
 constexpr int kBoardBytes = 25;
 struct CompactBoard : public SimpleIOArray<uint8_t, kBoardBytes> {
   using SimpleIOArray<uint8_t, kBoardBytes>::SimpleIOArray;
-  constexpr CompactBoard() {}
   constexpr int Count() const {
     uint64_t x[4] = {BytesToInt<uint64_t>(data()),
                      BytesToInt<uint64_t>(data() + 8),
                      BytesToInt<uint64_t>(data() + 16),
                      data()[24]};
     return 200 - (popcount(x[0]) + popcount(x[1]) + popcount(x[2]) + popcount(x[3]));
+  }
+
+  constexpr bool Cell(int x, int y) const {
+    uint32_t idx = x * 10 + y;
+    return data()[idx % 8] >> (idx & 7) & 1;
   }
 };
 

@@ -46,6 +46,25 @@ std::vector<T> ParseIntList(const std::string& str) {
   return ret;
 }
 
+template <class Func>
+void ReadBoards(Func&& func) {
+  std::string board;
+  while (true) {
+    std::string line;
+    bool notfin = (bool)std::getline(std::cin, line);
+    if (!notfin || line[0] == '-' || line[0] == '=') {
+      if (!notfin) line = "";
+      func(board, line);
+      board = "";
+      if (!notfin) return;
+      continue;
+    }
+    if (line.size() > 10) line.resize(10);
+    if (line.size() < 10) line += std::string(10 - line.size(), ' ');
+    board += line + '\n';
+  }
+}
+
 Level ParseLevel(int level) {
   if (level == 18) return kLevel18;
   if (level >= 19 && level < 29) return kLevel19;
@@ -359,6 +378,10 @@ int main(int argc, char** argv) {
   ArgumentParser inspect("inspect", "", default_arguments::help);
   inspect.add_description("Inspect files");
 
+  ArgumentParser inspect_board("board", "", default_arguments::help);
+  inspect_board.add_description("Get board ID by shape");
+  DataDirArg(inspect_board);
+
   ArgumentParser inspect_board_id("board-id", "", default_arguments::help);
   inspect_board_id.add_description("Get board(s) by ID");
   GroupArg(inspect_board_id);
@@ -395,11 +418,17 @@ int main(int argc, char** argv) {
     .scan<'i', int>();
   DataDirArg(inspect_value);
 
+  ArgumentParser inspect_move("move", "", default_arguments::help);
+  inspect_move.add_description("Get move by shape");
+  DataDirArg(inspect_move);
+
+  inspect.add_subparser(inspect_board);
   inspect.add_subparser(inspect_board_id);
   inspect.add_subparser(inspect_board_stats);
   inspect.add_subparser(inspect_edge);
   inspect.add_subparser(inspect_edge_stats);
   inspect.add_subparser(inspect_value);
+  inspect.add_subparser(inspect_move);
 
   program.add_subparser(preprocess);
   program.add_subparser(board_map);
@@ -452,7 +481,9 @@ int main(int argc, char** argv) {
       std::cerr << simulate;
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
-      if (subparser.is_subcommand_used("board-id")) {
+      if (subparser.is_subcommand_used("board")) {
+        std::cerr << inspect_board;
+      } else if (subparser.is_subcommand_used("board-id")) {
         std::cerr << inspect_board_id;
       } else if (subparser.is_subcommand_used("board-stats")) {
         std::cerr << inspect_board_stats;
@@ -462,6 +493,8 @@ int main(int argc, char** argv) {
         std::cerr << inspect_edge_stats;
       } else if (subparser.is_subcommand_used("value")) {
         std::cerr << inspect_value;
+      } else if (subparser.is_subcommand_used("move")) {
+        std::cerr << inspect_move;
       } else {
         std::cerr << inspect;
       }
@@ -651,7 +684,11 @@ int main(int argc, char** argv) {
       OutputSimulate(seed_file, output_file, gym_rng);
     } else if (program.is_subcommand_used("inspect")) {
       auto& subparser = program.at<ArgumentParser>("inspect");
-      if (subparser.is_subcommand_used("board-id")) {
+      if (subparser.is_subcommand_used("board")) {
+        auto& args = subparser.at<ArgumentParser>("board");
+        SetDataDir(args);
+        ReadBoards([](const std::string& str, const std::string&){ InspectBoard(str); });
+      } else if (subparser.is_subcommand_used("board-id")) {
         auto& args = subparser.at<ArgumentParser>("board-id");
         auto group = GetGroup(args);
         auto board_id = GetBoardID(args);
@@ -682,6 +719,16 @@ int main(int argc, char** argv) {
         auto board_id = GetBoardID(args);
         SetDataDir(args);
         InspectValue(pieces, board_id);
+      } else if (subparser.is_subcommand_used("move")) {
+        auto& args = subparser.at<ArgumentParser>("move");
+        SetDataDir(args);
+        ReadBoards([](const std::string& str, const std::string& line) {
+          std::stringstream ss(line);
+          std::string tmp;
+          int piece, lines;
+          ss >> tmp >> piece >> lines;
+          InspectMove(str, piece, lines);
+        });
       } else {
         std::cerr << inspect;
         return 1;
