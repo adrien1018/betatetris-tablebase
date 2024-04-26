@@ -95,6 +95,7 @@ struct TableEntryNoTmpl {
 template <int R, class Entry>
 constexpr int Phase1TableGen(
     Level level, const int taps[], int initial_frame, int initial_rot, int initial_col,
+    int max_lr_taps, int max_ab_taps,
     Entry entries[]) {
   int sz = 0;
   static_assert(R == 1 || R == 2 || R == 4, "unexpected rotations");
@@ -120,6 +121,10 @@ constexpr int Phase1TableGen(
       int rot = (initial_rot + delta_rot) % R;
       int num_lr_tap = abs(col - initial_col);
       int num_ab_tap = delta_rot == 3 ? 1 : delta_rot; // [0,1,2,1]
+      if (num_lr_tap > max_lr_taps || num_ab_tap > max_ab_taps) {
+        cannot_reach[rot][col] = true;
+        continue;
+      }
       int num_tap = std::max(num_ab_tap, num_lr_tap);
       // the frame that this tap occurred; initial_frame if no input
       int start_frame = (num_tap == 0 ? 0 : taps[num_tap - 1]) + initial_frame;
@@ -209,13 +214,14 @@ constexpr int Phase1TableGen(
 template <class Entry>
 constexpr int Phase1TableGen(
     Level level, int R, const int taps[], int initial_frame, int initial_rot, int initial_col,
+    int max_lr_taps, int max_ab_taps,
     Entry entries[]) {
   if (R == 1) {
-    return Phase1TableGen<1>(level, taps, initial_frame, initial_rot, initial_col, entries);
+    return Phase1TableGen<1>(level, taps, initial_frame, initial_rot, initial_col, max_lr_taps, max_ab_taps, entries);
   } else if (R == 2) {
-    return Phase1TableGen<2>(level, taps, initial_frame, initial_rot, initial_col, entries);
+    return Phase1TableGen<2>(level, taps, initial_frame, initial_rot, initial_col, max_lr_taps, max_ab_taps, entries);
   } else {
-    return Phase1TableGen<4>(level, taps, initial_frame, initial_rot, initial_col, entries);
+    return Phase1TableGen<4>(level, taps, initial_frame, initial_rot, initial_col, max_lr_taps, max_ab_taps, entries);
   }
 }
 
@@ -224,11 +230,11 @@ struct Phase1TableNoTmpl {
   std::vector<std::vector<TableEntryNoTmpl>> adj;
   constexpr Phase1TableNoTmpl(Level level, int R, int adj_frame, const int taps[]) : initial(40) {
     initial.resize(10 * R);
-    initial.resize(Phase1TableGen(level, R, taps, 0, 0, Position::Start.y, initial.data()));
+    initial.resize(Phase1TableGen(level, R, taps, 0, 0, Position::Start.y, 9, 2, initial.data()));
     for (auto& i : initial) {
       int frame_start = std::max(adj_frame, taps[i.num_taps]);
       adj.emplace_back(10 * R);
-      adj.back().resize(Phase1TableGen(level, R, taps, frame_start, i.rot, i.col, adj.back().data()));
+      adj.back().resize(Phase1TableGen(level, R, taps, frame_start, i.rot, i.col, 9, 2, adj.back().data()));
     }
   }
 };

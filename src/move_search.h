@@ -53,28 +53,29 @@ struct TableEntry {
 template <int R, class Taps>
 constexpr int Phase1TableGen(
     Level level, int initial_frame, int initial_rot, int initial_col,
+    int max_lr_taps, int max_ab_taps,
     TableEntry<R> entries[]) {
 #ifndef _MSC_VER
   static_assert(IsTapTable<Taps>::value);
 #endif
   constexpr Taps taps{};
-  return Phase1TableGen<R>(level, taps.data(), initial_frame, initial_rot, initial_col, entries);
+  return Phase1TableGen<R>(level, taps.data(), initial_frame, initial_rot, initial_col, max_lr_taps, max_ab_taps, entries);
 }
 
 template <Level level, int R, int adj_frame, class Taps>
 struct Phase1Table {
   static constexpr int initial_N = Phase1TableGen<R, Taps>(
-      level, 0, 0, Position::Start.y, std::array<TableEntry<R>, 10*R>().data());
+      level, 0, 0, Position::Start.y, 9, 2, std::array<TableEntry<R>, 10*R>().data());
   TableEntry<R> initial[initial_N];
   int adj_N[initial_N];
   TableEntry<R> adj[initial_N][10 * R];
   constexpr Phase1Table() : initial{}, adj_N{}, adj{} {
     constexpr Taps taps{};
-    Phase1TableGen<R, Taps>(level, 0, 0, Position::Start.y, initial);
+    Phase1TableGen<R, Taps>(level, 0, 0, Position::Start.y, 9, 2, initial);
     for (int i = 0; i < initial_N; i++) {
       int frame_start = std::max(adj_frame, taps[initial[i].num_taps]);
       adj_N[i] = Phase1TableGen<R, Taps>(
-          level, frame_start, initial[i].rot, initial[i].col, adj[i]);
+          level, frame_start, initial[i].rot, initial[i].col, 9, 2, adj[i]);
     }
   }
 };
