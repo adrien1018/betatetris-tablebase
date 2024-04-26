@@ -22,147 +22,20 @@ class TapTable {
   constexpr const int* data() const { return t; }
 };
 
-template <int R>
-constexpr bool Contains(const std::array<Board, R>& board, const std::array<Board, R>& mask) {
-  bool ret = true;
-  for (int i = 0; i < R; i++) ret &= (board[i] & mask[i]) == mask[i];
-  return ret;
-}
-
 template <class T> struct IsTapTable : std::false_type {};
 template <int... args> struct IsTapTable<TapTable<args...>> : std::true_type {};
 
-template <int R>
-struct TableEntry {
-  // Each entry corresponds to a (rot, col) that is possible to reach
-  // `num_taps` is the minimum number of taps needed to reach that (rot, col)
-  //   (so taps[num_taps-1] will be the exact frame when the piece is moved to (rot, col))
-  // This (rot, col) is only reachable if the cells corresponding to `masks` in entry `prev`
-  //   (prev is regarded recursively; that is, the `prev` of `prev`, etc., should also be included)
-  //   and `masks_nodrop` in this entry are all empty
-  //   (`masks_nodrop` should be a subset of `masks` in the same entry)
-  uint8_t rot, col, prev, num_taps;
-  // `cannot_finish` means no further input is possible since it will be locked at the bottom of the board
-  // when it happens, `masks` should not be used
-  bool cannot_finish;
-  std::array<Board, R> masks, masks_nodrop;
-
-  bool operator<=>(const TableEntry<R>&) const = default;
-};
-
-template <int R, class Taps>
-constexpr int Phase1TableGen(
-    Level level, int initial_frame, int initial_rot, int initial_col,
-    int max_lr_taps, int max_ab_taps,
-    TableEntry<R> entries[]) {
-#ifndef _MSC_VER
-  static_assert(IsTapTable<Taps>::value);
-#endif
-  constexpr Taps taps{};
-  return Phase1TableGen<R>(level, taps.data(), initial_frame, initial_rot, initial_col, max_lr_taps, max_ab_taps, entries);
-}
-
-template <Level level, int R, int adj_frame, class Taps>
-struct Phase1Table {
-  static constexpr int initial_N = Phase1TableGen<R, Taps>(
-      level, 0, 0, Position::Start.y, 9, 2, std::array<TableEntry<R>, 10*R>().data());
-  TableEntry<R> initial[initial_N];
-  int adj_N[initial_N];
-  TableEntry<R> adj[initial_N][10 * R];
-  constexpr Phase1Table() : initial{}, adj_N{}, adj{} {
-    constexpr Taps taps{};
-    Phase1TableGen<R, Taps>(level, 0, 0, Position::Start.y, 9, 2, initial);
-    for (int i = 0; i < initial_N; i++) {
-      int frame_start = std::max(adj_frame, taps[initial[i].num_taps]);
-      adj_N[i] = Phase1TableGen<R, Taps>(
-          level, frame_start, initial[i].rot, initial[i].col, 9, 2, adj[i]);
-    }
-  }
-};
-
 template <Level level, int R, int adj_frame, class Taps>
 class Search {
-  static constexpr Taps taps{};
-  static constexpr Phase1Table<level, R, adj_frame, Taps> table{};
-
-  // N = is_adj ? table.adj_N[X] : initial_N
-  // table = is_adj ? table.adj[X] : table.initial
-  // initial_frame = is_adj ? <the last> : 0
-  template <bool is_adj, int initial_id = 0> constexpr int DoOneSearch(
-      const std::array<Board, R>& board, const Column cols[R][10],
-      const TuckMasks<R> tuck_masks,
-      bool can_adj[],
-      Position* positions) const {
-    constexpr int total_frames = GetLastFrameOnRow(19, level) + 1;
-    constexpr int N = is_adj ? table.adj_N[initial_id] : table.initial_N;
-    constexpr int initial_frame = is_adj ? std::max(adj_frame, taps[table.initial[initial_id].num_taps]) : 0;
-    if (initial_frame >= total_frames) return 0;
-
-    int sz = 0;
-    // phase 1
-    bool can_continue[R * 10] = {}; // whether the next tap can continue
-    Frames can_tuck_frame_masks[R][10] = {}; // frames that can start a tuck
-    Column lock_positions_without_tuck[R][10] = {};
-
-    bool phase_2_possible = false;
-    bool can_reach[std::max(N, 1)] = {};
-    For<N>([&](auto i_obj) {
-      constexpr int i = i_obj.value;
-      constexpr auto& entry = is_adj ? table.adj[initial_id][i] : table.initial[i];
-      if (i && !can_continue[entry.prev]) return;
-      if (!Contains<R>(board, entry.masks_nodrop)) return;
-      if (!entry.cannot_finish && Contains<R>(board, entry.masks)) {
-        can_continue[i] = true;
-      }
-      can_reach[i] = true;
-    });
-#pragma GCC unroll 0
-    for (int i = 0; i < N; i++) {
-      if (!can_reach[i]) continue;
-      auto& entry = is_adj ? table.adj[initial_id][i] : table.initial[i];
-      CheckOneInitial<R>(
-          level, adj_frame, taps, is_adj, total_frames, initial_frame, entry, cols,
-          lock_positions_without_tuck, can_tuck_frame_masks,
-          sz, positions, can_adj[i], phase_2_possible);
-    }
-    if (phase_2_possible) {
-      SearchTucks<R>(level, cols, tuck_masks, lock_positions_without_tuck, can_tuck_frame_masks, sz, positions);
-    }
-    return sz;
-  }
+  PrecomputedTable table_;
 
  public:
-  /** drop sequence:
-  *
-  * initial phase 1         adj phase 1
-  * vvvvvvvvvvv               vvvvvvv
-  * L - L - L - - - - - - - - R - R - - - - - - -<lock>
-  *               \           ^ adj_frame   \
-  *                \A R - - -<lock>          \B R - - -<lock>
-  *                 ^^^^                      ^^^^
-  *                initial phase 2 (tuck)    adj phase 2
-  */
+  Search() : table_(level, R, adj_frame, Taps().data()) {
+    static_assert(IsTapTable<Taps>::value);
+  }
+
   PossibleMoves MoveSearch(const std::array<Board, R>& board) const {
-    constexpr int initial_N = decltype(table)::initial_N;
-    Column cols[R][10] = {};
-    auto tuck_masks = GetTuckMasks<R>(GetColsAndFrameMasks<R>(level, board, cols));
-    bool can_adj[initial_N] = {}; // whether adjustment starting from this (rot, col) is possible
-
-    PossibleMoves ret;
-    Position buf[256];
-    ret.non_adj.assign(buf, buf + DoOneSearch<false>(
-        board, cols, tuck_masks, can_adj, buf));
-
-    For<initial_N>([&](auto i_obj) {
-      constexpr int initial_id = i_obj.value;
-      auto& entry = table.initial[initial_id];
-      if (!can_adj[initial_id]) return;
-      if (int x = DoOneSearch<true, initial_id>(board, cols, tuck_masks, can_adj, buf); x) {
-        int row = GetRow(std::max(adj_frame, taps[entry.num_taps]), level);
-        ret.adj.emplace_back(Position{entry.rot, row, entry.col}, std::vector<Position>(buf, buf + x));
-      }
-    });
-    return ret;
+    return ::MoveSearch<R, Taps>(level, adj_frame, table_, board);
   }
 };
 
@@ -170,7 +43,7 @@ class Search {
 
 template <Level level, int R, int adj_frame, class Taps>
 NOINLINE PossibleMoves MoveSearch(const std::array<Board, R>& board) {
-  constexpr move_search::Search<level, R, adj_frame, Taps> search{};
+  static move_search::Search<level, R, adj_frame, Taps> search;
   return search.MoveSearch(board);
 }
 
