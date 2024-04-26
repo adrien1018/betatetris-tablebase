@@ -55,12 +55,37 @@ constexpr int kTransitionProbInt[7][7] = {
   {5, 5, 5, 5, 6, 5, 1}, // I
 };
 
+constexpr int ScoreFromLevel(int post_level, int lines) {
+  constexpr int kTable[] = {0, 40, 100, 300, 1200};
+  return kTable[lines] * (post_level + 1);
+}
+
+#ifdef NO_ROTATION
+constexpr int GetLevelByLines(int lines, int start_level) {
+  int level_reduce = (start_level + 1) / 16 * 10 + std::min((start_level + 1) % 16, 10) - 1;
+  return std::max(lines / 10 - level_reduce, 0) + start_level;
+}
+
+constexpr int GetLevelSpeed(int level) {
+  if (level < 10) return level;
+  if (level <= 12) return 10;
+  if (level <= 15) return 11;
+  if (level <= 18) return 12;
+  if (level <= 28) return 13;
+  return 14;
+}
+
+constexpr int GetFramesPerRow(int level) {
+  constexpr int kSpeedTable[] = {48, 43, 38, 33, 28, 23, 18, 13, 8, 6, 5, 4, 3, 2, 1};
+  return kSpeedTable[GetLevelSpeed(level)];
+}
+#else // NO_ROTATION
 constexpr int kLevelSpeedLines[] = {0, 130, 230,
 #ifdef NO_2KS
   kLineCap
 #else
   330, kLineCap
-#endif
+#endif // NO_2KS
 };
 
 constexpr int GetLevelByLines(int lines) {
@@ -76,10 +101,10 @@ constexpr Level GetLevelSpeed(int level) {
 #else
   if (level < 39) return kLevel29;
   return kLevel39;
-#endif
+#endif // NO_2KS
 }
 
-constexpr Level GetLevelSpeedByLines(int lines) {
+constexpr auto GetLevelSpeedByLines(int lines) {
   return GetLevelSpeed(GetLevelByLines(lines));
 }
 
@@ -87,10 +112,10 @@ constexpr int Score(int base_lines, int lines) {
 #ifdef TETRIS_ONLY
   return base_lines < kLineCap && base_lines + lines >= kLineCap;
 #else
-  constexpr int kTable[] = {0, 40, 100, 300, 1200};
-  return kTable[lines] * (GetLevelByLines(base_lines + lines) + 1);
-#endif
+  return ScoreFromLevel(GetLevelByLines(base_lines + lines), lines);
+#endif // TETRIS_ONLY
 }
+#endif // NO_ROTATION
 
 #ifdef TETRIS_ONLY
 constexpr int kGroupInterval = 40;
@@ -100,7 +125,7 @@ constexpr int kCellsMod = 4;
 constexpr int kGroupInterval = 10;
 constexpr int kGroupLineInterval = 2;
 constexpr int kCellsMod = 2;
-#endif
+#endif // TETRIS_ONLY
 
 constexpr int GetGroupByPieces(int pieces) {
   return pieces * 4 / kGroupLineInterval % kGroups;
@@ -124,12 +149,26 @@ constexpr int NextGroup(int group) {
 
 // some testcases
 
+#ifdef NO_ROTATION
+static_assert(GetLevelByLines(0, 0) == 0);
+static_assert(GetLevelByLines(10, 0) == 1);
+static_assert(GetLevelByLines(123, 0) == 12);
+static_assert(GetLevelByLines(99, 9) == 9);
+static_assert(GetLevelByLines(100, 9) == 10);
+static_assert(GetLevelByLines(99, 10) == 10);
+static_assert(GetLevelByLines(100, 10) == 11);
+static_assert(GetLevelByLines(99, 15) == 15);
+static_assert(GetLevelByLines(100, 15) == 16);
+static_assert(GetLevelByLines(109, 16) == 16);
+static_assert(GetLevelByLines(110, 16) == 17);
+#else
 static_assert(GetLevelByLines(kLevelSpeedLines[0]) == 18);
 static_assert(GetLevelByLines(kLevelSpeedLines[1]) == 19);
 static_assert(GetLevelByLines(kLevelSpeedLines[2]) == 29);
 #ifndef NO_2KS
 static_assert(GetLevelByLines(kLevelSpeedLines[3]) == 39);
-#endif
+#endif // NO_2KS
+#endif // NO_ROTATION
 
 static_assert(GetGroupByPieces(0) == 0);
 #ifdef TETRIS_ONLY
@@ -140,4 +179,4 @@ static_assert(GetGroupByPieces(16) == 6);
 static_assert(GetGroupByPieces(1) == 2);
 static_assert(GetGroupByPieces(4) == 3);
 static_assert(GetGroupByPieces(9) == 3);
-#endif
+#endif // TETRIS_ONLY

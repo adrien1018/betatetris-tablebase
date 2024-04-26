@@ -200,17 +200,31 @@ void MoveSearch(
 }
 
 void DFSNoro(int g, int x, int y, int taps_per_row, const ByteBoard& b, std::vector<ByteBoard>& vis) {
-  if (x < 0 || x >= 20 || y < 0 || y >= 10 || g > taps_per_row) return;
+  int states = taps_per_row ? taps_per_row + 1 : 3;
+  if (x < 0 || x >= 20 || y < 0 || y >= 10 || g >= states) return;
   if (!b[x][y] || vis[g][x][y]) return;
   vis[g][x][y] = 1;
-  DFSNoro(g+1, x, y-1, taps_per_row, b, vis);
-  DFSNoro(g+1, x, y+1, taps_per_row, b, vis);
-  DFSNoro(0, x+1, y, taps_per_row, b, vis);
+  if (taps_per_row) {
+    DFSNoro(g+1, x, y-1, taps_per_row, b, vis);
+    DFSNoro(g+1, x, y+1, taps_per_row, b, vis);
+    DFSNoro(0, x+1, y, taps_per_row, b, vis);
+  } else {
+    if (g == 2) {
+      DFSNoro(1, x+1, y, taps_per_row, b, vis);
+    } else {
+      if (g == 0) {
+        DFSNoro(2, x, y-1, taps_per_row, b, vis);
+        DFSNoro(2, x, y+1, taps_per_row, b, vis);
+      }
+      DFSNoro(0, x+1, y, taps_per_row, b, vis);
+    }
+  }
 }
 
 void DFSNoro(int s, int g, int x, int y, int taps_per_row, const ByteBoard& b, std::vector<ByteBoard>& vis) {
-  if (x < 0 || x >= 20 || y < 0 || y >= 10 || g > taps_per_row) return;
-  int id = s == 0 ? 0 : (s == 1 ? g + 1 : g + 2 + taps_per_row);
+  int row_taps_per_row = taps_per_row ? taps_per_row : (x % 2 == 0);
+  if (x < 0 || x >= 20 || y < 0 || y >= 10 || g > row_taps_per_row) return;
+  int id = s == 0 ? 0 : (s == 1 ? g + 1 : g + 2 + std::max(1, taps_per_row));
   if (!b[x][y] || vis[id][x][y]) return;
   vis[id][x][y] = 1;
   if (s == 1) {
@@ -218,7 +232,7 @@ void DFSNoro(int s, int g, int x, int y, int taps_per_row, const ByteBoard& b, s
   } else if (s == 2) {
     DFSNoro(s, g+1, x, y+1, taps_per_row, b, vis);
   }
-  if (g == taps_per_row) {
+  if (g == row_taps_per_row) {
     DFSNoro(s, 0, x+1, y, taps_per_row, b, vis);
   }
   DFSNoro(0, 0, x+1, y, taps_per_row, b, vis);
@@ -263,11 +277,11 @@ std::vector<ByteBoard> GetPieceMap(const ByteBoard& field, int poly) {
 
 ByteBoard NaiveNoroPossibleMoves(const ByteBoard& b, int inputs_per_row, bool do_tuck) {
   if (do_tuck) {
-    std::vector<ByteBoard> vis(inputs_per_row + 1, ByteBoard{});
+    std::vector<ByteBoard> vis(inputs_per_row ? inputs_per_row + 1 : 3, ByteBoard{});
     DFSNoro(0, 0, 5, inputs_per_row, b, vis);
     return MergeByteBoardsAndLock(vis);
   } else {
-    std::vector<ByteBoard> vis(inputs_per_row * 2 + 3, ByteBoard{});
+    std::vector<ByteBoard> vis(std::max(1, inputs_per_row) * 2 + 3, ByteBoard{});
     DFSNoro(1, 0, 0, 5, inputs_per_row, b, vis);
     DFSNoro(2, 0, 0, 5, inputs_per_row, b, vis);
     return MergeByteBoardsAndLock(vis);

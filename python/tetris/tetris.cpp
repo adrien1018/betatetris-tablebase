@@ -127,6 +127,7 @@ PyObject* Tetris_InputPlacement(PythonTetris* self, PyObject* args, PyObject* kw
   return GetRewardObj(reward, raw_reward);
 }
 
+#ifndef NO_ROTATION
 PyObject* Tetris_DirectPlacement(PythonTetris* self, PyObject* args, PyObject* kwds) {
   static const char* kwlist[] = {"rotate", "x", "y", nullptr};
   Position pos;
@@ -136,6 +137,7 @@ PyObject* Tetris_DirectPlacement(PythonTetris* self, PyObject* args, PyObject* k
   auto [reward, raw_reward] = self->DirectPlacement(pos);
   return GetRewardObj(reward, raw_reward);
 }
+#endif // !NO_ROTATION
 
 PyObject* Tetris_SetNextPiece(PythonTetris* self, PyObject* args, PyObject* kwds) {
   static const char* kwlist[] = {"piece", nullptr};
@@ -166,26 +168,61 @@ PyObject* Tetris_SetLines(PythonTetris* self, PyObject* args, PyObject* kwds) {
 PyObject* Tetris_Reset(PythonTetris* self, PyObject* args, PyObject* kwds) {
   static const char* kwlist[] = {
     "now_piece", "next_piece", "lines", "board",
+#ifdef NO_ROTATION
+    "start_level", "do_tuck", "nnb",
+#endif
     nullptr
   };
   PyObject *now_obj, *next_obj;
   int lines = 0;
   Board board = Board::Ones;
   PyObject* board_obj = nullptr;
+#ifdef NO_ROTATION
+  int start_level = 0;
+  int do_tuck = 1;
+  int nnb = 0;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO|iOipp", (char**)kwlist,
+        &now_obj, &next_obj, &lines, &board_obj, &start_level, &do_tuck, &nnb)) {
+    return nullptr;
+  }
+#else
   if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO|iO", (char**)kwlist,
         &now_obj, &next_obj, &lines, &board_obj)) {
     return nullptr;
   }
+#endif
   if (!CheckBoard(board, board_obj)) return nullptr;
   int now_piece = ParsePieceID(now_obj);
   if (now_piece < 0) return nullptr;
   int next_piece = ParsePieceID(next_obj);
   if (next_piece < 0) return nullptr;
+#ifdef NO_ROTATION
+  self->Reset(board, lines, start_level, do_tuck, nnb, now_piece, next_piece);
+#else
   self->Reset(board, lines, now_piece, next_piece);
+#endif
   Py_RETURN_NONE;
 }
 
 PyObject* Tetris_ResetRandom(PythonTetris* self, PyObject* args, PyObject* kwds) {
+#ifdef NO_ROTATION
+  static const char* kwlist[] = {
+    "params", "board",
+    nullptr
+  };
+  int start_level = -1, do_tuck = -1, nnb = -1;
+  Board board = Board::Ones;
+  PyObject* board_obj = nullptr;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "|(ipp)O", (char**)kwlist, &start_level, &do_tuck, &nnb, &board_obj)) {
+    return nullptr;
+  }
+  if (!CheckBoard(board, board_obj)) return nullptr;
+  if (start_level == -1) {
+    self->ResetRandom(board);
+  } else {
+    self->Reset(board, 0, start_level, do_tuck, nnb);
+  }
+#else // NO_ROTATION
   static const char* kwlist[] = {
     "lines", "board",
     nullptr
@@ -198,10 +235,11 @@ PyObject* Tetris_ResetRandom(PythonTetris* self, PyObject* args, PyObject* kwds)
   }
   if (!CheckBoard(board, board_obj)) return nullptr;
   if (lines == -1) {
-    self->Reset(board);
+    self->ResetRandomStart(board);
   } else {
     self->Reset(board, lines);
   }
+#endif // NO_ROTATION
   Py_RETURN_NONE;
 }
 
@@ -248,6 +286,7 @@ PyObject* Tetris_GetState(PythonTetris* self, PyObject* args, PyObject* kwds) {
   return ret;
 }
 
+#ifndef NO_ROTATION
 PyObject* Tetris_GetAdjStates(PythonTetris* self, PyObject* args, PyObject* kwds) {
   static const char* kwlist[] = {"rotate", "x", "y", nullptr};
   Position pos;
@@ -295,6 +334,7 @@ PyObject* Tetris_GetAdjStates(PythonTetris* self, PyObject* args, PyObject* kwds
   Py_DECREF(r5);
   return ret;
 }
+#endif // !NO_ROTATION
 
 static PyObject* Tetris_StateShapes(void*, PyObject* Py_UNUSED(ignored)) {
   PyObject *r1, *r2, *r3, *r4, *r5;
@@ -335,6 +375,7 @@ PyObject* Tetris_StateTypes(void*, PyObject* Py_UNUSED(ignored)) {
   return Py_BuildValue("(sssss)", "float32", "float32", "float32", "float32", "int32");
 }
 
+#ifndef NO_ROTATION
 PyObject* Tetris_IsAdjMove(PythonTetris* self, PyObject* args, PyObject* kwds) {
   static const char* kwlist[] = {"rotate", "x", "y", nullptr};
   Position pos;
@@ -400,6 +441,7 @@ PyObject* Tetris_FinishAdjSequence(PythonTetris* self, PyObject* args, PyObject*
     return nullptr;
   }
 }
+#endif // !NO_ROTATION
 
 PyObject* Tetris_IsOver(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
   return PyBool_FromLong((long)self->tetris.IsOver());
@@ -439,13 +481,23 @@ PyObject* Tetris_GetRunPieces(PythonTetris* self, PyObject* Py_UNUSED(ignored)) 
   return PyLong_FromLong(self->tetris.RunPieces());
 }
 
+PyObject* Tetris_IsNoro(PythonTetris* self, PyObject* Py_UNUSED(ignored)) {
+#ifdef NO_ROTATION
+  return PyBool_FromLong(1);
+#else
+  return PyBool_FromLong(0);
+#endif // NO_ROTATION
+}
+
 PyMethodDef py_tetris_class_methods[] = {
     {"IsOver", (PyCFunction)Tetris_IsOver, METH_NOARGS,
      "Check whether the game is over"},
     {"InputPlacement", (PyCFunction)Tetris_InputPlacement, METH_VARARGS | METH_KEYWORDS,
      "Input a placement and return the reward"},
+#ifndef NO_ROTATION
     {"DirectPlacement", (PyCFunction)Tetris_DirectPlacement, METH_VARARGS | METH_KEYWORDS,
      "Input a placement (skip pre-adj) and return the reward"},
+#endif // !NO_ROTATION
     {"SetNextPiece", (PyCFunction)Tetris_SetNextPiece, METH_VARARGS | METH_KEYWORDS,
      "Set the next piece"},
     {"SetLines", (PyCFunction)Tetris_SetLines, METH_VARARGS | METH_KEYWORDS,
@@ -458,10 +510,13 @@ PyMethodDef py_tetris_class_methods[] = {
      "Get state tuple"},
     {"StateShapes", (PyCFunction)Tetris_StateShapes, METH_NOARGS | METH_STATIC,
      "Get shapes of state array (static)"},
+#ifndef NO_ROTATION
     {"GetAdjStates", (PyCFunction)Tetris_GetAdjStates, METH_VARARGS | METH_KEYWORDS,
      "Get state tuple for every possible next piece"},
+#endif // !NO_ROTATION
     {"StateTypes", (PyCFunction)Tetris_StateTypes, METH_NOARGS | METH_STATIC,
      "Get types of state array (static)"},
+#ifndef NO_ROTATION
     {"IsAdjMove", (PyCFunction)Tetris_IsAdjMove, METH_VARARGS | METH_KEYWORDS,
      "Check if a move can have adjustments"},
     {"IsNoAdjMove", (PyCFunction)Tetris_IsNoAdjMove, METH_VARARGS | METH_KEYWORDS,
@@ -472,6 +527,7 @@ PyMethodDef py_tetris_class_methods[] = {
      "Get pre-adjustment placement and frame sequence by possible final destinations"},
     {"FinishAdjSequence", (PyCFunction)Tetris_FinishAdjSequence, METH_VARARGS | METH_KEYWORDS,
      "Finish a pre-adjustment sequence"},
+#endif // !NO_ROTATION
     {"GetBoard", (PyCFunction)Tetris_GetBoard, METH_NOARGS, "Get board object"},
     {"GetLines", (PyCFunction)Tetris_GetLines, METH_NOARGS, "Get total lines"},
     {"GetPieces", (PyCFunction)Tetris_GetPieces, METH_NOARGS, "Get total pieces"},
@@ -480,6 +536,7 @@ PyMethodDef py_tetris_class_methods[] = {
     {"GetRunScore", (PyCFunction)Tetris_GetRunScore, METH_NOARGS, "Get score of this run"},
     {"GetRunLines", (PyCFunction)Tetris_GetRunLines, METH_NOARGS, "Get lines of this run"},
     {"GetRunPieces", (PyCFunction)Tetris_GetRunPieces, METH_NOARGS, "Get pieces of this run"},
+    {"IsNoro", (PyCFunction)Tetris_IsNoro, METH_NOARGS | METH_STATIC, "Check if noro flag is on"},
     {nullptr}};
 
 } // namespace

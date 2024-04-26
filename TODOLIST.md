@@ -1,5 +1,5 @@
-- [ ] Prune boards
-    - [ ] ev less than a threshold
+- [x] Prune boards
+    - [x] ev less than a threshold
     - [ ] move to index conversion
     - [ ] reachable search
 - [ ] Do expansion then prune on perfect
@@ -7,3 +7,4 @@
     - [ ] Train NN using tablebase
 - [ ] Prune normal boards and run sampling
 - [ ] Add perfect boards to normal
+- [ ] Add testing by game history for Tetris class

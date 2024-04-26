@@ -7,8 +7,8 @@ from ev_var import kEvMatrix, kDevMatrix
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 kBoardShape, kMetaShape, kMovesShape, kMoveMetaShape, _ = tetris.Tetris.StateShapes()
+kR = 1 if tetris.Tetris.IsNoro() else 4
 kH, kW = kBoardShape[1:]
-
 
 class ConvBlock(nn.Module):
     def __init__(self, ch):
@@ -91,7 +91,7 @@ class Model(nn.Module):
             nn.BatchNorm2d(8),
             nn.Flatten(),
             nn.ReLU(True),
-            nn.Linear(8 * kH * kW, 4 * kH * kW)
+            nn.Linear(8 * kH * kW, kR * kH * kW)
         )
         self.evdev_head = nn.Sequential(
             nn.Conv2d(channels, 2, 1),
