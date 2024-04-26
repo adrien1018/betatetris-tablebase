@@ -82,14 +82,14 @@ void InspectBoard(int group, const std::vector<long>& board_idx) {
 void InspectBoardStats(int group) {
   auto offsets = GetBoardCountOffset(group);
   for (size_t i = 0; i < offsets.size() - 1; i++) {
-    std::cout << fmt::format("Count {}: {} boards\n", i * 10 + group * 2, offsets[i+1] - offsets[i]);
+    std::cout << fmt::format("Count {}: {} boards\n", GetCellsByGroupOffset(i, group), offsets[i+1] - offsets[i]);
   }
 }
 
 void InspectEdge(int group, const std::vector<long>& board_idx, Level level, int piece) {
   int level_int = static_cast<int>(level);
   ClassReader<CompactBoard> reader_cur(BoardPath(group));
-  ClassReader<CompactBoard> reader_nxt(BoardPath((group + 2) % 5));
+  ClassReader<CompactBoard> reader_nxt(BoardPath(NextGroup(group)));
   CompressedClassReader<EvaluateNodeEdges> reader_eval_ed(EvaluateEdgePath(group, level_int));
   CompressedClassReader<PositionNodeEdges> reader_pos_ed(PositionEdgePath(group, level_int));
   for (auto id : board_idx) {
