@@ -55,7 +55,7 @@ class PythonTetris {
     int pre_lines = tetris.GetLines() - lines;
     double reward = step_reward_;
     for (int i = pre_lines; i < pre_lines + lines; i++) {
-      reward += std::exp(GetLineRewardExp(i, tetris.GetStartLevel(), tetris.DoTuck()));
+      reward += std::exp(GetNoroLineRewardExp(i, tetris.GetStartLevel(), tetris.DoTuck()));
     }
     double n_reward = lines * kRawMultiplier_;
 #else // NO_ROTATION
@@ -174,10 +174,19 @@ class PythonTetris {
 #endif // !NO_ROTATION
 
 #ifdef NO_ROTATION
-  static double GetLineRewardExp(int lines, int start_level, bool do_tuck) {
+  void GetState(State& state, int line_reduce = 0) const {
+    PythonTetris::GetState(tetris, state, nnb_, line_reduce);
+  }
+#else // NO_ROTATION
+  void GetState(State& state, int line_reduce = 0) const {
+    PythonTetris::GetState(tetris, state, line_reduce);
+  }
+#endif // NO_ROTATION
+
+  static double GetNoroLineRewardExp(int lines, int start_level, bool do_tuck) {
     constexpr int kExtreme[] = {70, 70, 70, 70, 70, 70, 70, 70, 70, 60, 50, 50, 40, 40, 30};
     constexpr int kExtremeNT[] = {38, 38, 38, 38, 38, 38, 38, 38, 38, 37, 36, 34, 32, 32, 30};
-    int speed = GetLevelSpeed(start_level);
+    int speed = noro::GetLevelSpeed(start_level);
     int extreme = do_tuck ? kExtreme[speed] : kExtremeNT[speed];
     return 1.0 * lines / extreme + lines / 12.0 - extreme / 16.0;
   }
@@ -236,13 +245,9 @@ class PythonTetris {
     state.move_meta[27] = state_lines * 0.01;
     state.move_meta[28] = start_level * 0.1;
     state.move_meta[29] = (tetris.GetPieces() + line_reduce * 10 / 4) * 0.004;
-    state.move_meta[30] = GetLineRewardExp(state_lines, start_level, tetris.DoTuck());
+    state.move_meta[30] = GetNoroLineRewardExp(state_lines, start_level, tetris.DoTuck());
   }
 
-  void GetState(State& state, int line_reduce = 0) const {
-    PythonTetris::GetState(tetris, state, nnb_, line_reduce);
-  }
-#else // NO_ROTATION
   static void GetState(const Tetris& tetris, State& state, int line_reduce = 0) {
     // board: shape (6, 20, 10) [board, one, initial_move(4)]
     // meta: shape (28,) [group(5), now_piece(7), next_piece(7), is_adj(1), hz(4), adj(4)]
@@ -311,10 +316,6 @@ class PythonTetris {
     state.move_meta[27] = (tetris.GetPieces() + line_reduce * 10 / 4) * 0.004;
   }
 
-  void GetState(State& state, int line_reduce = 0) const {
-    PythonTetris::GetState(tetris, state, line_reduce);
-  }
-#endif // NO_ROTATION
 
 #ifdef NO_ROTATION
   operator TetrisNoro() const { return tetris; }

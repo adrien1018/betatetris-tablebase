@@ -56,6 +56,7 @@ bool CheckBoard(Board& board, PyObject* obj) {
   return true;
 }
 
+#ifndef NO_ROTATION
 PyObject* PositionToTuple(const Position& pos) {
   return Py_BuildValue("(iii)", pos.r, pos.x, pos.y);
 }
@@ -84,6 +85,7 @@ std::optional<FrameSequence> ArrayToFrameSequence(PyObject* obj) {
   Py_DECREF(arr);
   return seq;
 }
+#endif // !NO_ROTATION
 
 PyObject* GetRewardObj(double reward, double raw_reward) {
   PyObject* r1 = PyFloat_FromDouble(reward);

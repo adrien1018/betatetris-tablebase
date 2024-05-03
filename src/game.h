@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #ifdef NO_2KS
 constexpr int kLevels = 3;
 #else
@@ -60,7 +62,8 @@ constexpr int ScoreFromLevel(int post_level, int lines) {
   return kTable[lines] * (post_level + 1);
 }
 
-#ifdef NO_ROTATION
+namespace noro {
+
 constexpr int GetLevelByLines(int lines, int start_level) {
   int level_reduce = (start_level + 1) / 16 * 10 + std::min((start_level + 1) % 16, 10) - 1;
   return std::max(lines / 10 - level_reduce, 0) + start_level;
@@ -79,7 +82,9 @@ constexpr int GetFramesPerRow(int level) {
   constexpr int kSpeedTable[] = {48, 43, 38, 33, 28, 23, 18, 13, 8, 6, 5, 4, 3, 2, 1};
   return kSpeedTable[GetLevelSpeed(level)];
 }
-#else // NO_ROTATION
+
+} // namespace noro
+
 constexpr int kLevelSpeedLines[] = {0, 130, 230,
 #ifdef NO_2KS
   kLineCap
@@ -115,7 +120,6 @@ constexpr int Score(int base_lines, int lines) {
   return ScoreFromLevel(GetLevelByLines(base_lines + lines), lines);
 #endif // TETRIS_ONLY
 }
-#endif // NO_ROTATION
 
 #ifdef TETRIS_ONLY
 constexpr int kGroupInterval = 40;
@@ -149,26 +153,24 @@ constexpr int NextGroup(int group) {
 
 // some testcases
 
-#ifdef NO_ROTATION
-static_assert(GetLevelByLines(0, 0) == 0);
-static_assert(GetLevelByLines(10, 0) == 1);
-static_assert(GetLevelByLines(123, 0) == 12);
-static_assert(GetLevelByLines(99, 9) == 9);
-static_assert(GetLevelByLines(100, 9) == 10);
-static_assert(GetLevelByLines(99, 10) == 10);
-static_assert(GetLevelByLines(100, 10) == 11);
-static_assert(GetLevelByLines(99, 15) == 15);
-static_assert(GetLevelByLines(100, 15) == 16);
-static_assert(GetLevelByLines(109, 16) == 16);
-static_assert(GetLevelByLines(110, 16) == 17);
-#else
+static_assert(noro::GetLevelByLines(0, 0) == 0);
+static_assert(noro::GetLevelByLines(10, 0) == 1);
+static_assert(noro::GetLevelByLines(123, 0) == 12);
+static_assert(noro::GetLevelByLines(99, 9) == 9);
+static_assert(noro::GetLevelByLines(100, 9) == 10);
+static_assert(noro::GetLevelByLines(99, 10) == 10);
+static_assert(noro::GetLevelByLines(100, 10) == 11);
+static_assert(noro::GetLevelByLines(99, 15) == 15);
+static_assert(noro::GetLevelByLines(100, 15) == 16);
+static_assert(noro::GetLevelByLines(109, 16) == 16);
+static_assert(noro::GetLevelByLines(110, 16) == 17);
+
 static_assert(GetLevelByLines(kLevelSpeedLines[0]) == 18);
 static_assert(GetLevelByLines(kLevelSpeedLines[1]) == 19);
 static_assert(GetLevelByLines(kLevelSpeedLines[2]) == 29);
 #ifndef NO_2KS
 static_assert(GetLevelByLines(kLevelSpeedLines[3]) == 39);
 #endif // NO_2KS
-#endif // NO_ROTATION
 
 static_assert(GetGroupByPieces(0) == 0);
 #ifdef TETRIS_ONLY
