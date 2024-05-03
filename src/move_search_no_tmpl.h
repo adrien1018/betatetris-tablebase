@@ -228,7 +228,7 @@ constexpr int Phase1TableGen(
 struct Phase1TableNoTmpl {
   std::vector<TableEntryNoTmpl> initial;
   std::vector<std::vector<TableEntryNoTmpl>> adj;
-  constexpr Phase1TableNoTmpl(Level level, int R, int adj_frame, const int taps[]) : initial(40) {
+  Phase1TableNoTmpl(Level level, int R, int adj_frame, const int taps[]) : initial(40) {
     initial.resize(10 * R);
     initial.resize(Phase1TableGen(level, R, taps, 0, 0, Position::Start.y, 9, 2, initial.data()));
     for (auto& i : initial) {
@@ -584,7 +584,7 @@ inline PossibleMoves MoveSearch(Level level, int adj_frame, const std::array<Boa
 class PrecomputedTableTuple {
   const PrecomputedTable tables[3];
  public:
-  constexpr PrecomputedTableTuple(Level level, int adj_frame, const int taps[]) :
+  PrecomputedTableTuple(Level level, int adj_frame, const int taps[]) :
       tables{{level, 1, adj_frame, taps}, {level, 2, adj_frame, taps}, {level, 4, adj_frame, taps}} {}
   const PrecomputedTable& operator[](int R) const {
     switch (R) {

@@ -94,13 +94,13 @@ class PythonTetris {
   void ResetRandom(const Board& b) {
 #ifdef NO_ROTATION
     int start_level = std::discrete_distribution<int>({
-        10, 1, 1, 1, 2, 2, 2, 2, 4, 6, // 0-9
+        15, 1, 1, 1, 2, 2, 2, 2, 4, 6, // 0-9
         4, 0, 0, 4, 0, 0, 4, 0, 0, // 10-18
         4, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 19-28
         8})(rng_);
-    bool do_tuck = std::discrete_distribution({2, 1})(rng_);
+    bool do_tuck = std::discrete_distribution({1, 2})(rng_);
     bool nnb = do_tuck ? std::discrete_distribution<int>({2, 1})(rng_) :
-                         std::discrete_distribution<int>({1, 2})(rng_);
+                         std::discrete_distribution<int>({1, 1})(rng_);
     Reset(b, 0, start_level, do_tuck, nnb);
 #else
     int lines = b.Count() % 4 != 0;
@@ -113,7 +113,7 @@ class PythonTetris {
   void Reset(const Board& b, int lines, int start_level, bool do_tuck, bool nnb) {
     int first_piece = std::uniform_int_distribution<int>(0, kPieces - 1)(rng_);
     next_piece_ = GenNextPiece_(first_piece);
-    Reset(b, start_level, do_tuck, nnb, lines, first_piece, next_piece_);
+    Reset(b, lines, start_level, do_tuck, nnb, first_piece, next_piece_);
   }
 
   void Reset(const Board& b, int lines, int start_level, bool do_tuck, bool nnb, int now_piece, int next_piece) {
@@ -223,8 +223,8 @@ class PythonTetris {
 
     int lines = tetris.GetLines();
     int state_lines = lines - line_reduce;
-    int state_level = state_lines / 10;
     int start_level = tetris.GetStartLevel();
+    int state_level = noro::GetLevelByLines(state_lines, start_level);
     state.meta_int[0] = state_lines / 2;
     state.meta_int[1] = tetris.NowPiece();
 
