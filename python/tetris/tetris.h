@@ -57,6 +57,7 @@ class PythonTetris {
     for (int i = pre_lines; i < pre_lines + lines; i++) {
       reward += std::exp(GetNoroLineRewardExp(i, tetris.GetStartLevel(), tetris.DoTuck()));
     }
+    next_piece_ = GenNextPiece_(next_piece_);
     double n_reward = lines * kRawMultiplier_;
 #else // NO_ROTATION
     double reward = score * kRewardMultiplier_;
@@ -188,7 +189,7 @@ class PythonTetris {
     constexpr int kExtremeNT[] = {38, 38, 38, 38, 38, 38, 38, 38, 38, 37, 36, 34, 32, 32, 30};
     int speed = noro::GetLevelSpeed(start_level);
     int extreme = do_tuck ? kExtreme[speed] : kExtremeNT[speed];
-    return 1.0 * lines / extreme + lines / 12.0 - extreme / 16.0;
+    return std::min(10.0, 1.0 * lines / extreme + lines / 12.0 - extreme / 16.0);
   }
 
   static void GetState(const TetrisNoro& tetris, State& state, bool nnb, int line_reduce = 0) {

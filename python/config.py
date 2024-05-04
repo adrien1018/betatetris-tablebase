@@ -17,8 +17,8 @@ class Configs(BaseConfigs):
     ## training
     lr: float = FloatDynamicHyperParam(1e-4, range_ = (0, 1e-3))
     # $\gamma$ and $\lambda$ for advantage calculation
-    gamma: float = FloatDynamicHyperParam(0.996 ** 0.5, range_ = (0.95, 1))
-    lamda: float = FloatDynamicHyperParam(0.92, range_ = (0.7, 1))
+    gamma: float = FloatDynamicHyperParam(0.999 ** 0.5, range_ = (0.95, 1))
+    lamda: float = FloatDynamicHyperParam(0.9, range_ = (0.7, 1))
     # number of updates
     updates: int = 400000
     # number of epochs to train the model with sampled data
@@ -40,7 +40,8 @@ class Configs(BaseConfigs):
     entropy_weight: float = FloatDynamicHyperParam(2.2e-2, range_ = (0, 5e-2))
     reg_l2: float = FloatDynamicHyperParam(0., range_ = (0, 5e-5))
 
-    save_interval: int = 500
+    time_limit: int = -1
+    save_interval: int = 1000
     board_file: Optional[str] = None
 
 

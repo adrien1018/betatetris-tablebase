@@ -19,7 +19,9 @@ from model import Model, obs_to_torch
 from config import Configs, LoadConfig
 from saver import TorchSaver
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+start_time = time.time()
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+generator_device = torch.device('cuda:1') if torch.cuda.device_count() > 1 else device
 #device = 'cpu'
 
 class Main:
@@ -50,7 +52,7 @@ class Main:
 
         # generator
         cur_params = self.get_game_params()
-        self.generator = GeneratorProcess(self.model_opt, self.name, self.c, cur_params, device)
+        self.generator = GeneratorProcess(self.model_opt, self.name, self.c, cur_params, generator_device)
         self.set_game_params(cur_params)
 
     def get_game_params(self):
@@ -206,23 +208,29 @@ class Main:
             tracker.save() # increment step
         else:
             self.generator.StartGenerate(offset)
-        for _ in monit.loop(self.c.updates - offset):
-            epoch = tracker.get_global_step()
-            # sample with current policy
-            samples, info = self.generator.GetData()
-            self.generator.StartGenerate(epoch)
-            tracker.add(info)
-            # train the model
-            self.train(samples)
-            self.generator.SendModel(self.model_opt, epoch)
-            # write summary info to the writer, and log to the screen
-            tracker.save()
-            # update hyperparams
-            self.set_optim(self.c.lr(), self.c.reg_l2())
-            self.set_game_params(self.get_game_params())
-            self.set_weight_params()
-            if (epoch + 1) % 25 == 0: logger.log()
-            if (epoch + 1) % self.c.save_interval == 0: experiment.save_checkpoint()
+        try:
+            for _ in monit.loop(self.c.updates - offset):
+                if self.c.time_limit > 0 and time.time() - start_time >= self.c.time_limit: break
+                epoch = tracker.get_global_step()
+                # sample with current policy
+                samples, info = self.generator.GetData()
+                self.generator.StartGenerate(epoch)
+                tracker.add(info)
+                # train the model
+                self.train(samples)
+                self.generator.SendModel(self.model_opt, epoch)
+                # write summary info to the writer, and log to the screen
+                tracker.save()
+                # update hyperparams
+                self.set_optim(self.c.lr(), self.c.reg_l2())
+                self.set_game_params(self.get_game_params())
+                self.set_weight_params()
+                if (epoch + 1) % 25 == 0: logger.log()
+                if (epoch + 1) % self.c.save_interval == 0: experiment.save_checkpoint()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            experiment.save_checkpoint()
 
 
 def claim_experiment(uuid: str):

@@ -49,8 +49,12 @@ class EvDev(nn.Module):
         super().__init__()
         self.linear_ev = nn.Linear(in_feat, ev_rank)
         self.linear_dev = nn.Linear(in_feat, dev_rank)
-        self.ev_mat = torch.nn.Parameter(torch.tensor(kEvMatrix * 1e-5)[:,:ev_rank])
-        self.dev_mat = torch.nn.Parameter(torch.tensor(kDevMatrix * 1e-5)[:,:dev_rank])
+        if kR == 1:
+            self.ev_mat = torch.nn.Parameter(nn.Linear(ev_rank, 215).weight)
+            self.dev_mat = torch.nn.Parameter(nn.Linear(dev_rank, 215).weight)
+        else:
+            self.ev_mat = torch.nn.Parameter(torch.tensor(kEvMatrix * 1e-5)[:,:ev_rank])
+            self.dev_mat = torch.nn.Parameter(torch.tensor(kDevMatrix * 1e-5)[:,:dev_rank])
         self.ev_mat.requires_grad = True
         self.dev_mat.requires_grad = True
 
@@ -62,6 +66,7 @@ class EvDev(nn.Module):
     @autocast(device_type=device, enabled=False)
     def forward(self, obs, idx):
         obs = obs.float()
+        idx = torch.clamp(idx, max=214)
         ev = (self.linear_ev(obs) * self.ev_mat[idx]).sum(axis=1)
         dev = (self.linear_dev(obs) * self.dev_mat[idx]).sum(axis=1)
         return torch.stack([ev, dev])
@@ -128,7 +133,7 @@ class Model(nn.Module):
         v = torch.zeros((1, batch), dtype=torch.float32, device=board.device)
         evdev = torch.zeros((2, batch), dtype=torch.float32, device=board.device)
 
-        invalid = moves[:,2:6].view(batch, -1) == 0
+        invalid = moves[:,2:2+kR].view(batch, -1) == 0
         x = self.board_embed(board, board_meta)
         x = self.main_start(x)
         if not pi_only:
