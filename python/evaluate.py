@@ -95,10 +95,16 @@ class Game:
         self.rng.reset(seed)
         if now is None: now = self.rng.spawn()
         nxt = self.rng.spawn()
-        if board:
-            self.env.Reset(now, nxt, lines=args.start_lines, board=board)
+        reset_args = {}
+        if tetris.Tetris.IsNoro():
+            reset_args['start_level'] = args.start_level
+            reset_args['do_tuck'] = not args.no_tuck
+            reset_args['nnb'] = args.nnb
         else:
-            self.env.Reset(now, nxt, lines=args.start_lines)
+            reset_args['start_lines'] = args.start_lines
+            if board:
+                reset_args['board'] = board
+        self.env.Reset(now, nxt, **reset_args)
         self.stats = [0, 0, 0, 0]
 
 def worker_process(remote, q_size, offset, seed_queue, shms):
@@ -340,7 +346,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('models', nargs='+')
     parser.add_argument('-n', '--num', type=int, default=2000)
-    parser.add_argument('-l', '--start-lines', type=int, default=0)
+    if tetris.Tetris.IsNoro():
+        parser.add_argument('-l', '--start-level', type=int, default=0)
+        parser.add_argument('--nnb', action='store_true')
+        parser.add_argument('--no-tuck', action='store_true')
+    else:
+        parser.add_argument('-l', '--start-lines', type=int, default=0)
     parser.add_argument('-m', '--max-lines', type=int)
     parser.add_argument('-b', '--batch-size', type=int, default=512)
     parser.add_argument('-w', '--workers', type=int, default=2)

@@ -78,11 +78,12 @@ class PiValueHead(nn.Module):
         self.linear = nn.Linear(in_feat, 1)
 
     @autocast(device_type=device, enabled=False)
-    def forward(self, pi, value, invalid):
+    def forward(self, pi, value, invalid, multiplier):
         pi = pi.float()
         pi[invalid] = -float('inf')
         v = self.linear(value.float())
-        return pi, v.transpose(0, 1)
+        v = v.transpose(0, 1) * multiplier
+        return pi, v
 
 class Model(nn.Module):
     def __init__(self, start_blocks, end_blocks, channels):
@@ -127,6 +128,7 @@ class Model(nn.Module):
 
     @autocast(device_type=device)
     def forward(self, obs, categorical=False, pi_only=False, evdev_only=False):
+        assert not (pi_only and evdev_only)
         board, board_meta, moves, moves_meta, meta_int = obs
         batch = board.shape[0]
         pi = None
@@ -136,15 +138,24 @@ class Model(nn.Module):
         invalid = moves[:,2:2+kR].view(batch, -1) == 0
         x = self.board_embed(board, board_meta)
         x = self.main_start(x)
-        if not pi_only:
-            evdev = self.evdev_final(self.evdev_head(x), meta_int[:,0].type(torch.LongTensor))
-        if not evdev_only:
+        if kR == 1:
             x = x + self.moves_embed(moves, moves_meta)
             x = self.main_end(x)
+            if not pi_only:
+                evdev = self.evdev_final(self.evdev_head(x), meta_int[:,0].type(torch.LongTensor))
+        else:
+            if not pi_only:
+                evdev = self.evdev_final(self.evdev_head(x), meta_int[:,0].type(torch.LongTensor))
+            if not evdev_only:
+                x = x + self.moves_embed(moves, moves_meta)
+                x = self.main_end(x)
+        if not evdev_only:
             pi, v = self.pi_value_final(
-                    self.pi_logits_head(x),
-                    self.value_head(x),
-                    invalid)
+                self.pi_logits_head(x),
+                self.value_head(x),
+                invalid,
+                torch.exp(moves_meta[:,-1]) if kR == 1 else 1
+            )
             if categorical: pi = Categorical(logits=pi)
         return pi, torch.concat([v, evdev])
 
