@@ -2,7 +2,7 @@
 
 # Modified from https://github.com/vpj/rl_samples
 
-import sys, traceback, os, collections, math, time
+import sys, traceback, os, collections, math, time, tempfile
 from typing import Dict, List
 
 import numpy as np, torch
@@ -15,7 +15,7 @@ import labml.lab
 from labml import monit, tracker, logger, experiment
 
 from generator import GeneratorProcess
-from model import Model, obs_to_torch
+from model import Model
 from config import Configs, LoadConfig
 from saver import TorchSaver
 
@@ -213,7 +213,7 @@ class Main:
                 if self.c.time_limit > 0 and time.time() - start_time >= self.c.time_limit: break
                 epoch = tracker.get_global_step()
                 # sample with current policy
-                samples, info = self.generator.GetData()
+                samples, info = self.generator.GetData(device)
                 self.generator.StartGenerate(epoch)
                 tracker.add(info)
                 # train the model

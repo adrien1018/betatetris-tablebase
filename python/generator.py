@@ -49,7 +49,7 @@ class DataGenerator:
         for i in self.workers: i.child.send(('reset', None))
         for i in self.workers: i.child.recv()
 
-        self.obs = obs_to_torch(self.obs_np)
+        self.obs = obs_to_torch(self.obs_np, self.device)
 
     def w_range(self, x): return slice(x * self.env_per_worker, (x + 1) * self.env_per_worker)
 
@@ -132,7 +132,7 @@ class DataGenerator:
                             ret_info['scorek'].append(info['score'] * 1e-3)
                             ret_info['lns'].append(info['lines'])
                             ret_info['pcs'].append(info['pieces'])
-            self.obs = obs_to_torch(self.obs_np)
+            self.obs = obs_to_torch(self.obs_np, self.device)
 
         # reshape rewards & log rewards
         score_max = self.rewards[:,:,1].max()
@@ -296,15 +296,15 @@ class GeneratorProcess:
     def SetParams(self, game_params):
         self.child.send(('set_param', game_params))
 
-    def GetData(self):
+    def GetData(self, device):
         self.child.send(('get_data', None))
         data, info = self.child.recv()
         for i in data:
             if i == 'obs':
                 for j in range(len(data[i])):
-                    data[i][j] = data[i][j].to(self.device)
+                    data[i][j] = data[i][j].to(device)
             else:
-                data[i] = data[i].to(self.device)
+                data[i] = data[i].to(device)
         return data, info
 
     def Close(self):
