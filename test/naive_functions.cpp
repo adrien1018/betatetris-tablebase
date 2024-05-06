@@ -209,12 +209,12 @@ void DFSNoro(int g, int x, int y, int taps_per_row, const ByteBoard& b, std::vec
     DFSNoro(g+1, x, y+1, taps_per_row, b, vis);
     DFSNoro(0, x+1, y, taps_per_row, b, vis);
   } else {
-    if (g == 2) {
-      DFSNoro(1, x+1, y, taps_per_row, b, vis);
+    if (g == 1) {
+      DFSNoro(2, x+1, y, taps_per_row, b, vis);
     } else {
       if (g == 0) {
-        DFSNoro(2, x, y-1, taps_per_row, b, vis);
-        DFSNoro(2, x, y+1, taps_per_row, b, vis);
+        DFSNoro(1, x, y-1, taps_per_row, b, vis);
+        DFSNoro(1, x, y+1, taps_per_row, b, vis);
       }
       DFSNoro(0, x+1, y, taps_per_row, b, vis);
     }
@@ -279,11 +279,15 @@ ByteBoard NaiveNoroPossibleMoves(const ByteBoard& b, int inputs_per_row, bool do
   if (do_tuck) {
     std::vector<ByteBoard> vis(inputs_per_row ? inputs_per_row + 1 : 3, ByteBoard{});
     DFSNoro(0, 0, 5, inputs_per_row, b, vis);
+    DFSNoro(1, 0, 4, inputs_per_row, b, vis);
+    DFSNoro(1, 0, 6, inputs_per_row, b, vis);
     return MergeByteBoardsAndLock(vis);
   } else {
     std::vector<ByteBoard> vis(std::max(1, inputs_per_row) * 2 + 3, ByteBoard{});
     DFSNoro(1, 0, 0, 5, inputs_per_row, b, vis);
     DFSNoro(2, 0, 0, 5, inputs_per_row, b, vis);
+    DFSNoro(1, 1, 0, 4, inputs_per_row, b, vis);
+    DFSNoro(2, 1, 0, 6, inputs_per_row, b, vis);
     return MergeByteBoardsAndLock(vis);
   }
 }
