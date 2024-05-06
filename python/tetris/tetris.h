@@ -55,7 +55,7 @@ class PythonTetris {
     int pre_lines = tetris.GetLines() - lines;
     double reward = step_reward_;
     for (int i = pre_lines; i < pre_lines + lines; i++) {
-      reward += std::exp(GetNoroLineRewardExp(i, tetris.GetStartLevel(), tetris.DoTuck()));
+      reward += std::exp(GetNoroLineRewardExp(i, tetris.GetStartLevel(), tetris.DoTuck(), nnb_));
     }
     next_piece_ = GenNextPiece_(next_piece_);
     double n_reward = lines * kRawMultiplier_;
@@ -184,12 +184,40 @@ class PythonTetris {
   }
 #endif // NO_ROTATION
 
-  static double GetNoroLineRewardExp(int lines, int start_level, bool do_tuck) {
-    constexpr int kExtreme[] = {70, 70, 70, 70, 70, 70, 70, 70, 70, 60, 50, 50, 40, 40, 30};
-    constexpr int kExtremeNT[] = {38, 38, 38, 38, 38, 38, 38, 38, 38, 37, 36, 34, 32, 32, 30};
+  static double GetNoroLineRewardExp(int lines, int start_level, bool do_tuck, bool nnb) {
+    constexpr int kOffset[2][2][15] = {
+      { // 0,1,2,3,4,5,6, 7,8, 9, 10-12,13-15, 16-18,19, 29
+        {14,14,14,14,14,14,14, 14,14, 13, 13,13, 12,12, 10}, // notuck
+        {12,12,12,12,12,12,12, 12,12, 12, 10,10,  9, 9, 6}, // notuck, nnb
+      }, {
+        {21,21,21,21,21,21,21, 19,19, 19, 19,19, 12,12, 11}, // tuck
+        {17,17,17,17,17,17,17, 17,17, 16, 15,15, 12,12, 9}, // tuck, nnb
+      },
+    };
+    constexpr float kExpMultiplier[2][2][15] = {
+      { // 0,1,2,3,4,5,6,7,8,9,10-12,13-15,16-18,19,29
+        {0.33,0.33,0.33,0.33,0.33,0.33,0.33, 0.33,0.33, 0.35, 0.38,0.38, 0.38,0.38, 0.4}, // notuck
+        {0.45,0.45,0.45,0.45,0.45,0.45,0.45, 0.45,0.45, 0.45, 0.45,0.45, 0.45,0.45, 0.45}, // notuck, nnb
+      }, {
+        {0.16,0.16,0.16,0.16,0.16,0.16,0.16, 0.16,0.16, 0.18, 0.19,0.19, 0.24,0.24, 0.33}, // tuck
+        {0.20,0.20,0.20,0.20,0.20,0.20,0.20, 0.20,0.20, 0.21, 0.22,0.22, 0.40,0.40, 0.45}, // tuck, nnb
+      },
+    };
+    constexpr float kMinExp[2][2][15] = {
+      { // 0,1,2,3,4,5,6,7,8,9,10-12,13-15,16-18,19,29
+        {-3.0,-3.0,-3.0,-3.0,-3.0,-3.0,-3.0, -3.0,-3.0, -3.0, -3.0,-3.0, -3.0,-3.0, -2.8}, // notuck
+        {-2.5,-2.5,-2.5,-2.5,-2.5,-2.5,-2.5, -2.5,-2.5, -2.5, -2.5,-2.5, -2.5,-2.5, -2.2}, // notuck, nnb
+      }, {
+        {-3.6,-3.6,-3.6,-3.6,-3.6,-3.6,-3.6, -3.6,-3.6, -3.6, -3.5,-3.5, -3.2,-3.2, -3.0}, // tuck
+        {-3.5,-3.5,-3.5,-3.5,-3.5,-3.5,-3.5, -3.5,-3.5, -3.5, -3.2,-3.2, -2.8,-2.8, -2.2}, // tuck, nnb
+      },
+    };
+
     int speed = noro::GetLevelSpeed(start_level);
-    int extreme = do_tuck ? kExtreme[speed] : kExtremeNT[speed];
-    return std::min(10.0, 1.0 * lines / extreme + lines / 20.0 - extreme / 32.0);
+    float min_exp = kMinExp[do_tuck][nnb][speed];
+    int offset = kOffset[do_tuck][nnb][speed];
+    float multiplier = kExpMultiplier[do_tuck][nnb][speed];
+    return std::min(6.0f, std::max(0, lines - offset) * multiplier + min_exp);
   }
 
   static void GetState(const TetrisNoro& tetris, State& state, bool nnb, int line_reduce = 0) {
@@ -246,7 +274,7 @@ class PythonTetris {
     state.move_meta[27] = state_lines * 0.01;
     state.move_meta[28] = start_level * 0.1;
     state.move_meta[29] = (tetris.GetPieces() + line_reduce * 10 / 4) * 0.004;
-    state.move_meta[30] = GetNoroLineRewardExp(state_lines, start_level, tetris.DoTuck());
+    state.move_meta[30] = std::max(-0.5, GetNoroLineRewardExp(state_lines + 5, start_level, tetris.DoTuck(), nnb));
   }
 
   static void GetState(const Tetris& tetris, State& state, int line_reduce = 0) {
