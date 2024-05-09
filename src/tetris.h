@@ -224,13 +224,8 @@ class TetrisNoro {
   std::pair<int, int> StepGame_(const Position& pos, int next_piece) {
     if (pos.r != 0) throw std::invalid_argument("pos.r must be 0");
     auto before_clear = board_.Place(now_piece_, 0, pos.x, pos.y);
-    // do not allow placing pieces to be cut off from the board
-    if (board_.Count() + 4 != before_clear.Count()) {
-      consecutive_fail_++;
-      return {-1, 0};
-    }
 
-    auto [lines, new_board] = before_clear.ClearLines();
+    auto [lines, new_board] = before_clear.ClearLines(true);
     lines_ += lines;
     int delta_score = ScoreFromLevel(GetLevel(), lines);
     board_ = new_board;
@@ -250,7 +245,7 @@ class TetrisNoro {
 
   void Reset(const Board& b, int lines, int start_level, bool do_tuck, int now_piece, int next_piece) {
     int pieces = (lines * 10 + b.Count()) / 4;
-    if (pieces * 4 != lines * 10 + (int)b.Count()) throw std::runtime_error("Incorrect lines");
+    // if (pieces * 4 != lines * 10 + (int)b.Count()) throw std::runtime_error("Incorrect lines");
     board_ = b;
     lines_ = lines;
     start_level_ = start_level;

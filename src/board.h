@@ -345,7 +345,8 @@ class alignas(32) Board {
     }
   }
 
-  constexpr std::pair<int, Board> ClearLines() const {
+  constexpr std::pair<int, Board> ClearLines(bool toprow_glitch = false) const {
+    // top row tetris not implemented
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wnarrowing"
     // use an order in favor of vectorization
@@ -358,6 +359,7 @@ class alignas(32) Board {
     uint32_t linemask = (cols[0] | cols[1] | cols[2] | cols[3] | cols[4] |
                          cols[5] | cols[6] | cols[8] | cols[9] | cols[10]) & kColumnMask;
     if (linemask == kColumnMask) return {0, *this};
+    if (toprow_glitch && (linemask & 1) == 0) linemask &= ~(1 << 19);
     int lines = 20 - popcount(linemask);
     for (int i = 0; i < 11; i++) {
       cols[i] = pext(cols[i], linemask) << lines | ((1 << lines) - 1);

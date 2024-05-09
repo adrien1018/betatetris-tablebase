@@ -100,6 +100,7 @@ class Game:
             reset_args['start_level'] = args.start_level
             reset_args['do_tuck'] = not args.no_tuck
             reset_args['nnb'] = args.nnb
+            reset_args['mirror'] = args.mirror
         else:
             reset_args['start_lines'] = args.start_lines
             if board:
@@ -350,6 +351,7 @@ if __name__ == "__main__":
         parser.add_argument('-l', '--start-level', type=int, default=0)
         parser.add_argument('--nnb', action='store_true')
         parser.add_argument('--no-tuck', action='store_true')
+        parser.add_argument('--mirror', action='store_true')
     else:
         parser.add_argument('-l', '--start-lines', type=int, default=0)
     parser.add_argument('-m', '--max-lines', type=int)

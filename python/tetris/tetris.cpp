@@ -171,7 +171,7 @@ PyObject* Tetris_Reset(PythonTetris* self, PyObject* args, PyObject* kwds) {
   static const char* kwlist[] = {
     "now_piece", "next_piece", "lines", "board",
 #ifdef NO_ROTATION
-    "start_level", "do_tuck", "nnb",
+    "start_level", "do_tuck", "nnb", "mirror",
 #endif
     nullptr
   };
@@ -183,8 +183,9 @@ PyObject* Tetris_Reset(PythonTetris* self, PyObject* args, PyObject* kwds) {
   int start_level = 0;
   int do_tuck = 1;
   int nnb = 0;
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO|iOipp", (char**)kwlist,
-        &now_obj, &next_obj, &lines, &board_obj, &start_level, &do_tuck, &nnb)) {
+  int mirror = 0;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO|iOippp", (char**)kwlist,
+        &now_obj, &next_obj, &lines, &board_obj, &start_level, &do_tuck, &nnb, &mirror)) {
     return nullptr;
   }
 #else
@@ -199,7 +200,7 @@ PyObject* Tetris_Reset(PythonTetris* self, PyObject* args, PyObject* kwds) {
   int next_piece = ParsePieceID(next_obj);
   if (next_piece < 0) return nullptr;
 #ifdef NO_ROTATION
-  self->Reset(board, lines, start_level, do_tuck, nnb, now_piece, next_piece);
+  self->Reset(board, lines, start_level, do_tuck, nnb, mirror, now_piece, next_piece);
 #else
   self->Reset(board, lines, now_piece, next_piece);
 #endif
@@ -212,17 +213,17 @@ PyObject* Tetris_ResetRandom(PythonTetris* self, PyObject* args, PyObject* kwds)
     "params", "board",
     nullptr
   };
-  int start_level = -1, do_tuck = -1, nnb = -1;
+  int start_level = -1, do_tuck = -1, nnb = -1, mirror = -1;
   Board board = Board::Ones;
   PyObject* board_obj = nullptr;
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "|(ipp)O", (char**)kwlist, &start_level, &do_tuck, &nnb, &board_obj)) {
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "|(ippp)O", (char**)kwlist, &start_level, &do_tuck, &nnb, &mirror, &board_obj)) {
     return nullptr;
   }
   if (!CheckBoard(board, board_obj)) return nullptr;
   if (start_level == -1) {
     self->ResetRandom(board);
   } else {
-    self->Reset(board, 0, start_level, do_tuck, nnb);
+    self->Reset(board, 0, start_level, do_tuck, nnb, mirror);
   }
 #else // NO_ROTATION
   static const char* kwlist[] = {

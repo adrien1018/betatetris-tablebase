@@ -7,6 +7,8 @@
 class PythonTetris {
  public:
   PyObject_HEAD
+  static constexpr int kMirrorCols_[] = {9, 9, 9, 10, 9, 9, 10};
+  static constexpr int kMirrorPiece_[] = {0, 5, 4, 3, 2, 1, 6};
   static constexpr double kInvalidReward_ = -0.3;
 #ifdef NO_ROTATION
   static constexpr double kRawMultiplier_ = 0.2;
@@ -28,6 +30,7 @@ class PythonTetris {
  private:
   std::mt19937_64 rng_;
   int next_piece_;
+  bool is_mirror_;
 #ifdef NO_ROTATION
   bool nnb_;
 #endif // NO_ROTATION
@@ -86,7 +89,7 @@ class PythonTetris {
 
   PythonTetris(size_t seed) : rng_(seed) {
 #ifdef NO_ROTATION
-    Reset(Board::Ones, 0, 0, true, false);
+    Reset(Board::Ones, 0, 0, true, false, false);
 #else
     Reset(Board::Ones, 0);
 #endif
@@ -99,10 +102,11 @@ class PythonTetris {
         4, 0, 0, 4, 0, 0, 4, 0, 0, // 10-18
         4, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 19-28
         8})(rng_);
-    bool do_tuck = std::discrete_distribution({1, 2})(rng_);
+    bool do_tuck = std::discrete_distribution({1, 1})(rng_);
     bool nnb = do_tuck ? std::discrete_distribution<int>({2, 1})(rng_) :
                          std::discrete_distribution<int>({1, 1})(rng_);
-    Reset(b, 0, start_level, do_tuck, nnb);
+    bool is_mirror = std::discrete_distribution({1, 1})(rng_);
+    Reset(b, 0, start_level, do_tuck, nnb, is_mirror);
 #else
     int lines = b.Count() % 4 != 0;
     lines += std::uniform_int_distribution<int>(0, kLineCap / 2 - 1)(rng_) * 2;
@@ -110,15 +114,21 @@ class PythonTetris {
 #endif
   }
 
-#ifdef NO_ROTATION
-  void Reset(const Board& b, int lines, int start_level, bool do_tuck, bool nnb) {
-    int first_piece = std::uniform_int_distribution<int>(0, kPieces - 1)(rng_);
-    next_piece_ = GenNextPiece_(first_piece);
-    Reset(b, lines, start_level, do_tuck, nnb, first_piece, next_piece_);
+  Position GetRealPosition(Position pos) {
+    if (is_mirror_) pos.y = kMirrorCols_[tetris.NowPiece()] - pos.y;
+    return pos;
   }
 
-  void Reset(const Board& b, int lines, int start_level, bool do_tuck, bool nnb, int now_piece, int next_piece) {
+#ifdef NO_ROTATION
+  void Reset(const Board& b, int lines, int start_level, bool do_tuck, bool nnb, bool is_mirror) {
+    int first_piece = std::uniform_int_distribution<int>(0, kPieces - 1)(rng_);
+    next_piece_ = GenNextPiece_(first_piece);
+    Reset(b, lines, start_level, do_tuck, nnb, first_piece, next_piece_, is_mirror);
+  }
+
+  void Reset(const Board& b, int lines, int start_level, bool do_tuck, bool nnb, bool is_mirror, int now_piece, int next_piece) {
     nnb_ = nnb;
+    is_mirror_ = is_mirror;
     tetris.Reset(b, lines, start_level, do_tuck, now_piece, next_piece);
     next_piece_ = GenNextPiece_(next_piece);
   }
@@ -135,20 +145,22 @@ class PythonTetris {
   }
 
   std::pair<double, double> DirectPlacement(const Position& pos) {
-    auto [score, lines] = tetris.DirectPlacement(pos, next_piece_);
-    return StepAndCalculateReward_(pos, score, lines);
+    Position npos = GetRealPosition(pos);
+    auto [score, lines] = tetris.DirectPlacement(npos, next_piece_);
+    return StepAndCalculateReward_(npos, score, lines);
   }
 #endif // NO_ROTATION
 
   std::pair<double, double> InputPlacement(const Position& pos) {
-    auto [score, lines] = tetris.InputPlacement(pos, next_piece_);
-    return StepAndCalculateReward_(pos, score, lines);
+    Position npos = GetRealPosition(pos);
+    auto [score, lines] = tetris.InputPlacement(npos, next_piece_);
+    return StepAndCalculateReward_(npos, score, lines);
   }
 
   struct State {
 #ifdef NO_ROTATION
     std::array<std::array<std::array<float, 10>, 20>, 2> board;
-    std::array<float, 21> meta;
+    std::array<float, 22> meta;
     std::array<std::array<std::array<float, 10>, 20>, 3> moves;
     std::array<float, 31> move_meta;
     std::array<int, 2> meta_int;
@@ -176,7 +188,7 @@ class PythonTetris {
 
 #ifdef NO_ROTATION
   void GetState(State& state, int line_reduce = 0) const {
-    PythonTetris::GetState(tetris, state, nnb_, line_reduce);
+    PythonTetris::GetState(tetris, state, nnb_, is_mirror_, line_reduce);
   }
 #else // NO_ROTATION
   void GetState(State& state, int line_reduce = 0) const {
@@ -197,7 +209,7 @@ class PythonTetris {
     constexpr float kExpMultiplier[2][2][15] = {
       { // 0,1,2,3,4,5,6,7,8,9,10-12,13-15,16-18,19,29
         {0.33,0.33,0.33,0.33,0.33,0.33,0.33, 0.33,0.33, 0.35, 0.38,0.38, 0.38,0.38, 0.4}, // notuck
-        {0.45,0.45,0.45,0.45,0.45,0.45,0.45, 0.45,0.45, 0.45, 0.45,0.45, 0.45,0.45, 0.45}, // notuck, nnb
+        {0.50,0.50,0.50,0.50,0.50,0.50,0.50, 0.50,0.50, 0.50, 0.50,0.50, 0.50,0.50, 0.50}, // notuck, nnb
       }, {
         {0.16,0.16,0.16,0.16,0.16,0.16,0.16, 0.16,0.16, 0.18, 0.19,0.19, 0.24,0.24, 0.33}, // tuck
         {0.20,0.20,0.20,0.20,0.20,0.20,0.20, 0.20,0.20, 0.21, 0.22,0.22, 0.40,0.40, 0.45}, // tuck, nnb
@@ -206,7 +218,7 @@ class PythonTetris {
     constexpr float kMinExp[2][2][15] = {
       { // 0,1,2,3,4,5,6,7,8,9,10-12,13-15,16-18,19,29
         {-3.0,-3.0,-3.0,-3.0,-3.0,-3.0,-3.0, -3.0,-3.0, -3.0, -3.0,-3.0, -3.0,-3.0, -2.8}, // notuck
-        {-2.5,-2.5,-2.5,-2.5,-2.5,-2.5,-2.5, -2.5,-2.5, -2.5, -2.5,-2.5, -2.5,-2.5, -2.2}, // notuck, nnb
+        {-2.8,-2.8,-2.8,-2.8,-2.8,-2.8,-2.8, -2.8,-2.8, -2.8, -2.8,-2.8, -2.8,-2.8, -2.8}, // notuck, nnb
       }, {
         {-3.6,-3.6,-3.6,-3.6,-3.6,-3.6,-3.6, -3.6,-3.6, -3.6, -3.5,-3.5, -3.2,-3.2, -3.0}, // tuck
         {-3.5,-3.5,-3.5,-3.5,-3.5,-3.5,-3.5, -3.5,-3.5, -3.5, -3.2,-3.2, -2.8,-2.8, -2.2}, // tuck, nnb
@@ -220,7 +232,7 @@ class PythonTetris {
     return std::min(6.0f, std::max(0, lines - offset) * multiplier + min_exp);
   }
 
-  static void GetState(const TetrisNoro& tetris, State& state, bool nnb, int line_reduce = 0) {
+  static void GetState(const TetrisNoro& tetris, State& state, bool nnb, bool is_mirror, int line_reduce = 0) {
     // board: shape (2, 20, 10) [board, one]
     // meta: shape (21,) [group(5), now_piece(7), next_piece(7), nnb, do_tuck]
     // meta_int: shape (2,) [entry, now_piece]
@@ -229,26 +241,39 @@ class PythonTetris {
     {
       auto byte_board = tetris.GetBoard().ToByteBoard();
       for (int i = 0; i < 20; i++) {
-        for (int j = 0; j < 10; j++) state.board[0][i][j] = byte_board[i][j];
+        if (is_mirror) {
+          for (int j = 0; j < 10; j++) state.board[0][i][j] = byte_board[i][9-j];
+          for (int j = 0; j < 10; j++) state.moves[0][i][j] = byte_board[i][9-j];
+        } else {
+          for (int j = 0; j < 10; j++) state.board[0][i][j] = byte_board[i][j];
+          for (int j = 0; j < 10; j++) state.moves[0][i][j] = byte_board[i][j];
+        }
         for (int j = 0; j < 10; j++) state.board[1][i][j] = 1;
-        for (int j = 0; j < 10; j++) state.moves[0][i][j] = byte_board[i][j];
         for (int j = 0; j < 10; j++) state.moves[1][i][j] = 1;
       }
       auto move_map = tetris.GetPossibleMoveMap().ToByteBoard();
       for (int i = 0; i < 20; i++) {
-        for (int j = 0; j < 10; j++) state.moves[2][i][j] = move_map[i][j];
+        if (is_mirror) {
+          for (int j = 0; j < 10; j++) {
+            int ncol = kMirrorCols_[tetris.NowPiece()] - j;
+            state.moves[2][i][j] = ncol >= 10 ? 0 : move_map[i][ncol];
+          }
+        } else {
+          for (int j = 0; j < 10; j++) state.moves[2][i][j] = move_map[i][j];
+        }
       }
     }
 
     memset(state.meta.data(), 0, sizeof(state.meta));
     state.meta[0 + tetris.GetBoard().Count() / 2 % 5] = 1;
-    state.meta[5 + tetris.NowPiece()] = 1;
+    state.meta[5 + (is_mirror ? kMirrorPiece_[tetris.NowPiece()] : tetris.NowPiece())] = 1;
     if (nnb) {
       state.meta[19] = 1;
     } else {
-      state.meta[12 + tetris.NextPiece()] = 1;
+      state.meta[12 + (is_mirror ? kMirrorPiece_[tetris.NextPiece()] : tetris.NextPiece())] = 1;
     }
     state.meta[20] = tetris.DoTuck();
+    state.meta[21] = is_mirror;
 
     int lines = tetris.GetLines();
     int state_lines = lines - line_reduce;
