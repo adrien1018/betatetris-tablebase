@@ -30,21 +30,32 @@ inline size_t VecInput(std::vector<T>& vec, const uint8_t data[], Func&& func) {
 
 template <size_t size_bytes, class T>
 inline size_t SimpleVecOutput(const std::vector<T>& vec, uint8_t data[]) {
-  uint8_t sz_buf[8] = {};
-  if (SizeRangeOverflow<size_bytes>(vec.size())) throw std::out_of_range("vec too large");
-  IntToBytes<uint64_t>(vec.size(), sz_buf);
-  memcpy(data, sz_buf, size_bytes);
+  static_assert(size_bytes >= 0);
+  if constexpr (size_bytes > 0) {
+    uint8_t sz_buf[8] = {};
+    if (SizeRangeOverflow<size_bytes>(vec.size())) throw std::out_of_range("vec too large");
+    IntToBytes<uint64_t>(vec.size(), sz_buf);
+    memcpy(data, sz_buf, size_bytes);
+  }
   memcpy(data + size_bytes, vec.data(), sizeof(T) * vec.size());
   return sizeof(T) * vec.size() + size_bytes;
 }
 
 template <size_t size_bytes, class T>
 inline size_t SimpleVecInput(std::vector<T>& vec, const uint8_t data[]) {
+  static_assert(size_bytes >= 1);
   uint8_t sz_buf[8] = {};
   memcpy(sz_buf, data, size_bytes);
   vec.resize(BytesToInt<uint64_t>(sz_buf));
   memcpy(vec.data(), data + size_bytes, sizeof(T) * vec.size());
   return sizeof(T) * vec.size() + size_bytes;
+}
+
+template <class T>
+inline size_t SimpleVecInput(std::vector<T>& vec, const uint8_t data[], size_t byte_size) {
+  vec.resize(byte_size / sizeof(T));
+  memcpy(vec.data(), data, sizeof(T) * vec.size());
+  return sizeof(T) * vec.size();
 }
 
 template <class T, size_t sz>

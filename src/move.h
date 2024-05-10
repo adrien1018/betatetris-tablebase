@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <stdexcept>
+#include "edge.h"
 #include "game.h"
 #include "board.h"
 #include "position.h"
@@ -22,6 +23,12 @@ struct MovePositionRange {
   uint8_t start, end;
   std::array<Position, 7> pos;
   constexpr auto operator<=>(const MovePositionRange&) const = default;
+};
+
+struct MoveBoardRange {
+  uint8_t start, end;
+  NodeMoveIndex idx;
+  constexpr auto operator<=>(const MoveBoardRange&) const = default;
 };
 
 struct NodeMoveIndexRange {
@@ -107,6 +114,60 @@ struct NodeMovePositionRange {
         ranges[i].pos[j].GetBytes(ret + (i*kElementSize + 2 + j*2));
       }
     }
+  }
+};
+
+struct NodeMoveBoardRange {
+  std::vector<uint32_t> board_idx;
+  std::vector<MoveBoardRange> ranges;
+
+  NodeMoveBoardRange() {}
+  NodeMoveBoardRange(const uint8_t buf[], size_t sz) {
+    size_t offset = SimpleVecInput<1>(board_idx, buf);
+    offset += SimpleVecInput(ranges, buf + offset, sz - offset);
+    if (offset != sz) throw std::length_error("invalid size");
+  }
+  NodeMoveBoardRange(const NodeMovePositionRange&, const EvaluateNodeEdgesFast&, const PositionNodeEdges&);
+
+  static constexpr bool kIsConstSize = false;
+  static constexpr size_t kSizeNumberBytes = 2;
+  size_t NumBytes() const {
+    return sizeof(MoveBoardRange) * ranges.size() + sizeof(uint32_t) * board_idx.size() + 1;
+  }
+
+  void GetBytes(uint8_t ret[]) const {
+    size_t offset = SimpleVecOutput<1>(board_idx, ret);
+    SimpleVecOutput<0>(ranges, ret + offset);
+  }
+};
+
+struct NodeMoveBoardRangeFast {
+  static constexpr bool kIsConstSize = false;
+  static constexpr size_t kSizeNumberBytes = 2;
+
+  size_t NumBytes() const {
+    throw std::runtime_error("should not use in write");
+  }
+  void GetBytes(uint8_t ret[]) const {
+    throw std::runtime_error("should not use in write");
+  }
+
+  static size_t lines;
+  uint32_t idx[7];
+  NodeMoveBoardRangeFast() {}
+  NodeMoveBoardRangeFast(const uint8_t buf[], size_t sz) {
+    size_t offset = buf[0] * sizeof(uint32_t) + 1;
+    const uint32_t* idx_arr = reinterpret_cast<const uint32_t*>(buf + 1);
+    for (; offset < sz; offset += sizeof(MoveBoardRange)) {
+      const MoveBoardRange* x = reinterpret_cast<const MoveBoardRange*>(buf + offset);
+      if (x->end < lines) {
+        for (size_t i = 0; i < kPieces; i++) {
+          idx[i] = x->idx[i] == 0xff ? (uint32_t)-1 : idx_arr[x->idx[i]];
+        }
+        return;
+      }
+    }
+    for (size_t i = 0; i < kPieces; i++) idx[i] = -1;
   }
 };
 

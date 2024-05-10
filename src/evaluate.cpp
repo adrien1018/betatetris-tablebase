@@ -6,6 +6,7 @@
 #include <set>
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdangling-reference"
+#pragma GCC diagnostic ignored "-Wtautological-compare"
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/ranges.h>
 #pragma GCC diagnostic pop

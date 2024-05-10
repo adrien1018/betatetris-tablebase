@@ -3,8 +3,9 @@
 #include <array>
 #include <boost/asio.hpp>
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-overflow"
 #pragma GCC diagnostic ignored "-Warray-bounds"
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#pragma GCC diagnostic ignored "-Wdangling-reference"
 #include <spdlog/spdlog.h>
 #pragma GCC diagnostic pop
 #include "move.h"

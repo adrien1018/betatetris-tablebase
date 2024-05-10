@@ -6,18 +6,48 @@
 #include <set>
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdangling-reference"
+#pragma GCC diagnostic ignored "-Wtautological-compare"
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/ranges.h>
 #pragma GCC diagnostic pop
-#include "edge.h"
-#include "game.h"
-#include "board.h"
+#include <tsl/hopscotch_map.h>
 #include "config.h"
 #include "evaluate.h"
 #include "board_set.h"
 #include "thread_queue.h"
 
 #pragma GCC diagnostic ignored "-Wclass-memaccess"
+
+NodeMoveBoardRange::NodeMoveBoardRange(
+    const NodeMovePositionRange& range, const EvaluateNodeEdgesFast& eval_ed, const PositionNodeEdges& pos_ed) {
+  tsl::hopscotch_map<Position, uint32_t> mp_idx;
+  tsl::hopscotch_map<uint32_t, uint8_t> mp_pos;
+  for (size_t i = 0; i < pos_ed.nexts.size(); i++) {
+    mp_idx[pos_ed.nexts[i]] = eval_ed.next_ids[i].first;
+  }
+  for (auto& i : range.ranges) {
+    ranges.push_back({i.start, i.end, {}});
+    for (size_t j = 0; j < kPieces; j++) {
+      auto& pos = i.pos[j];
+      if (pos == Position::Invalid) {
+        ranges.back().idx[j] = 0xff;
+        continue;
+      }
+      size_t num = mp_pos.size();
+      size_t idx = mp_idx[pos];
+      auto it = mp_pos.insert({idx, num});
+      if (it.second) {
+        board_idx.push_back(idx);
+      } else {
+        num = it.first->second;
+      }
+      ranges.back().idx[j] = num;
+    }
+  }
+  if (mp_pos.size() >= 255) throw std::length_error("Too many edges");
+}
+
+size_t NodeMoveBoardRangeFast::lines = 0;
 
 namespace {
 

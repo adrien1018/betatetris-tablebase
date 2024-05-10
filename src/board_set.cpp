@@ -6,6 +6,7 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
 #pragma GCC diagnostic ignored "-Wstringop-overflow"
+#pragma GCC diagnostic ignored "-Wdangling-reference"
 #include <spdlog/spdlog.h>
 #pragma GCC diagnostic pop
 #include <spdlog/fmt/fmt.h>
