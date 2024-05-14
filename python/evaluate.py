@@ -60,10 +60,97 @@ class RNGNormal:
         self.prev = self.rng.choices(range(7), weights=self.transition_matrix[self.prev])[0]
         return self.prev
 
+class RNGRealistic:
+    def __init__(self, seed=0):
+        self.transition_matrices = [[
+            [0, 2, 4, 2, 2, 3, 3],
+            [4, 0, 2, 3, 3, 2, 2],
+            [2, 3, 1, 2, 3, 2, 3],
+            [2, 3, 2, 1, 3, 2, 3],
+            [3, 2, 2, 3, 1, 2, 3],
+            [3, 2, 3, 3, 2, 0, 3],
+            [4, 2, 2, 2, 4, 2, 0],
+        ], [
+            [0, 2, 4, 2, 2, 4, 2],
+            [4, 0, 2, 3, 3, 2, 2],
+            [2, 4, 0, 2, 3, 3, 2],
+            [2, 3, 2, 1, 3, 2, 3],
+            [3, 2, 3, 2, 1, 3, 2],
+            [3, 2, 3, 3, 2, 0, 3],
+            [3, 2, 2, 3, 3, 2, 1],
+        ], [
+            [0, 3, 3, 2, 3, 3, 2],
+            [3, 0, 3, 3, 2, 2, 3],
+            [3, 3, 0, 3, 2, 3, 2],
+            [3, 2, 3, 1, 2, 3, 2],
+            [2, 2, 3, 3, 0, 3, 3],
+            [2, 3, 3, 2, 2, 1, 3],
+            [2, 2, 2, 4, 2, 2, 2],
+        ], [
+            [0, 4, 2, 2, 4, 2, 2],
+            [3, 0, 3, 3, 2, 2, 3],
+            [3, 3, 0, 3, 3, 2, 2],
+            [3, 2, 3, 1, 2, 3, 2],
+            [2, 3, 2, 3, 1, 2, 3],
+            [2, 3, 3, 2, 2, 1, 3],
+            [2, 2, 3, 3, 2, 3, 1],
+        ], [
+            [1, 3, 2, 3, 3, 2, 2],
+            [2, 1, 3, 2, 2, 3, 3],
+            [2, 3, 1, 2, 3, 2, 3],
+            [2, 3, 2, 1, 3, 2, 3],
+            [2, 3, 3, 2, 1, 3, 2],
+            [3, 3, 2, 2, 3, 1, 2],
+            [2, 2, 4, 2, 2, 4, 0],
+        ], [
+            [2, 2, 2, 4, 2, 2, 2],
+            [2, 1, 3, 2, 2, 3, 3],
+            [3, 2, 1, 3, 2, 2, 3],
+            [2, 3, 2, 1, 3, 2, 3],
+            [3, 2, 3, 2, 1, 3, 2],
+            [3, 3, 2, 2, 3, 1, 2],
+            [2, 3, 3, 2, 3, 3, 0],
+        ], [
+            [1, 2, 3, 3, 2, 2, 3],
+            [3, 1, 2, 2, 3, 3, 2],
+            [3, 3, 0, 3, 2, 3, 2],
+            [3, 2, 3, 1, 2, 3, 2],
+            [3, 3, 2, 2, 2, 2, 2],
+            [4, 2, 2, 3, 3, 0, 2],
+            [2, 4, 2, 2, 4, 2, 0],
+        ], [
+            [0, 2, 4, 2, 2, 2, 4],
+            [3, 1, 2, 2, 3, 3, 2],
+            [2, 3, 1, 2, 2, 3, 3],
+            [3, 2, 3, 1, 2, 3, 2],
+            [2, 3, 2, 3, 1, 2, 3],
+            [4, 2, 2, 3, 3, 0, 2],
+            [3, 3, 2, 2, 4, 2, 0],
+        ]]
+        self.reset(seed)
+
+    def reset(self, seed):
+        self.rng = random.Random(seed)
+        self.cnt = self.rng.randrange(8)
+        self.prev = -1
+
+    def spawn(self):
+        self.cnt = (self.cnt + 1) % 8
+        if self.prev == -1:
+            seed = self.rng.randrange(16)
+            ind = (seed + self.cnt) & 7
+            if ind == 7:
+                ind = (seed >> 1) % 7
+            self.prev = ind
+        else:
+            self.prev = self.rng.choices(range(7), weights=self.transition_matrices[self.cnt][self.prev])[0]
+        return self.prev
+
+
 class Game:
     def __init__(self):
         self.env = tetris.Tetris()
-        self.rng = RNGGym(0) if args.gym_rng else RNGNormal(0)
+        self.rng = RNGGym(0) if args.gym_rng else (RNGRealistic(0) if args.realistic_rng else RNGNormal(0))
         self.reset(0)
 
     def step(self, action, direct=False):
@@ -361,6 +448,7 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--server', type=str)
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--gym-rng', action='store_true')
+    parser.add_argument('--realistic-rng', action='store_true')
     parser.add_argument('--clean-only', action='store_true')
     parser.add_argument('--sample-action', action='store_true')
     parser.add_argument('--board-file', type = str)

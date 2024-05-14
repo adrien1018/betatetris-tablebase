@@ -30,6 +30,7 @@ class PythonTetris {
  private:
   std::mt19937_64 rng_;
   int next_piece_;
+  int piece_count_;
   bool is_mirror_;
 #ifdef NO_ROTATION
   bool nnb_;
@@ -48,8 +49,10 @@ class PythonTetris {
       if (std::uniform_real_distribution<float>(0, 1)(rng_) < prob) return 6;
     }
 #endif // TETRIS_ONLY
+    piece_count_ = (piece_count_ + 1) & 7;
     return std::discrete_distribution<int>(
-        kTransitionProbInt[piece], kTransitionProbInt[piece] + kPieces)(rng_);
+        kTransitionRealisticProbInt[piece_count_][piece],
+        kTransitionRealisticProbInt[piece_count_][piece] + kPieces)(rng_);
   }
 
   std::pair<double, double> StepAndCalculateReward_(const Position& pos, int score, int lines) {
@@ -88,6 +91,7 @@ class PythonTetris {
 #endif // NO_ROTATION
 
   PythonTetris(size_t seed) : rng_(seed) {
+    piece_count_ = 0;
 #ifdef NO_ROTATION
     Reset(Board::Ones, 0, 0, true, false, false);
 #else
@@ -121,6 +125,7 @@ class PythonTetris {
 
 #ifdef NO_ROTATION
   void Reset(const Board& b, int lines, int start_level, bool do_tuck, bool nnb, bool is_mirror) {
+    piece_count_ = std::uniform_int_distribution<int>(0, 8)(rng_);
     int first_piece = std::uniform_int_distribution<int>(0, kPieces - 1)(rng_);
     next_piece_ = GenNextPiece_(first_piece);
     Reset(b, lines, start_level, do_tuck, nnb, first_piece, next_piece_, is_mirror);
@@ -134,6 +139,7 @@ class PythonTetris {
   }
 #else // NO_ROTATION
   void Reset(const Board& b, int lines) {
+    piece_count_ = std::uniform_int_distribution<int>(0, 8)(rng_);
     int first_piece = std::uniform_int_distribution<int>(0, kPieces - 1)(rng_);
     next_piece_ = GenNextPiece_(first_piece);
     Reset(b, lines, first_piece, next_piece_);
