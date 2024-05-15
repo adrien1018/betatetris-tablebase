@@ -292,6 +292,10 @@ class TetrisNoro {
     return nlines - lines_;
   }
 
+  FrameSequence GetSequence(const Position& pos) const {
+    return GetFrameSequenceNoro(board_, now_piece_, InputsPerRow(), do_tuck_, noro::GetFramesPerRow(GetLevel()), pos);
+  }
+
   const Board& GetPossibleMoveMap() const { return moves_; }
   const Board& GetBoard() const { return board_; }
   int InputsPerRow() const {

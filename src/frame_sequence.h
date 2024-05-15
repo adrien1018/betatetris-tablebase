@@ -7,6 +7,7 @@ struct FrameInput {
   static const FrameInput B;
   static const FrameInput L;
   static const FrameInput R;
+  static const FrameInput D;
   uint8_t value;
   FrameInput operator|=(FrameInput a) {
     value |= a.value;
@@ -16,6 +17,7 @@ struct FrameInput {
   bool IsB() const { return value & 8; }
   bool IsL() const { return value & 1; }
   bool IsR() const { return value & 2; }
+  bool IsD() const { return value & 16; }
 
   std::string ToString() const {
     std::string str;
@@ -23,6 +25,7 @@ struct FrameInput {
     if (IsR()) str += 'R';
     if (IsA()) str += 'A';
     if (IsB()) str += 'B';
+    if (IsD()) str += 'D';
     return str.empty() ? "-" : str;
   }
 };
@@ -31,6 +34,7 @@ inline constexpr FrameInput FrameInput::A = FrameInput{4};
 inline constexpr FrameInput FrameInput::B = FrameInput{8};
 inline constexpr FrameInput FrameInput::L = FrameInput{1};
 inline constexpr FrameInput FrameInput::R = FrameInput{2};
+inline constexpr FrameInput FrameInput::D = FrameInput{16};
 
 inline FrameInput operator|(FrameInput a, FrameInput b) {
   return a |= b;
@@ -244,6 +248,78 @@ NOINLINE int CalculateSequence(
   return -1;
 }
 
+constexpr std::array<uint32_t, 20> DirectionMapNoro(const Board& b, int inputs_per_row, bool do_tuck) {
+  std::array<uint32_t, 20> rows = b.Rows();
+  std::array<uint32_t, 20> ret = {};
+  constexpr uint32_t kMask = 0x9249249;
+  for (auto& row : rows) {
+    row = pdep(row, kMask);
+    row = row | row << 1 | row << 2;
+  }
+  if (do_tuck && inputs_per_row) {
+    uint32_t state = 1 << 15;
+    for (int row = 0; row < 20 && state; row++) {
+      state &= rows[row];
+      uint32_t lstate = state, rstate = state;
+      // left
+      for (int i = 0; i < inputs_per_row; i++) {
+        lstate |= lstate >> 3 & rows[row];
+        rstate |= rstate << 3 & rows[row];
+        if (row == 0 && i == 0) {
+          lstate |= rows[row] & (1 << 12);
+          rstate |= rows[row] & (1 << 18);
+        }
+      }
+      ret[row] = state | (lstate & ~state) << 1 | (rstate & ~state & ~lstate) << 2;
+      state |= lstate | rstate;
+    }
+  } else if (do_tuck && !inputs_per_row) { // 29
+    uint32_t state0 = 1 << 15, state1 = 1 << 15;
+    for (int row = 0; row < 20 && (state0 || state1); row++) {
+      state0 &= rows[row];
+      state1 &= rows[row];
+      uint32_t nstate0 = state0 | state1;
+      uint32_t lstate = state0 >> 3 & rows[row];
+      uint32_t rstate = state0 << 3 & rows[row];
+      if (row == 0) {
+        lstate |= rows[row] & (1 << 12);
+        rstate |= rows[row] & (1 << 18);
+      }
+      ret[row] = nstate0 | (lstate & ~nstate0) << 1 | (rstate & ~nstate0 & ~lstate) << 2;
+      state1 = lstate | rstate;
+      state0 = nstate0;
+    }
+  } else {
+    uint32_t state = 1 << 15;
+    bool left = state, right = state;
+    for (int row = 0; row < 20 && state; row++) {
+      state &= rows[row];
+      int nl = inputs_per_row ? row * inputs_per_row : (row + 1) / 2;
+      int nr = inputs_per_row ? (row + 1) * inputs_per_row : (row + 2) / 2;
+      if (nl <= 5 && !(1 << (5 - nl) & rows[row])) left = false;
+      if (nl <= 4 && !(1 << (5 + nl) & rows[row])) right = false;
+      uint32_t lstate = 0, rstate = 0;
+      for (int i = nl + 1; i <= nr && i <= 5; i++) {
+        if ((left || i == 1) && i <= 5 && (1 << ((5 - i) * 3) & rows[row])) {
+          lstate |= 1 << ((5 - i) * 3);
+          left = true;
+        } else {
+          left = false;
+        }
+        if ((right || i == 1) && i <= 4 && (1 << ((5 + i) * 3) & rows[row])) {
+          rstate |= 1 << ((5 + i) * 3);
+          right = true;
+        } else {
+          right = false;
+        }
+      }
+      ret[row] = state | lstate << 1 | rstate << 2;
+      state |= lstate | rstate;
+    }
+  }
+  return ret;
+}
+
 } // namespace move_search
 
 template <Level level, int R, class Taps>
@@ -291,8 +367,54 @@ int GetFrameSequenceAdj(
 #undef LEVEL_CASE_TMPL_ARGS
 }
 
+inline FrameSequence GetFrameSequenceNoro(
+    const Board& b, int piece, int inputs_per_row, bool do_tuck, int frames_per_drop, const Position& target) {
+  if (target.r != 0) return {};
+  auto dir = move_search::DirectionMapNoro(b.PieceMapNoro(piece), inputs_per_row, do_tuck);
+  if ((dir[target.x] >> (target.y * 3) & 7) == 0) return {};
+  Position cur = target;
+  std::vector<std::string> inputs(target.x + 1);
+  while (cur != Position::Start) {
+    uint32_t v = dir[cur.x] >> (cur.y * 3);
+    if (v & 1) {
+      cur.x--;
+    } else if (v & 2) {
+      inputs[cur.x].push_back('L');
+      cur.y++;
+    } else {
+      inputs[cur.x].push_back('R');
+      cur.y--;
+    }
+  }
+  for (auto& i : inputs) std::reverse(i.begin(), i.end());
+  FrameSequence ret;
+  bool down_held = false;
+  for (size_t i = 0; i < inputs.size(); i++) {
+    if (down_held && frames_per_drop > 2 && inputs[i].empty()) {
+      ret.resize(ret.size() + 2, FrameInput::D);
+      continue;
+    }
+    down_held = false;
+    int input_frames = std::max((int)inputs[i].size() * 2 - 1, 0);
+    int blank_frames = frames_per_drop - input_frames;
+    size_t offset = ret.size();
+    ret.resize(offset + input_frames + std::min(blank_frames, 3), FrameInput{});
+    for (size_t j = 0; j < inputs[i].size(); j++) {
+      ret[offset + j * 2] = inputs[i][j] == 'L' ? FrameInput::L : FrameInput::R;
+    }
+    if (blank_frames >= 3) {
+      ret[offset + input_frames] = FrameInput::D;
+      ret[offset + input_frames + 1] = FrameInput::D;
+      ret[offset + input_frames + 2] = FrameInput::D;
+      down_held = true;
+    }
+  }
+  return ret;
+}
+
 template <Level level, int R>
 std::pair<Position, bool> SimulateMove(const std::array<Board, R>& board, const FrameSequence& seq, bool until_lock) {
+  // TODO: fix DAS?
   Position pos = Position::Start;
   int charge = 0;
   FrameInput prev_input{};

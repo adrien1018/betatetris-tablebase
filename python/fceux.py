@@ -11,6 +11,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 stdscr = None
 args = None
 thresholds = None
+is_noro = tetris.Tetris.IsNoro()
 
 
 def myprint(*pargs, posx=0, posy=0, clear=True, refresh=True):
@@ -35,7 +36,7 @@ class GameConn(socketserver.BaseRequestHandler):
 
     @staticmethod
     def gen_seq(seq):
-        if len(seq) == 0: return bytes([0xfe, 1, 0])
+        if len(seq) == 0: return bytes([0xfe, 0])
         return bytes([0xfe, len(seq)]) + seq.tobytes()
 
     @staticmethod
@@ -43,7 +44,7 @@ class GameConn(socketserver.BaseRequestHandler):
         ret = ''
         for i in seq:
             s = ''
-            for val, ch in zip([1, 2, 4, 8], 'LRAB'):
+            for val, ch in zip([1, 2, 4, 8, 16], 'LRABD'):
                 if (i & val) == val: s += ch
             if s == '': s = '-'
             ret += s + ' '
@@ -176,7 +177,6 @@ class GameConn(socketserver.BaseRequestHandler):
             self.prev_placement = strat
 
     def first_piece(self):
-        # first piece
         if self.board_conn:
             is_adj, strat = self.get_strat_all()
             if is_adj:
@@ -196,6 +196,37 @@ class GameConn(socketserver.BaseRequestHandler):
         self.send_seq(seq)
         self.do_premove()
 
+    def finish_move_noro(self, next_piece):
+        self.game.SetNextPiece(next_piece)
+        if args.nnb:
+            self.step_game(self.prev)
+            self.prev_placement = self.game.GetRealPosition(self.prev)
+        strat, _ = self.get_strat()
+        seq = self.game.GetSequence(*strat)
+        self.prev = strat
+        self.send_seq(seq)
+        self.send_seq([])
+        if args.nnb:
+            self.prev = strat
+        else:
+            self.prev_placement = self.game.GetRealPosition(strat)
+            self.step_game(strat)
+
+    def first_piece_noro(self):
+        strat, _ = self.get_strat()
+        self.prev_placement = self.game.GetRealPosition(strat)
+        seq = self.game.GetSequence(*strat)
+        self.send_seq(seq)
+        self.step_game(strat)
+        if args.nnb:
+            strat, _ = self.get_strat()
+            seq = self.game.GetSequence(*strat)
+            self.prev = strat
+            self.send_seq(seq)
+            self.send_seq([])
+        else:
+            self.send_seq([])
+
     def start_lines(self):
         if self.start_level <= 18: return 0
         if self.start_level <= 28: return 130
@@ -203,20 +234,22 @@ class GameConn(socketserver.BaseRequestHandler):
         return 330
 
     def set_effective_lines(self):
-        if self.start_level <= 18: return
+        if is_noro: return
         lines = self.game.GetRunLines()
-        if self.start_level <= 28:
-            if lines >= 144: return
-            lines = 144 + (lines % 4)
-        elif self.start_level <= 38:
-            if 244 <= lines < 256: return
-            if lines < 244: lines = 244 + (lines % 4)
-            else: lines = 256 + (lines % 4)
+        if self.start_level <= 18:
+            pass
+        elif self.start_level <= 28:
+            if lines < 148: lines = 144 + (lines % 4)
+        elif self.start_level <= 38 or args.no_2ks:
+            lines += 40
+            if lines < 248: lines = 244 + (lines % 4)
         else:
-            if 344 <= lines < 356: return
-            if lines < 344: lines = 344 + (lines % 4)
-            else: lines = 356 + (lines % 4)
-        self.game.SetLines(lines)
+            if lines < 348: lines = 344 + (lines % 4)
+        if args.no_cap:
+            cap = 256 if args.no_2ks else 356
+            if lines >= cap: lines = cap + (lines % 4)
+        if self.game.GetLines() != lines:
+            self.game.SetLines(lines)
 
     def handle(self):
         myprint('Connected')
@@ -231,13 +264,25 @@ class GameConn(socketserver.BaseRequestHandler):
                         self.games = 0
                     self.done = False
                     cur, nxt, self.start_level = self.read_until(3)
-                    self.drought = 0
-                    self.num_19 += int(self.game.GetLines() >= 130)
-                    self.num_29 += int(self.game.GetLines() >= 230)
-                    self.games += 1
-                    self.game.Reset(cur, nxt, lines=self.start_lines())
-                    myprint('New game', (cur, nxt))
-                    self.first_piece()
+                    if is_noro:
+                        reset_args = {
+                            'start_level': self.start_level,
+                            'do_tuck': not args.no_tuck,
+                            'nnb': args.nnb,
+                            'mirror': args.mirror,
+                        }
+                    else:
+                        self.drought = 0
+                        self.num_19 += int(self.game.GetLines() >= 130)
+                        self.num_29 += int(self.game.GetLines() >= 230)
+                        self.games += 1
+                        reset_args = {'lines': self.start_lines()}
+                    self.game.Reset(cur, nxt, **reset_args)
+                    myprint('New game', self.start_level, (cur, nxt))
+                    if is_noro:
+                        self.first_piece_noro()
+                    else:
+                        self.first_piece()
                 elif data[0] == 0xfd:
                     r, x, y, nxt = self.read_until(4)
                     if nxt != 6: self.drought += 1
@@ -245,9 +290,12 @@ class GameConn(socketserver.BaseRequestHandler):
                     if (r, x, y) != self.prev_placement and not self.done:
                         myprint(f'Error: unexpected placement {(r, x, y)}; expected {self.prev_placement}')
                         self.done = True
-                    self.finish_move(nxt)
-                    self.set_effective_lines()
-                    self.do_premove()
+                    if is_noro:
+                        self.finish_move_noro(nxt)
+                    else:
+                        self.finish_move(nxt)
+                        self.set_effective_lines()
+                        self.do_premove()
             except ConnectionResetError:
                 self.request.close()
                 break
@@ -274,16 +322,23 @@ if __name__ == "__main__":
     parser.add_argument('model')
     parser.add_argument('-b', '--bind', type=str, default='0.0.0.0')
     parser.add_argument('-p', '--port', type=int, default=3456)
-    parser.add_argument('-s', '--server', type=str)
     parser.add_argument('-c', '--use-curses', action='store_true')
-    parser.add_argument('--threshold-file', type=str)
-    parser.add_argument('--ratio-low', type=float, default=0.01)
-    parser.add_argument('--ratio-high', type=float, default=1.0)
-    parser.add_argument('--buckets', type=float, default=256)
+    if is_noro:
+        parser.add_argument('--nnb', action='store_true')
+        parser.add_argument('--mirror', action='store_true')
+        parser.add_argument('--no-tuck', action='store_true')
+    else:
+        parser.add_argument('--no-cap', action='store_true')
+        parser.add_argument('--no-2ks', action='store_true')
+        parser.add_argument('-s', '--server', type=str)
+        parser.add_argument('--threshold-file', type=str)
+        parser.add_argument('--ratio-low', type=float, default=0.01)
+        parser.add_argument('--ratio-high', type=float, default=1.0)
+        parser.add_argument('--buckets', type=float, default=256)
     args = parser.parse_args()
     print(args)
 
-    if args.threshold_file:
+    if not is_noro and args.threshold_file:
         with open(args.threshold_file, 'r') as f:
             thresholds = list(map(float, f.read().split()))
 
@@ -296,7 +351,7 @@ if __name__ == "__main__":
         model.load_state_dict(state_dict)
         model.eval()
 
-    if args.server:
+    if not is_noro and args.server:
         host, port = args.server.split(':')
         port = int(port)
         board_conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

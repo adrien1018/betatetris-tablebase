@@ -31,8 +31,8 @@ class PythonTetris {
   std::mt19937_64 rng_;
   int next_piece_;
   int piece_count_;
-  bool is_mirror_;
 #ifdef NO_ROTATION
+  bool is_mirror_;
   bool nnb_;
 #endif // NO_ROTATION
 
@@ -96,7 +96,7 @@ class PythonTetris {
     Reset(Board::Ones, 0, 0, true, false, false);
 #else
     Reset(Board::Ones, 0);
-#endif
+#endif // NO_ROTATION
   }
 
   void ResetRandom(const Board& b) {
@@ -115,11 +115,13 @@ class PythonTetris {
     int lines = b.Count() % 4 != 0;
     lines += std::uniform_int_distribution<int>(0, kLineCap / 2 - 1)(rng_) * 2;
     Reset(b, lines);
-#endif
+#endif // NO_ROTATION
   }
 
   Position GetRealPosition(Position pos) {
+#ifdef NO_ROTATION
     if (is_mirror_) pos.y = kMirrorCols_[tetris.NowPiece()] - pos.y;
+#endif // NO_ROTATION
     return pos;
   }
 
