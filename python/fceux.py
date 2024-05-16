@@ -213,6 +213,7 @@ class GameConn(socketserver.BaseRequestHandler):
             self.step_game(strat)
 
     def first_piece_noro(self):
+        if self.done: return
         strat, _ = self.get_strat()
         self.prev_placement = self.game.GetRealPosition(strat)
         seq = self.game.GetSequence(*strat)

@@ -384,7 +384,7 @@ PyObject* Tetris_GetSequence(PythonTetris* self, PyObject* args, PyObject* kwds)
   if (!PyArg_ParseTupleAndKeywords(args, kwds, "iii", (char**)kwlist, &pos.r, &pos.x, &pos.y)) {
     return nullptr;
   }
-  return FrameSequenceToArray(self->tetris.GetSequence(pos));
+  return FrameSequenceToArray(self->tetris.GetSequence(self->GetRealPosition(pos)));
 }
 
 #ifndef NO_ROTATION
