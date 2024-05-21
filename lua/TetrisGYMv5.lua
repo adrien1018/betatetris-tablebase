@@ -1,3 +1,36 @@
+-- CONFIGURATION START --
+
+-- server
+local server_url = '127.0.0.1'
+local server_port = 3456
+
+local start_level = 18
+local log_file = nil -- specify a path for logging
+
+local setseed = false -- set seed?
+-- if false, then navigate to level selection screen before starting this script
+-- otherwise, the script will do that automatically
+
+-- set random seeds below
+-- if setseed = false then it will play the length(seeds) games (default to 100)
+local seeds = {[1] = '123456'}
+
+function generateRandomSeed() -- function for generating random seeds
+  local s = ''
+  for i = 1,6 do
+    local num = math.random(1, 16)
+    s = s .. string.sub('0123456789abcdef', num, num)
+  end
+  return s
+end
+
+math.randomseed(1)
+math.random()
+for i = 2,100 do -- generate some random seeds
+  seeds[i] = generateRandomSeed()
+end
+-- CONFIGURATION END --
+
 currentSeedAddress = 0x0037
 
 gameStateAddress = 0x00C0
@@ -10,6 +43,8 @@ nextTetriminoIDAddress = 0x00BF
 tetriminoXAddress = 0x0041
 tetriminoYAddress = 0x0040
 tetriminoRotateAddress = 0x0042
+
+defaultTimeout = 0.001
 
 -- use O(n) queue anyway for simplicity
 recvQueue = ""
@@ -88,11 +123,17 @@ pieceMap[18] = 6
 rotateMap = {3, 0, 1,  1, 2, 3, 0,  0, 1,  0,  0, 1,  3, 0, 1, 2,  1, 0}
 rotateMap[0] = 2
 
+first = false
 function sendStartGame(tcp, level)
   local currentPiece = memory.readbyteunsigned(nowTetriminoIDAddress)
   local nextPiece = memory.readbyteunsigned(nextTetriminoIDAddress)
-  local msg = string.char(0xff, pieceMap[currentPiece], pieceMap[nextPiece], level)
-  print('startGame', currentPiece, nextPiece, level)
+  print('startGame', currentPiece, nextPiece, level, first)
+  local op = 0xff
+  if first then
+    op = 0xef
+    first = false
+  end
+  local msg = string.char(op, pieceMap[currentPiece], pieceMap[nextPiece], level)
   trySend(tcp, msg)
 end
 
@@ -108,7 +149,7 @@ function printBytes(bytes)
 end
 
 function receiveSequence(tcp, seq)
-  if not seq.length then
+  if seq.length == -1 then
     local p = tryReceive(tcp, 2)
     if p then
       if string.byte(p, 1) == 0xfe then
@@ -116,7 +157,10 @@ function receiveSequence(tcp, seq)
       end
     end
   end
-  if seq.length and not seq[seq.length] then
+  if seq.length == 0 then
+    return true
+  end
+  if seq.length > 0 and not seq[seq.length] then
     local p = tryReceive(tcp, seq.length)
     if p then
       for i = 1,seq.length do
@@ -126,6 +170,8 @@ function receiveSequence(tcp, seq)
         if x % 4 >= 2 then buttons.right = true end
         if x % 8 >= 4 then buttons.A = true end
         if x % 16 >= 8 then buttons.B = true end
+        if x % 32 >= 16 then buttons.down = true end
+        if x % 64 >= 32 then buttons.start = true end
         seq[i] = buttons
       end
       return true
@@ -134,28 +180,32 @@ function receiveSequence(tcp, seq)
   return false
 end
 
+function sequenceFinished(seq)
+  return seq.length == 0 or (seq.length > 0 and seq[seq.length])
+end
+
 function receiveTwoSequence(tcp, curSeq, nextSeq, nFrame, block)
-  if nextSeq.length and nextSeq[nextSeq.length] then
+  if sequenceFinished(nextSeq) then
     return
   end
-  if not (curSeq.length and curSeq[curSeq.length]) then
+  if not sequenceFinished(curSeq) then
     if block == 1 then
       tcp:settimeout(nil, 't')
       for i = 1,5 do
         if receiveSequence(tcp, curSeq) then break end
       end
-      tcp:settimeout(0.008, 't')
+      tcp:settimeout(defaultTimeout, 't')
     else
       receiveSequence(tcp, curSeq)
     end
   end
-  if curSeq.length and curSeq[curSeq.length] then
+  if sequenceFinished(curSeq) then
     if block >= 1 then
       tcp:settimeout(nil, 't')
       for i = 1,5 do
         if receiveSequence(tcp, nextSeq) then break end
       end
-      tcp:settimeout(0.008, 't')
+      tcp:settimeout(defaultTimeout, 't')
     else
       receiveSequence(tcp, nextSeq)
     end
@@ -178,21 +228,25 @@ function getScore()
 end
 
 function gameLoop(tcp, level, seed, terminate)
-  resetQueue(tcp)
+  for i = 1,3 do
+    socket.sleep(0.4)
+    resetQueue(tcp)
+  end
   sendStartGame(tcp, level)
   local endGame = false
-  local nextSequence = {length=1}
+  local nextSequence = {length=0}
   nextSequence[1] = {}
   while not endGame do
-    local curSequence = {}
-    local fNextSequence = {}
+    local curSequence = {length=-1}
+    local fNextSequence = {length=-1}
     local inMicro = false
     local currentFrame = 1
     local nFrame = 0
     local st = memory.readbyteunsigned(playStateAddress)
     while st == 1 do
-      trySend()
+      trySend(tcp)
       local block = 0
+      local skip = false
       if inMicro and currentFrame == 1 then
         block = 1
       end
@@ -203,7 +257,11 @@ function gameLoop(tcp, level, seed, terminate)
           currentFrame = currentFrame + 1
         end
       else
-        if nextSequence[currentFrame] then
+        if nextSequence.length == 0 then
+          inMicro = true
+          skip = true
+          currentFrame = 1
+        elseif nextSequence[currentFrame] then
           joypad.set(1, nextSequence[currentFrame])
           currentFrame = currentFrame + 1
           if currentFrame > nextSequence.length then
@@ -212,12 +270,12 @@ function gameLoop(tcp, level, seed, terminate)
           end
         end
       end
-      emu.frameadvance()
-      st = memory.readbyteunsigned(playStateAddress)
-      nFrame = nFrame + 1
+      if not skip then
+        emu.frameadvance()
+        st = memory.readbyteunsigned(playStateAddress)
+        nFrame = nFrame + 1
+      end
     end
-    --print('total frames:', nFrame)
-    --print(getScore(), getLines())
     local rotate = rotateMap[memory.readbyteunsigned(tetriminoRotateAddress)]
     local x = memory.readbyteunsigned(tetriminoXAddress)
     local y = memory.readbyteunsigned(tetriminoYAddress)
@@ -230,11 +288,19 @@ function gameLoop(tcp, level, seed, terminate)
     while st ~= 1 do
       if st == 10 then
         endGame = true
+        if log_file then
+          io.write(seed .. ' ' .. tostring(getScore()) .. ' ' .. tostring(getLines()) .. ' 1\n')
+          io.flush()
+        end
         print(getScore(), getLines())
         break
       end
       emu.frameadvance()
       st = memory.readbyteunsigned(playStateAddress)
+    end
+    if log_file then
+      io.write(seed .. ' ' .. tostring(getScore()) .. ' ' .. tostring(getLines()) .. ' 0\n')
+      io.flush()
     end
     receiveTwoSequence(tcp, curSequence, fNextSequence, nFrame, 2)
     nextSequence = fNextSequence
@@ -378,41 +444,48 @@ function backToMain()
   end
 end
 
-function generateRandomSeed()
-  local s = ''
-  for i = 1,6 do
-    local num = math.random(1, 16)
-    s = s .. string.sub('0123456789abcdef', num, num)
-  end
-  print(s)
-  return s
-end
-
-math.randomseed(123)
-math.random()
 local socket = require("socket")
 local tcp = assert(socket.tcp())
-local ret, msg = tcp:connect("127.0.0.1", 3456)
+local ret, msg = tcp:connect(server_url, server_port)
 if not ret then
   print("Connection failed", msg)
   while true do emu.frameadvance() end
 end
-tcp:settimeout(0.001, 't')
+tcp:settimeout(defaultTimeout, 't')
 
-if true then
+if setseed then
   emu.poweron()
+end
+
+if log_file then
+  io.output(io.open(log_file, 'a'))
+end
+
+if setseed then
   waitStart()
   enableDoubleKs()
   moveToSeed()
 end
 
+for playnum, seed in ipairs(seeds) do
+  if setseed then
+    inputSeed(seed)
+    enterMenu()
+  end
+
+  first = true
+  resetQueue(tcp)
+  startGame(start_level)
+  gameLoop(tcp, start_level, seed, true)
+  if setseed then
+    backToMain()
+  end
+
+  for i = 1,20 do
+    emu.frameadvance()
+  end
+end
+
 while true do
-  local seed = generateRandomSeed()
-
-  inputSeed(seed)
-  enterMenu()
-
-  startGame(18)
-  gameLoop(tcp, 18, seed, true)
-  backToMain()
+  emu.frameadvance()
 end
