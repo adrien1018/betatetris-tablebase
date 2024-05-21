@@ -70,12 +70,12 @@ class FCEUXConnection : public std::enable_shared_from_this<FCEUXConnection>, pu
   std::array<Position, 7> prev_strats;
 
   void SendSeq(const FrameSequence& seq) {
-    size_t send_size = std::max(1, (int)seq.size());
-    std::vector<uint8_t> buf(send_size + 2);
+    std::vector<uint8_t> buf(seq.size() + 3);
     buf[0] = 0xfe;
-    buf[1] = send_size;
+    buf[1] = seq.size() & 255;
+    buf[2] = seq.size() >> 8;
     static_assert(sizeof(seq[0]) == 1);
-    if (seq.size()) memcpy(buf.data() + 2, seq.data(), seq.size());
+    if (seq.size()) memcpy(buf.data() + 3, seq.data(), seq.size());
     Send(reinterpret_cast<const char*>(buf.data()), buf.size());
   }
 

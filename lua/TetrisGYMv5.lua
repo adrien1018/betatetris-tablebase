@@ -7,6 +7,7 @@ local server_port = 3456
 local start_level = 18
 local log_file = nil -- specify a path for logging
 
+local onegame = true -- if true, only play one game and stay on game over screen
 local setseed = false -- set seed?
 -- if false, then navigate to level selection screen before starting this script
 -- otherwise, the script will do that automatically
@@ -150,10 +151,10 @@ end
 
 function receiveSequence(tcp, seq)
   if seq.length == -1 then
-    local p = tryReceive(tcp, 2)
+    local p = tryReceive(tcp, 3)
     if p then
       if string.byte(p, 1) == 0xfe then
-        seq.length = string.byte(p, 2)
+        seq.length = string.byte(p, 2) + (string.byte(p, 3) * 256)
       end
     end
   end
@@ -476,7 +477,8 @@ for playnum, seed in ipairs(seeds) do
   first = true
   resetQueue(tcp)
   startGame(start_level)
-  gameLoop(tcp, start_level, seed, true)
+  gameLoop(tcp, start_level, seed, not onegame)
+  if onegame then break end
   if setseed then
     backToMain()
   end
