@@ -54,28 +54,32 @@ class GameConn(socketserver.BaseRequestHandler):
         with torch.no_grad():
             pi, v = self.model(obs_to_torch(self.game.GetState()), pi_only=True)
             action = torch.argmax(pi, 1).item()
-            return (action // 200, action // 10 % 20, action % 10), v[0].item()
+            if is_noro:
+                return (action // 200, action // 10 % 20, action % 10), v[0].item() * 5
+            else:
+                return (action // 200, action // 10 % 20, action % 10), v[0].item()
+
+    @staticmethod
+    def strat_text(strat, cur_piece, val=None):
+        PIECE_TABLE = 'TJZOSLI'
+        ROT_TABLE = ['dlur', 'dlur', ['',''], [''], ['', ''], 'dlur', ['', '']]
+        COL_TABLE = [[(-1,2),(-1,1),(-1,2),(0,2)],
+                        [(-1,2),(-1,1),(-1,2),(0,2)],
+                        [(-1,2),(0,2)],
+                        [(-1,1)],
+                        [(-1,2),(0,2)],
+                        [(-1,2),(-1,1),(-1,2),(0,2)],
+                        [(-2,2),(0,1)]]
+        r,x,y = strat
+        ori = PIECE_TABLE[cur_piece] + ROT_TABLE[cur_piece][r] + '-'
+        for j in range(*COL_TABLE[cur_piece][r]):
+            ori += str(j + y + 1)[-1]
+        ntxt = f'{ori:6s}@row {20-x:2d}'
+        if val is not None:
+            ntxt += f'; val {val:6.3f}'
+        return ntxt
 
     def print_status(self, strats, is_table, data, refresh=True):
-        def StratText(i, cur_piece):
-            PIECE_TABLE = 'TJZOSLI'
-            ROT_TABLE = ['dlur', 'dlur', ['',''], [''], ['', ''], 'dlur', ['', '']]
-            COL_TABLE = [[(-1,2),(-1,1),(-1,2),(0,2)],
-                         [(-1,2),(-1,1),(-1,2),(0,2)],
-                         [(-1,2),(0,2)],
-                         [(-1,1)],
-                         [(-1,2),(0,2)],
-                         [(-1,2),(-1,1),(-1,2),(0,2)],
-                         [(-2,2),(0,1)]]
-            r,x,y = strats[i]
-            ori = PIECE_TABLE[cur_piece] + ROT_TABLE[cur_piece][r] + '-'
-            for j in range(*COL_TABLE[cur_piece][r]):
-                ori += str(j + y + 1)[-1]
-            ntxt = f'{ori:6s}@row {20-x:2d}'
-            if not is_table:
-                ntxt += f'; val {data[i]:6.3f}'
-            return ntxt
-
         txt = 'Game #' + str(self.games) + '\n'
         txt += 'Games to 19: ' + str(self.num_19) + '\n'
         txt += 'Games to 29: ' + str(self.num_29) + '\n'
@@ -83,7 +87,7 @@ class GameConn(socketserver.BaseRequestHandler):
         txt += 'Tablebase' if is_table else 'Neural Net'
         txt += '\nPlacements: (where to place\n the upcoming piece based on\n its next piece)\n'
         for i in range(7):
-            txt += 'TJZOSLI'[i] + ': ' + StratText(i, self.game.GetNowPiece()) + '\n'
+            txt += 'TJZOSLI'[i] + ': ' + self.strat_text(strats[i], self.game.GetNowPiece(), None if is_table else data[i]) + '\n'
         if is_table:
             txt += f'confidence {data}'
             if thresholds:
@@ -105,6 +109,13 @@ class GameConn(socketserver.BaseRequestHandler):
             strats = [(action // 200, action // 10 % 20, action % 10) for action in actions]
             self.print_status(strats, False, v[0].flatten().cpu().tolist())
             return strats
+
+    def print_status_noro(self, strat, v, refresh=True):
+        if strat == (0, 0, 0): return
+        txt = 'Placement:\n'
+        txt += self.strat_text(strat, self.game.GetNowPiece(), v)
+        txt += '\n'
+        myprint(txt, refresh=refresh)
 
     def query_tablebase(self):
         query = (
@@ -201,7 +212,8 @@ class GameConn(socketserver.BaseRequestHandler):
         if args.nnb:
             self.step_game(self.prev)
             self.prev_placement = self.game.GetRealPosition(self.prev)
-        strat, _ = self.get_strat()
+        strat, v = self.get_strat()
+        self.print_status_noro(strat, v)
         seq = self.game.GetSequence(*strat)
         self.prev = strat
         self.send_seq(seq)
@@ -214,13 +226,15 @@ class GameConn(socketserver.BaseRequestHandler):
 
     def first_piece_noro(self):
         if self.done: return
-        strat, _ = self.get_strat()
+        strat, v = self.get_strat()
+        self.print_status_noro(strat, v)
         self.prev_placement = self.game.GetRealPosition(strat)
         seq = self.game.GetSequence(*strat)
         self.send_seq(seq)
         self.step_game(strat)
         if args.nnb:
-            strat, _ = self.get_strat()
+            strat, v = self.get_strat()
+            self.print_status_noro(strat, v)
             seq = self.game.GetSequence(*strat)
             self.prev = strat
             self.send_seq(seq)
@@ -266,11 +280,20 @@ class GameConn(socketserver.BaseRequestHandler):
                     self.done = False
                     cur, nxt, self.start_level = self.read_until(3)
                     if is_noro:
+                        use_mirror = [
+                            [0, 1, 1, 0, 0, 0, 0],
+                            [1, 1, 1, 1, 1, 0, 1],
+                            [0, 1, 0, 0, 0, 0, 0],
+                            [0, 1, 0, 0, 0, 0, 0],
+                            [1, 1, 1, 0, 1, 0, 1],
+                            [0, 1, 0, 0, 0, 0, 0],
+                            [0, 1, 0, 1, 1, 0, 0],
+                        ]
                         reset_args = {
                             'start_level': self.start_level,
                             'do_tuck': not args.no_tuck,
                             'nnb': args.nnb,
-                            'mirror': args.mirror,
+                            'mirror': bool(use_mirror[cur][nxt]) if args.adaptive else args.mirror,
                         }
                     else:
                         self.drought = 0
@@ -327,6 +350,7 @@ if __name__ == "__main__":
     if is_noro:
         parser.add_argument('--nnb', action='store_true')
         parser.add_argument('--mirror', action='store_true')
+        parser.add_argument('--adaptive', action='store_true')
         parser.add_argument('--no-tuck', action='store_true')
     else:
         parser.add_argument('--no-cap', action='store_true')

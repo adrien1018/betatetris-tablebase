@@ -168,7 +168,7 @@ class PythonTetris {
   struct State {
 #ifdef NO_ROTATION
     std::array<std::array<std::array<float, 10>, 20>, 2> board;
-    std::array<float, 22> meta;
+    std::array<float, 32> meta;
     std::array<std::array<std::array<float, 10>, 20>, 3> moves;
     std::array<float, 31> move_meta;
     std::array<int, 2> meta_int;
@@ -242,7 +242,7 @@ class PythonTetris {
 
   static void GetState(const TetrisNoro& tetris, State& state, bool nnb, bool is_mirror, int line_reduce = 0) {
     // board: shape (2, 20, 10) [board, one]
-    // meta: shape (21,) [group(5), now_piece(7), next_piece(7), nnb, do_tuck]
+    // meta: shape (21,) [group(5), now_piece(7), next_piece(7), nnb, do_tuck, start_speed(10)]
     // meta_int: shape (2,) [entry, now_piece]
     // moves: shape (3, 20, 10) [board, one, moves]
     // move_meta: shape (31,) [speed(10), to_transition(16), level*0.1, lines*0.01, start_lines*0.01, pieces*0.004, ln(multiplier)]
@@ -272,6 +272,8 @@ class PythonTetris {
       }
     }
 
+    int start_level = tetris.GetStartLevel();
+    int start_speed = tetris.InputsPerRow(start_level);
     memset(state.meta.data(), 0, sizeof(state.meta));
     state.meta[0 + tetris.GetBoard().Count() / 2 % 5] = 1;
     state.meta[5 + (is_mirror ? kMirrorPiece_[tetris.NowPiece()] : tetris.NowPiece())] = 1;
@@ -282,10 +284,10 @@ class PythonTetris {
     }
     state.meta[20] = tetris.DoTuck();
     state.meta[21] = is_mirror;
+    state.meta[22 + start_speed] = 1;
 
     int lines = tetris.GetLines();
     int state_lines = lines - line_reduce;
-    int start_level = tetris.GetStartLevel();
     int state_level = noro::GetLevelByLines(state_lines, start_level);
     state.meta_int[0] = state_lines / 2;
     state.meta_int[1] = tetris.NowPiece();

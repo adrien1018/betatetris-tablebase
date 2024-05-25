@@ -388,14 +388,15 @@ inline FrameSequence GetFrameSequenceNoro(
   }
   for (auto& i : inputs) std::reverse(i.begin(), i.end());
   FrameSequence ret;
+  constexpr int kSlowPush = 0; // 0 for fast push, >=4 for frames per row
   bool down_held = false;
   for (size_t i = 0; i < inputs.size(); i++) {
-    if (down_held && frames_per_drop > 2 && inputs[i].empty()) {
+    if (kSlowPush == 0 && down_held && frames_per_drop > 2 && inputs[i].empty()) {
       ret.resize(ret.size() + 2, FrameInput::D);
       continue;
     }
     down_held = false;
-    int input_frames = std::max((int)inputs[i].size() * 2 - 1, 0);
+    int input_frames = std::max((int)inputs[i].size() * 2 - 1, kSlowPush >= 4 ? kSlowPush - 3 : 0);
     int blank_frames = frames_per_drop - input_frames;
     size_t offset = ret.size();
     ret.resize(offset + input_frames + std::min(blank_frames, 3), FrameInput{});

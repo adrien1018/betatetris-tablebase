@@ -302,6 +302,10 @@ class TetrisNoro {
     size_t speed = LevelSpeed();
     return speed >= inputs_per_row_.size() ? inputs_per_row_.back() : inputs_per_row_[speed];
   }
+  int InputsPerRow(int level) const {
+    size_t speed = noro::GetLevelSpeed(level);
+    return speed >= inputs_per_row_.size() ? inputs_per_row_.back() : inputs_per_row_[speed];
+  }
   bool DoTuck() const { return do_tuck_; }
 
   int GetLevel() const { return noro::GetLevelByLines(lines_, start_level_); }
