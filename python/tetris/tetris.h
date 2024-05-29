@@ -59,12 +59,12 @@ class PythonTetris {
     if (score == -1) return {kInvalidReward_, 0.0f};
 #ifdef NO_ROTATION
     int pre_lines = tetris.GetLines() - lines;
-    double reward = step_reward_;
+    double n_reward = step_reward_;
     for (int i = pre_lines; i < pre_lines + lines; i++) {
-      reward += std::exp(GetNoroLineRewardExp(i, tetris.GetStartLevel(), tetris.DoTuck(), nnb_));
+      n_reward += std::exp(GetNoroLineRewardExp(i, tetris.GetStartLevel(), tetris.DoTuck(), nnb_));
     }
     next_piece_ = GenNextPiece_(next_piece_);
-    double n_reward = lines * kRawMultiplier_;
+    double reward = lines * kRawMultiplier_;
 #else // NO_ROTATION
     double reward = score * kRewardMultiplier_;
     double n_reward = reward;
