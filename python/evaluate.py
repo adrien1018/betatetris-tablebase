@@ -189,7 +189,7 @@ class Game:
             reset_args['nnb'] = args.nnb
             reset_args['mirror'] = args.mirror
         else:
-            reset_args['start_lines'] = args.start_lines
+            reset_args['lines'] = args.start_lines
             if board:
                 reset_args['board'] = board
         self.env.Reset(now, nxt, **reset_args)
